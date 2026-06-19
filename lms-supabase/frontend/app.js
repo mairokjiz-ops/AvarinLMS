@@ -197,6 +197,60 @@ window.SupabaseBridge = {
         return { fiscal_year: fiscalYear, fiscal_year_be: fiscalYear + 543, items: stats };
       };
 
+      const timeToMinutes = (timeStr) => {
+        if (!timeStr) return 0;
+        const parts = timeStr.split(':');
+        return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+      };
+
+      const getLeaveDuration = async (data) => {
+        const unit = String(data.leave_unit || '').toLowerCase() === 'hour' ? 'hour' : 'day';
+        const start_date = data.start_date.substring(0, 10);
+        const end_date = data.end_date ? data.end_date.substring(0, 10) : start_date;
+        
+        if (unit === 'hour') {
+          const sm = timeToMinutes(data.start_time);
+          const em = timeToMinutes(data.end_time);
+          const hours = Number(Math.max(0, (em - sm) / 60).toFixed(2));
+          const days = Number((hours / 8).toFixed(2));
+          return {
+            unit: 'hour',
+            start_date,
+            end_date: start_date,
+            start_time: data.start_time,
+            end_time: data.end_time,
+            hours,
+            days
+          };
+        } else {
+          const { data: holidays } = await sb.from('holidays').select('holiday_date');
+          const holidaySet = new Set((holidays || []).map(h => h.holiday_date));
+          
+          let count = 0;
+          let cur = new Date(start_date + 'T00:00:00');
+          const end = new Date(end_date + 'T00:00:00');
+          while (cur <= end) {
+            const dow = cur.getDay();
+            const isWeekend = (dow === 0 || dow === 6);
+            const dateStr = cur.toISOString().substring(0, 10);
+            const isHoliday = holidaySet.has(dateStr);
+            if (!isWeekend && !isHoliday) {
+              count++;
+            }
+            cur.setDate(cur.getDate() + 1);
+          }
+          return {
+            unit: 'day',
+            start_date,
+            end_date,
+            start_time: '',
+            end_time: '',
+            hours: count * 8,
+            days: count
+          };
+        }
+      };
+
       const enrichLeave = (r, usersIndex) => {
         const u = usersIndex[r.requester_id] || {};
         return {
@@ -371,54 +425,120 @@ window.SupabaseBridge = {
         };
       }
 
+      if (action === 'leave.preview') {
+        const duration = await getLeaveDuration(payload);
+        const startISO = duration.start_date;
+        const endISO = duration.end_date;
+        const fy = new Date(startISO).getFullYear();
+        
+        const { data: settingsData } = await sb.from('settings').select('*');
+        const settings = {};
+        if (settingsData) settingsData.forEach(s => settings[s.key] = s.value);
+
+        const stats = await getLeaveStats(window.LMS.Store.user.id, fy, settings);
+        const s = stats.items[payload.leave_type];
+        const afterUsed = s.used + duration.days;
+        const over = (s.limit > 0) && (afterUsed > s.limit);
+        let warn = false;
+        if (!over && s.limit > 0) {
+          const threshold = Number(settings.warn_threshold || 80);
+          const pct = Math.round(afterUsed * 100 / s.limit);
+          if (pct >= threshold) warn = true;
+        }
+        
+        // Find last leave
+        const { data: lastLeave } = await sb.from('leaves')
+          .select('*')
+          .eq('requester_id', window.LMS.Store.user.id)
+          .not('status', 'in', '("draft","cancelled","rejected")')
+          .lt('start_date', startISO)
+          .order('start_date', { ascending: false })
+          .limit(1);
+          
+        const { data: users } = await sb.from('profiles').select('*');
+        const usersIndex = {};
+        if (users) users.forEach(u => usersIndex[u.id] = u);
+
+        return {
+          days: duration.days,
+          start_date: startISO,
+          end_date: endISO,
+          fiscal_year: fy,
+          over: over,
+          warn: warn,
+          after_used: afterUsed,
+          after_remaining: Math.max(0, s.limit - afterUsed),
+          stats: stats,
+          last_leave: lastLeave && lastLeave[0] ? enrichLeave(lastLeave[0], usersIndex) : null
+        };
+      }
+
       if (action === 'leave.create') {
-        const fiscal_year = new Date(payload.start_date).getFullYear() + 543;
+        const duration = await getLeaveDuration(payload);
+        const fiscal_year = new Date(duration.start_date).getFullYear();
+        
+        const { data: lastLeave } = await sb.from('leaves')
+          .select('*')
+          .eq('requester_id', window.LMS.Store.user.id)
+          .not('status', 'in', '("draft","cancelled","rejected")')
+          .lt('start_date', duration.start_date)
+          .order('start_date', { ascending: false })
+          .limit(1);
+        const last = lastLeave && lastLeave[0] ? lastLeave[0] : null;
+
         const insertData = {
           requester_id: window.LMS.Store.user.id,
           leave_type: payload.leave_type,
-          reason: payload.reason,
-          start_date: payload.start_date,
-          end_date: payload.end_date,
-          days: payload.days,
-          contact_address: payload.contact_address,
-          contact_phone: payload.contact_phone,
-          last_leave_type: payload.last_leave_type,
-          last_leave_start: payload.last_leave_start || null,
-          last_leave_end: payload.last_leave_end || null,
-          last_leave_days: payload.last_leave_days || null,
+          reason: String(payload.reason || '').trim(),
+          start_date: duration.start_date,
+          end_date: duration.end_date,
+          days: duration.days,
+          leave_unit: duration.unit,
+          start_time: duration.start_time,
+          end_time: duration.end_time,
+          hours: duration.hours,
+          contact_address: String(payload.contact_address || '').trim(),
+          contact_phone: String(payload.contact_phone || window.LMS.Store.user.phone || '').trim(),
+          last_leave_type: last ? last.leave_type : '',
+          last_leave_start: last ? last.start_date : null,
+          last_leave_end: last ? last.end_date : null,
+          last_leave_days: last ? Number(last.days || 0) : null,
           status: payload.status || 'draft',
+          written_at: new Date().toISOString().substring(0, 10),
+          written_place: String(payload.written_place || '').trim(),
           fiscal_year: fiscal_year,
-          attachment_url: payload.attachment_url || '',
-          leave_unit: payload.leave_unit || 'day',
-          start_time: payload.start_time || null,
-          end_time: payload.end_time || null,
-          hours: payload.hours || null
+          attachment_url: payload.attachment_url || ''
         };
+
         const { data, error } = await sb.from('leaves').insert(insertData).select().single();
         if (error) throw error;
-        return data;
+        
+        // Return matching format expected by client
+        return {
+          leave: data,
+          over_limit: false
+        };
       }
 
       if (action === 'leave.update') {
         const { id, ...updatePayload } = payload;
+        const duration = await getLeaveDuration(updatePayload);
+        
         const { data, error } = await sb.from('leaves').update({
           leave_type: updatePayload.leave_type,
-          reason: updatePayload.reason,
-          start_date: updatePayload.start_date,
-          end_date: updatePayload.end_date,
-          days: updatePayload.days,
-          contact_address: updatePayload.contact_address,
-          contact_phone: updatePayload.contact_phone,
-          last_leave_type: updatePayload.last_leave_type,
-          last_leave_start: updatePayload.last_leave_start || null,
-          last_leave_end: updatePayload.last_leave_end || null,
-          last_leave_days: updatePayload.last_leave_days || null,
+          reason: String(updatePayload.reason || '').trim(),
+          start_date: duration.start_date,
+          end_date: duration.end_date,
+          days: duration.days,
+          leave_unit: duration.unit,
+          start_time: duration.start_time,
+          end_time: duration.end_time,
+          hours: duration.hours,
+          contact_address: String(updatePayload.contact_address || '').trim(),
+          contact_phone: String(updatePayload.contact_phone || '').trim(),
           status: updatePayload.status || 'draft',
-          attachment_url: updatePayload.attachment_url || '',
-          leave_unit: updatePayload.leave_unit || 'day',
-          start_time: updatePayload.start_time || null,
-          end_time: updatePayload.end_time || null,
-          hours: updatePayload.hours || null
+          written_place: String(updatePayload.written_place || '').trim(),
+          attachment_url: updatePayload.attachment_url || ''
         }).eq('id', id).select().single();
         if (error) throw error;
         return data;
