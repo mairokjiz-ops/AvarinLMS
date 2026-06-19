@@ -1,0 +1,655 @@
+/* 
+   Leave Management System - Custom Premium Theme (Vanilla CSS)
+   Aesthetics: Sleek Dark Mode, Royal Indigo Accents, Glassmorphism, Micro-interactions
+*/
+
+:root {
+  /* Typography */
+  --font-family: 'Outfit', 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif;
+  
+  /* Color Palette (HSL Tokens) */
+  --bg-dark-base: 220 25% 7%;      /* Deepest base background */
+  --bg-dark-surface: 220 25% 11%;   /* Sidebar, navbar, container card backgrounds */
+  --bg-dark-card: 220 25% 16%;      /* Inner card panels */
+  
+  --primary-hue: 255;
+  --primary: hsl(var(--primary-hue) 80% 62%);
+  --primary-hover: hsl(var(--primary-hue) 85% 55%);
+  --primary-glow: hsla(var(--primary-hue) 80% 62% / 0.18);
+  
+  --text-main: hsl(220 20% 95%);
+  --text-muted: hsl(220 12% 65%);
+  --text-light-muted: hsl(220 8% 45%);
+  
+  --color-success: hsl(145 65% 45%);
+  --color-danger: hsl(355 75% 55%);
+  --color-warning: hsl(38 85% 55%);
+  --color-info: hsl(200 80% 50%);
+  
+  /* Translucent statuses for labels & calendars */
+  --status-sick: hsla(200 80% 50% / 0.15);
+  --status-personal: hsla(38 85% 55% / 0.15);
+  --status-annual: hsla(145 65% 45% / 0.15);
+  --status-maternity: hsla(280 75% 60% / 0.15);
+  --status-holiday: hsla(355 75% 55% / 0.15);
+
+  --border-glass: hsla(220 20% 95% / 0.08);
+  --bg-glass-translucent: hsla(220 25% 14% / 0.65);
+}
+
+/* ── GLOBAL RESET & STYLES ────────────────────────────────────────── */
+body {
+  background-color: hsl(var(--bg-dark-base));
+  color: var(--text-main);
+  font-family: var(--font-family);
+  overflow-x: hidden;
+  min-height: 100vh;
+  margin: 0;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: hsl(var(--bg-dark-base));
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--bg-dark-card));
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+/* Typography elements */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+a {
+  text-decoration: none;
+  transition: all 0.25s ease;
+}
+
+/* Loading Overlay */
+#loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: hsl(var(--bg-dark-base));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+#loading-overlay.active {
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* ── AUTHENTICATION LAYOUT ───────────────────────────────────────── */
+.auth-section {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 10% 20%, hsla(var(--primary-hue), 80%, 45%, 0.12) 0%, transparent 45%),
+              radial-gradient(circle at 90% 80%, hsla(145, 65%, 40%, 0.08) 0%, transparent 45%),
+              hsl(var(--bg-dark-base));
+  padding: 20px;
+}
+.auth-card-container {
+  width: 100%;
+  max-width: 440px;
+}
+.auth-card {
+  background: var(--bg-glass-translucent);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-glass);
+  border-radius: 20px;
+  padding: 40px 30px;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+}
+.auth-logo-header h1 {
+  font-size: 24px;
+  letter-spacing: 0.1em;
+  margin-top: 15px;
+  margin-bottom: 5px;
+  background: linear-gradient(135deg, #fff 30%, var(--primary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.logo-circle {
+  width: 60px;
+  height: 60px;
+  background: linear-gradient(135deg, var(--primary) 0%, hsl(var(--primary-hue) 90% 50%) 100%);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  font-size: 28px;
+  color: #fff;
+  box-shadow: 0 8px 20px var(--primary-glow);
+}
+
+/* Auth Pills styling */
+.nav-pills .nav-link {
+  color: var(--text-muted);
+  background: transparent;
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.nav-pills .nav-link.active {
+  background-color: var(--primary);
+  color: #fff;
+  box-shadow: 0 4px 12px var(--primary-glow);
+}
+
+/* Form Styling overrides */
+.form-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.form-control, .form-select {
+  background-color: hsl(var(--bg-dark-base));
+  border: 1px solid var(--border-glass);
+  color: var(--text-main);
+  border-radius: 10px;
+  padding: 11px 15px;
+  font-size: 15px;
+  transition: all 0.25s ease;
+}
+.form-control:focus, .form-select:focus {
+  background-color: hsl(var(--bg-dark-base));
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+  color: #fff;
+}
+.input-group-text {
+  background-color: hsl(var(--bg-dark-surface));
+  border: 1px solid var(--border-glass);
+  color: var(--text-muted);
+  border-radius: 10px;
+}
+.form-control::placeholder {
+  color: var(--text-light-muted);
+}
+
+/* Button Styling overrides */
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+  border: none;
+  font-weight: 500;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px var(--primary-glow);
+  transition: all 0.25s ease;
+}
+.btn-primary:hover, .btn-primary:focus {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px var(--primary-glow);
+}
+.btn-success {
+  background: var(--color-success);
+  border: none;
+  font-weight: 500;
+  border-radius: 10px;
+}
+.btn-outline-light {
+  border-color: var(--border-glass);
+  color: var(--text-muted);
+}
+.btn-outline-light:hover {
+  background-color: hsl(var(--bg-dark-card));
+  color: #fff;
+  border-color: var(--text-muted);
+}
+
+/* ── MAIN PORTAL LAYOUT ──────────────────────────────────────────── */
+.portal-container {
+  display: flex;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Sidebar Styling */
+.portal-sidebar {
+  width: 270px;
+  background-color: hsl(var(--bg-dark-surface));
+  border-right: 1px solid var(--border-glass);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.sidebar-brand {
+  padding: 30px 20px;
+  border-bottom: 1px solid var(--border-glass);
+}
+.brand-logo i {
+  font-size: 32px;
+}
+.brand-name {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-top: 8px;
+  color: #fff;
+}
+.brand-sub {
+  font-size: 11px;
+  color: var(--text-light-muted);
+}
+
+.sidebar-menu {
+  padding: 25px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+.menu-link {
+  display: flex;
+  align-items: center;
+  padding: 12px 18px;
+  color: var(--text-muted);
+  border-radius: 10px;
+  font-weight: 500;
+  font-size: 15px;
+  gap: 12px;
+}
+.menu-link i {
+  font-size: 18px;
+}
+.menu-link:hover {
+  color: #fff;
+  background-color: hsla(220 20% 95% / 0.04);
+}
+.menu-link.active {
+  color: #fff;
+  background-color: var(--primary);
+  box-shadow: 0 4px 12px var(--primary-glow);
+}
+
+.sidebar-user {
+  padding: 20px 15px;
+  background-color: hsl(var(--bg-dark-base));
+  border-top: 1px solid var(--border-glass);
+}
+.user-avatar i {
+  font-size: 34px;
+  color: var(--text-muted);
+}
+.user-avatar img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--primary);
+}
+.user-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  max-width: 140px;
+}
+.user-role {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Main Panel Layout */
+.portal-main {
+  flex-grow: 1;
+  margin-left: 270px; /* offset sidebar width */
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Header Navbar */
+.main-navbar {
+  height: 70px;
+  background-color: hsl(var(--bg-dark-surface));
+  border-bottom: 1px solid var(--border-glass);
+  padding: 0 30px;
+  position: sticky;
+  top: 0;
+  z-index: 900;
+}
+.page-title {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* Content Container */
+.content-container {
+  padding: 30px;
+  flex-grow: 1;
+  background-color: hsl(var(--bg-dark-base));
+}
+
+/* ── PREMIUM CARDS & COMPONENTS ──────────────────────────────────── */
+.glass-card {
+  background-color: var(--bg-glass-translucent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-glass);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
+.bg-dark-opacity {
+  background-color: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-glass);
+}
+
+/* Text Gradients */
+.text-gradient {
+  background: linear-gradient(135deg, var(--primary) 0%, hsl(190 90% 60%) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.text-light-muted {
+  color: var(--text-muted);
+}
+
+/* Section and component titles */
+.section-title {
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* Progress bar inside leave quota cards */
+.quota-card {
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.quota-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.2);
+}
+.quota-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 15px;
+}
+.quota-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+.quota-icon.sick { background-color: rgba(200, 80, 50, 0.12); color: var(--color-info); }
+.quota-icon.personal { background-color: rgba(38, 85, 55, 0.12); color: var(--color-warning); }
+.quota-icon.annual { background-color: rgba(145, 65, 45, 0.12); color: var(--color-success); }
+.quota-icon.maternity { background-color: rgba(280, 75, 60, 0.12); color: hsl(280 75% 60%); }
+
+.quota-value {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+.quota-total {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.progress-container {
+  height: 8px;
+  background-color: hsl(var(--bg-dark-base));
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 15px;
+}
+.progress-bar-inner {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+
+/* Status badging */
+.badge-status {
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.badge-status.draft { background-color: rgba(255, 255, 255, 0.08); color: var(--text-muted); }
+.badge-status.pending { background-color: hsla(38, 85%, 55%, 0.15); color: var(--color-warning); }
+.badge-status.checked { background-color: hsla(200, 80%, 50%, 0.15); color: var(--color-info); }
+.badge-status.reviewed { background-color: hsla(255, 80%, 65%, 0.15); color: var(--primary); }
+.badge-status.approved { background-color: hsla(145, 65%, 45%, 0.15); color: var(--color-success); }
+.badge-status.rejected { background-color: hsla(355, 75%, 55%, 0.15); color: var(--color-danger); }
+.badge-status.cancelled { background-color: rgba(255, 255, 255, 0.05); color: var(--text-light-muted); }
+
+/* Tables customizing */
+.table-custom {
+  margin-bottom: 0;
+}
+.table-custom th {
+  background-color: hsl(var(--bg-dark-surface));
+  border-bottom: 1px solid var(--border-glass);
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 14px;
+  padding: 15px 18px;
+}
+.table-custom td {
+  border-bottom: 1px solid var(--border-glass);
+  padding: 15px 18px;
+  vertical-align: middle;
+  font-size: 14.5px;
+}
+.table-custom tbody tr {
+  transition: background-color 0.2s;
+}
+.table-custom tbody tr:hover {
+  background-color: hsla(220 20% 95% / 0.02);
+}
+
+/* Tabs customizing */
+.custom-tabs .nav-link {
+  color: var(--text-muted);
+  border: none;
+  background: transparent;
+  padding: 12px 20px;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+}
+.custom-tabs .nav-link:hover {
+  color: #fff;
+  border-bottom-color: var(--border-glass);
+}
+.custom-tabs .nav-link.active {
+  color: var(--primary);
+  border-bottom: 2px solid var(--primary);
+  background: transparent;
+}
+
+/* Timeline logic for Leave reviews */
+.approval-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: relative;
+  padding-left: 24px;
+}
+.approval-timeline::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 6px;
+  width: 2px;
+  height: calc(100% - 20px);
+  background-color: var(--border-glass);
+}
+.timeline-node {
+  position: relative;
+}
+.timeline-dot {
+  position: absolute;
+  left: -24px;
+  top: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 3px solid hsl(var(--bg-dark-card));
+  background-color: var(--text-light-muted);
+}
+.timeline-dot.success { background-color: var(--color-success); }
+.timeline-dot.pending { background-color: var(--color-warning); }
+.timeline-dot.danger { background-color: var(--color-danger); }
+
+.timeline-content {
+  background-color: hsl(var(--bg-dark-card));
+  border-radius: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-glass);
+}
+.timeline-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.timeline-meta {
+  font-size: 11px;
+  color: var(--text-light-muted);
+}
+.timeline-comment {
+  font-size: 13.5px;
+  background-color: rgba(0,0,0,0.15);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  font-style: italic;
+}
+
+/* ── MODAL STYLING ───────────────────────────────────────────────── */
+.glass-modal {
+  background-color: hsl(var(--bg-dark-surface));
+  border: 1px solid var(--border-glass);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+  border-radius: 16px;
+}
+.btn-close-white {
+  filter: invert(1) grayscale(1) brightness(2);
+}
+
+/* ── CALENDAR VIEW STYLING ────────────────────────────────────────── */
+.calendar-wrapper {
+  background-color: hsl(var(--bg-dark-surface));
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid var(--border-glass);
+}
+.circle-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.bg-sick { background-color: var(--color-info); }
+.bg-personal { background-color: var(--color-warning); }
+.bg-annual { background-color: var(--color-success); }
+.bg-maternity { background-color: hsl(280 75% 60%); }
+.bg-holiday { background-color: var(--color-danger); }
+
+/* FullCalendar design overrides */
+.fc {
+  --fc-button-bg-color: hsl(var(--bg-dark-card));
+  --fc-button-border-color: var(--border-glass);
+  --fc-button-text-color: var(--text-main);
+  --fc-button-hover-bg-color: var(--primary);
+  --fc-button-hover-border-color: var(--primary);
+  --fc-button-active-bg-color: var(--primary);
+  --fc-button-active-border-color: var(--primary);
+  --fc-page-bg-color: transparent;
+  --fc-border-color: var(--border-glass);
+  --fc-today-bg-color: hsla(var(--primary-hue) 80% 62% / 0.08);
+}
+.fc .fc-toolbar-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+}
+.fc-theme-standard th {
+  background-color: hsl(var(--bg-dark-base));
+  padding: 10px 0;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.fc .fc-col-header-cell-cushion {
+  color: var(--text-muted);
+}
+.fc .fc-daygrid-day-number {
+  color: var(--text-main);
+  padding: 6px;
+}
+.fc-event {
+  border-radius: 5px !important;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border: none !important;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+}
+/* Translucent calendars based on leave types */
+.fc-event-sick { background-color: var(--status-sick) !important; border-left: 3px solid var(--color-info) !important; color: #fff !important; }
+.fc-event-personal { background-color: var(--status-personal) !important; border-left: 3px solid var(--color-warning) !important; color: #fff !important; }
+.fc-event-annual { background-color: var(--status-annual) !important; border-left: 3px solid var(--color-success) !important; color: #fff !important; }
+.fc-event-maternity { background-color: var(--status-maternity) !important; border-left: 3px solid hsl(280 75% 60%) !important; color: #fff !important; }
+.fc-event-holiday { background-color: var(--status-holiday) !important; border-left: 3px solid var(--color-danger) !important; color: #fff !important; }
+
+/* ── ANIMATIONS ──────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+/* ── RESPONSIVE ADAPTATIONS ──────────────────────────────────────── */
+@media (max-width: 991.98px) {
+  .portal-sidebar {
+    transform: translateX(-100%);
+  }
+  .portal-sidebar.show {
+    transform: translateX(0);
+  }
+  .portal-main {
+    margin-left: 0;
+  }
+  .content-container {
+    padding: 15px;
+  }
+}

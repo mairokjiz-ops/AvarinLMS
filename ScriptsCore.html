@@ -1,0 +1,989 @@
+<script type="text/x-lms-core" id="lms-core-script">
+(function () {
+  'use strict';
+
+  // ── Globals ────────────────────────────────────────
+  var Store = { token: null, user: null, caps: [], boot: null };
+  var Routes = {};
+  var PAGE_META = {};
+  var APP_DEV = { NAME: 'ตาใหม่ งุงิ', URL: '', LOGO: 'https://stickershop.line-scdn.net/stickershop/v1/product/18011/LINEStorePC/main.png?v=1' };
+
+  // ── DOM helpers ────────────────────────────────────
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+  // ── Thai date module ────────────────────────────────
+  var TH = {
+    MONTHS: ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'],
+    MONTHS_SHORT: ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'],
+    WEEKDAYS: ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'],
+    WEEKDAYS_SHORT: ['อา.','จ.','อ.','พ.','พฤ.','ศ.','ส.'],
+    parse: function (v) {
+      if (!v) return null;
+      if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+      var s = String(v);
+      var d = new Date(s);
+      if (!isNaN(d.getTime())) return d;
+      return null;
+    },
+    beYear: function (d) { return d.getFullYear() + 543; },
+    date: function (v) {
+      var d = TH.parse(v); if (!d) return v ? String(v) : '-';
+      return d.getDate() + ' ' + TH.MONTHS_SHORT[d.getMonth()] + ' ' + TH.beYear(d);
+    },
+    dateLong: function (v) {
+      var d = TH.parse(v); if (!d) return v ? String(v) : '-';
+      return d.getDate() + ' ' + TH.MONTHS[d.getMonth()] + ' ' + TH.beYear(d);
+    },
+    dateLongWeekday: function (v) {
+      var d = TH.parse(v); if (!d) return '-';
+      return 'วัน' + TH.WEEKDAYS[d.getDay()] + 'ที่ ' + d.getDate() + ' ' + TH.MONTHS[d.getMonth()] + ' ' + TH.beYear(d);
+    },
+    dateWeekday: function (v) {
+      var d = TH.parse(v); if (!d) return '-';
+      return TH.WEEKDAYS_SHORT[d.getDay()] + ' ' + d.getDate() + ' ' + TH.MONTHS_SHORT[d.getMonth()] + ' ' + TH.beYear(d);
+    },
+    time: function (v) {
+      var d = TH.parse(v); if (!d) return '-';
+      return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ' น.';
+    },
+    timeFull: function (v) {
+      var d = TH.parse(v); if (!d) return '-';
+      return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) + ' น.';
+    },
+    dateTime: function (v) {
+      var d = TH.parse(v); if (!d) return '-';
+      return TH.date(d) + ' เวลา ' + TH.time(d);
+    },
+    iso: function (v) {
+      var d = TH.parse(v); if (!d) return '';
+      return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+    },
+    relative: function (v) {
+      var d = TH.parse(v); if (!d) return '-';
+      var diff = Math.floor((Date.now() - d.getTime()) / 1000);
+      if (diff < 0) return TH.date(d);
+      if (diff < 60) return diff + ' วินาทีที่แล้ว';
+      if (diff < 3600) return Math.floor(diff/60) + ' นาทีที่แล้ว';
+      if (diff < 86400) return Math.floor(diff/3600) + ' ชั่วโมงที่แล้ว';
+      if (diff < 86400*30) return Math.floor(diff/86400) + ' วันที่แล้ว';
+      if (diff < 86400*365) return Math.floor(diff/86400/30) + ' เดือนที่แล้ว';
+      return Math.floor(diff/86400/365) + ' ปีที่แล้ว';
+    },
+    smart: function (v) {
+      var d = TH.parse(v); if (!d) return '-';
+      var diff = Date.now() - d.getTime();
+      return (diff < 86400000 * 7) ? TH.relative(d) : TH.dateTime(d);
+    },
+    splitDate: function (v) {
+      // คืน { day, monthName, monthShort, beYear } สำหรับ print form
+      var d = TH.parse(v); if (!d) return { day: '', monthName: '', monthShort: '', beYear: '' };
+      return {
+        day: d.getDate(),
+        monthName: TH.MONTHS[d.getMonth()],
+        monthShort: TH.MONTHS_SHORT[d.getMonth()],
+        beYear: TH.beYear(d)
+      };
+    }
+  };
+
+  // ── Capability check (mirror server) ────────────────
+  function hasCap(cap) {
+    if (!cap || cap === '*') return true;   // ★ '*' = ทุก role เห็น
+    var caps = Store.caps || [];
+    return cap.split('|').some(function (c) {
+      if (c === '*') return true;           // ★ handle '*' ใน multi-cap "a|*|b"
+      if (caps.indexOf(c) >= 0) return true;
+      if (/\.(view_own|edit_own|view_self|edit_self|create_own|cancel_own)$/.test(c)) return false;
+      var dot = c.indexOf('.');
+      if (dot > 0) {
+        var prefix = c.substring(0, dot);
+        if (caps.indexOf(prefix + '.manage') >= 0) return true;
+      }
+      return false;
+    });
+  }
+
+  // ── API call (with timeout + existence check) ───────
+  function call(action, payload) {
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+      var to = setTimeout(function () {
+        if (!settled) { settled = true; reject(new Error('การเชื่อมต่อหมดเวลา (30s) — ' + action)); }
+      }, 30000);
+      try {
+        if (!window.google || !google.script || !google.script.run) {
+          clearTimeout(to);
+          return reject(new Error('ไม่พบ google.script.run — โปรดเปิดผ่าน URL ของ Web App ที่ Deploy แล้ว'));
+        }
+        google.script.run
+          .withSuccessHandler(function (res) {
+            if (settled) return; settled = true; clearTimeout(to);
+            if (!res) return reject(new Error('ไม่ได้รับคำตอบจากเซิร์ฟเวอร์'));
+            if (res.ok) resolve(res.data);
+            else reject(new Error(res.error || 'เกิดข้อผิดพลาด'));
+          })
+          .withFailureHandler(function (e) {
+            if (settled) return; settled = true; clearTimeout(to);
+            reject(new Error(e && e.message ? e.message : String(e)));
+          })
+          .api({ action: action, token: Store.token, payload: payload || {} });
+      } catch (e) { clearTimeout(to); if (!settled) { settled = true; reject(e); } }
+    });
+  }
+
+  // ── Notifications ──────────────────────────────────
+  function toast(msg, type, dur) {
+    type = type || 'info';
+    var icon = { success: 'check-circle-fill', error: 'x-circle-fill', warning: 'exclamation-triangle-fill', info: 'info-circle-fill' }[type] || 'info-circle-fill';
+    var host = $('#toast-host'); if (!host) return;
+    var el = document.createElement('div');
+    el.className = 'toast t-' + type;
+    el.innerHTML = '<i class="bi bi-' + icon + '"></i><span>' + esc(msg) + '</span>';
+    host.appendChild(el);
+    setTimeout(function () {
+      el.style.transition = 'opacity .3s, transform .3s';
+      el.style.opacity = '0'; el.style.transform = 'translateX(20px)';
+      setTimeout(function () { try { el.remove(); } catch (e) {} }, 300);
+    }, dur || 3000);
+  }
+  function alertSuccess(title, msg) { return Swal.fire({ icon: 'success', title: title, text: msg, confirmButtonText: 'ตกลง', showClass:{popup:'animate__animated animate__zoomIn animate__faster'} }); }
+  function alertError(title, msg) { return Swal.fire({ icon: 'error', title: title, text: msg, confirmButtonText: 'ตกลง' }); }
+  function alertInfo(title, msg) { return Swal.fire({ icon: 'info', title: title, text: msg, confirmButtonText: 'ตกลง' }); }
+  function confirmModal(opts) {
+    return Swal.fire({
+      icon: opts.danger ? 'warning' : 'question',
+      title: opts.title || 'ยืนยัน',
+      html: opts.message ? '<div style="font-size:14px;color:#475569;line-height:1.6">' + opts.message + '</div>' : '',
+      showCancelButton: true,
+      confirmButtonText: opts.okText || 'ตกลง',
+      cancelButtonText: opts.cancelText || 'ยกเลิก',
+      reverseButtons: true,
+      confirmButtonColor: opts.danger ? '#ef4444' : '#6366f1'
+    }).then(function (r) { return !!r.isConfirmed; });
+  }
+
+  // ── Spinner ────────────────────────────────────────
+  var Spinner = {
+    _stages: null, _idx: 0, _timer: null,
+    show: function (msg, opts) {
+      opts = opts || {};
+      var ov = $('#spinner-overlay');
+      if (!ov) return;
+      ov.hidden = false;
+      $('#sp-text').textContent = msg || 'กำลังประมวลผล...';
+      $('#sp-stage').textContent = '';
+      this._stages = (opts.stages && opts.stages.length) ? opts.stages : null;
+      this._idx = 0;
+      if (this._timer) { clearInterval(this._timer); this._timer = null; }
+      if (this._stages) {
+        var self = this;
+        $('#sp-stage').textContent = this._stages[0] || '';
+        this._timer = setInterval(function () {
+          self._idx = (self._idx + 1) % self._stages.length;
+          $('#sp-stage').textContent = self._stages[self._idx];
+        }, opts.stageInterval || 900);
+      }
+    },
+    hide: function () {
+      var ov = $('#spinner-overlay'); if (ov) ov.hidden = true;
+      if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    },
+    update: function (msg) { var t = $('#sp-text'); if (t) t.textContent = msg; }
+  };
+
+  // ── Modal ──────────────────────────────────────────
+  var Modal = {
+    open: function (opts) {
+      opts = opts || {};
+      var host = $('#modal-host'); if (!host) return;
+      var sizeCls = opts.large ? ' is-large' : (opts.xl ? ' is-xl' : '');
+      var html = '<div class="modal-card' + sizeCls + '">'
+        + (opts.title ? ('<div class="md-header"><div class="md-title">' + esc(opts.title) + '</div><button class="md-close" data-modal-close><i class="bi bi-x-lg"></i></button></div>') : '')
+        + '<div class="md-body">' + (opts.html || '') + '</div>'
+        + (opts.footer ? ('<div class="md-footer">' + opts.footer + '</div>') : '')
+        + '</div>';
+      host.innerHTML = html;
+      host.classList.add('is-open');
+      if (opts.onOpen) try { opts.onOpen(host); } catch (e) {}
+    },
+    close: function () {
+      var host = $('#modal-host'); if (!host) return;
+      host.classList.remove('is-open');
+      setTimeout(function () { host.innerHTML = ''; }, 200);
+    }
+  };
+
+  // ── Page Meta ──────────────────────────────────────
+  PAGE_META = {
+    '#/dashboard':    { title: 'แดชบอร์ด',           sub: 'ภาพรวมการลาของฉัน',                  icon: 'speedometer2' },
+    '#/leaves/new':   { title: 'ยื่นใบลา',           sub: 'กรอกแบบฟอร์มขอลา',                    icon: 'file-earmark-plus-fill' },
+    '#/leaves/mine':  { title: 'ใบลาของฉัน',         sub: 'ประวัติการลาทั้งหมด',                 icon: 'person-vcard-fill' },
+    '#/leaves/all':   { title: 'รายการใบลาทั้งหมด',  sub: 'จัดการใบลาในระบบ',                    icon: 'inbox-fill' },
+    '#/leaves/inbox': { title: 'งานรอดำเนินการ',     sub: 'ใบลาที่รอการตรวจ/อนุมัติของคุณ',     icon: 'check2-square' },
+    '#/calendar':     { title: 'ปฏิทินลา',           sub: 'แสดงวันลาทั้งบริษัท',                 icon: 'calendar3' },
+    '#/expenses':     { title: 'เบิกค่าใช้จ่าย',       sub: 'ส่งเบิกเงินค่าใช้จ่ายและค่าเดินทาง',      icon: 'cash-coin' },
+    '#/expenses/view': { title: 'รายละเอียดการเบิก',   sub: 'ดูข้อมูลและอนุมัติการเบิกจ่าย',         icon: 'receipt-cutoff' },
+    '#/missions':     { title: 'งานออกนอกพื้นที่',   sub: 'เบิกค่าเดินทาง',          icon: 'signpost-2-fill' },
+    '#/reports':      { title: 'รายงานสถิติ',        sub: 'สถิติการลาในปีงบประมาณ',              icon: 'graph-up' },
+    '#/users':        { title: 'จัดการผู้ใช้',        sub: 'ผู้ใช้ระบบ ครู บุคลากร',              icon: 'people-fill' },
+    '#/pending-users': { title: 'คำขอสมัครสมาชิก', sub: 'รออนุมัติจากผู้ดูแลระบบ', icon: 'person-fill-exclamation' },
+    '#/settings':     { title: 'ตั้งค่าระบบ',        sub: 'กำหนดลิมิตการลา · ข้อมูลบริษัท',     icon: 'gear-fill' },
+    '#/profile':      { title: 'โปรไฟล์ของฉัน',      sub: 'จัดการข้อมูลส่วนตัว',                  icon: 'person-circle' },
+    '#/audit':        { title: 'บันทึกระบบ',         sub: 'ประวัติการใช้งาน',                    icon: 'shield-check' }
+  };
+
+  // ── Menu groups ────────────────────────────────────
+  function MENU_GROUPS() {
+    return [
+      {
+        title: 'ภาพรวม',
+        items: [
+          { hash: '#/dashboard', icon: 'speedometer2', label: 'แดชบอร์ด', cap: '*' }
+        ]
+      },
+      {
+        title: 'งานหลัก',
+        items: [
+          { hash: '#/leaves/new',   icon: 'file-earmark-plus-fill', label: 'ยื่นใบลา',           cap: 'leave.create_own' },
+          { hash: '#/leaves/mine',  icon: 'person-vcard-fill',      label: 'ใบลาของฉัน',         cap: 'leave.view_own' },
+          { hash: '#/leaves/inbox', icon: 'check2-square',          label: 'งานรอดำเนินการ',     cap: 'leave.check|leave.comment|leave.approve' },
+          { hash: '#/leaves/all',   icon: 'inbox-fill',             label: 'รายการใบลาทั้งหมด',  cap: 'leave.view_all' }
+        ]
+      },
+      {
+        title: 'กำลังคน',
+        items: [
+          { hash: '#/calendar',  icon: 'calendar3',         label: 'ปฏิทินลา',          cap: 'calendar.view_own|calendar.view_department|calendar.view_all' },
+          { hash: '#/expenses',  icon: 'cash-coin',         label: 'เบิกค่าใช้จ่าย',       cap: 'expense.create_own|expense.manage' },
+          { hash: '#/missions',  icon: 'signpost-2-fill',   label: 'งานออกนอกพื้นที่',   cap: 'mission.create_own|mission.view_own|mission.view_department|mission.view_all' }
+        ]
+      },
+      {
+        title: 'ข้อมูลหลัก',
+        items: [
+          { hash: '#/users',         icon: 'people-fill',               label: 'จัดการผู้ใช้',       cap: 'user.manage' },
+          { hash: '#/pending-users', icon: 'person-fill-exclamation', label: 'คำขอสมัคร', cap: 'user.manage', badge: 'pending' }
+        ]
+      },
+      {
+        title: 'รายงานและประวัติ',
+        items: [
+          { hash: '#/reports', icon: 'graph-up',     label: 'รายงานสถิติ', cap: 'report.view_own' },
+          { hash: '#/audit',   icon: 'shield-check', label: 'บันทึกระบบ',   cap: 'audit.manage' }
+        ]
+      },
+      {
+        title: 'ระบบ',
+        items: [
+          { hash: '#/settings', icon: 'gear-fill', label: 'ตั้งค่าระบบ', cap: 'setting.manage' }
+        ]
+      },
+      {
+        title: 'ส่วนตัว',
+        items: [
+          { hash: '#/profile', icon: 'person-circle', label: 'โปรไฟล์', cap: '*' }
+        ]
+      }
+    ];
+  }
+
+  // ── Render Login ───────────────────────────────────
+  function renderLogin() {
+    var settings = (Store.boot && Store.boot.settings) || {};
+    var dev = (Store.boot && Store.boot.dev) || APP_DEV;
+    var app = (Store.boot && Store.boot.app) || { name: 'ระบบบันทึกการลา', version: '1.0.0' };
+    var showDemo = String(settings.show_demo_users || 'yes').toLowerCase() === 'yes';
+    var year = new Date().getFullYear();
+
+    var particles = '';
+    for (var i = 0; i < 20; i++) {
+      particles += '<span style="left:' + (Math.random()*100) + '%;animation-delay:-' + Math.floor(Math.random()*18) + 's;animation-duration:' + (14 + Math.floor(Math.random()*12)) + 's"></span>';
+    }
+
+    var demoCards = [
+      { role: 'admin',      user: 'admin',      label: 'ผู้ดูแลระบบ',  icon: 'shield-fill-check' },
+      { role: 'approver',   user: 'director',   label: 'ผู้อำนวยการ',   icon: 'mortarboard-fill' },
+      { role: 'supervisor', user: 'supervisor', label: 'หัวหน้างาน',    icon: 'briefcase-fill' },
+      { role: 'checker',    user: 'checker',    label: 'เจ้าหน้าที่',  icon: 'clipboard-check-fill' },
+      { role: 'teacher',    user: 'teacher1',   label: 'ครูตัวอย่าง 1', icon: 'person-badge' },
+      { role: 'teacher',    user: 'teacher2',   label: 'ครูตัวอย่าง 2', icon: 'person-badge' }
+    ];
+
+    var demoHtml = !showDemo ? '' : (
+      '<div class="lf-demo">'
+      + '<div class="lf-demo-head"><i class="bi bi-stars"></i> ทดลองใช้งานด้วยบัญชีตัวอย่าง'
+      + '  <span class="lf-demo-pill">DEMO</span>'
+      + '</div>'
+      + '<div class="lf-demo-grid">'
+      + demoCards.map(function (d) {
+          return '<button type="button" class="lf-demo-card" data-role="' + d.role + '" data-user="' + d.user + '" aria-label="เข้าสู่ระบบด้วยบัญชี ' + d.label + '">'
+            + '<div class="lf-demo-icon"><i class="bi bi-' + d.icon + '"></i></div>'
+            + '<div class="lf-demo-role">' + d.label + '</div>'
+            + '<div class="lf-demo-user">' + d.user + '</div>'
+            + '</button>';
+        }).join('')
+      + '</div>'
+      + '<div class="lf-demo-foot"><i class="bi bi-cursor-fill"></i> คลิกเพื่อเข้าระบบทันที (รหัสผ่าน: <strong>123456</strong>)</div>'
+      + '</div>'
+    );
+
+    var html = '<div class="login-stage">'
+      + '<div class="lf-particles">' + particles + '</div>'
+      + '<div class="login-shell">'
+      + '  <div class="login-brand">'
+      + '    <div class="lb-logo">'
+      + '      <div class="lb-logo-icon"><i class="bi bi-' + (app.logo_icon || 'calendar2-check-fill') + '"></i></div>'
+      + '      <div><div class="lb-logo-name">' + esc(app.name) + '</div>'
+      + '           <div class="lb-logo-tag">' + esc(app.org || '') + '</div></div>'
+      + '    </div>'
+      + '    <div class="lb-tagline">ระบบ<span>ลาออนไลน์</span><br>ครบวงจร · ใช้งานง่าย</div>'
+      + '    <div class="lb-features">'
+      + '      <div class="lb-feature"><div class="lb-feature-icon"><i class="bi bi-lightning-charge-fill"></i></div><div><div class="lb-feature-title">ยื่นใบลาในคลิกเดียว</div><div class="lb-feature-desc">กรอกฟอร์มสั้น ๆ — ส่งถึงผู้อนุมัติทันที</div></div></div>'
+      + '      <div class="lb-feature"><div class="lb-feature-icon"><i class="bi bi-graph-up-arrow"></i></div><div><div class="lb-feature-title">เห็นสถิติการลาแบบเรียลไทม์</div><div class="lb-feature-desc">ลาไปเท่าไหร่ เหลือเท่าไหร่ — รู้ทันที</div></div></div>'
+      + '      <div class="lb-feature"><div class="lb-feature-icon"><i class="bi bi-bell-fill"></i></div><div><div class="lb-feature-title">แจ้งเตือนเมื่อใกล้หมดสิทธิ</div><div class="lb-feature-desc">ป้องกันการลาเกินกำหนด</div></div></div>'
+      + '      <div class="lb-feature"><div class="lb-feature-icon"><i class="bi bi-printer-fill"></i></div><div><div class="lb-feature-title">พิมพ์ใบลาทางการได้ทันที</div><div class="lb-feature-desc">ตามแบบฟอร์มราชการ 100%</div></div></div>'
+      + '    </div>'
+      + '    <div class="lb-stats">'
+      + '      <div><div class="lb-stat-num">99.9%</div><div class="lb-stat-label">เสถียรพร้อมใช้</div></div>'
+      + '      <div><div class="lb-stat-num">3</div><div class="lb-stat-label">ขั้นตอนอนุมัติ</div></div>'
+      + '      <div><div class="lb-stat-num">100%</div><div class="lb-stat-label">ทุกอุปกรณ์</div></div>'
+      + '    </div>'
+      + '  </div>'
+      + '  <div class="login-form-card">'
+      + '    <div class="lf-mini-brand"><div class="icn"><i class="bi bi-' + (app.logo_icon || 'calendar2-check-fill') + '"></i></div><div class="name">' + esc(app.name) + '</div></div>'
+      + '    <h2 class="lf-title">ยินดีต้อนรับกลับ</h2>'
+      + '    <div class="lf-sub">เข้าสู่ระบบเพื่อจัดการใบลาของคุณ</div>'
+      + '    <form class="lf" id="login-form" novalidate autocomplete="on">'
+      + '      <div class="lf-input-wrap">'
+      + '        <i class="bi bi-person-fill lf-icon"></i>'
+      + '        <input type="text" name="username" placeholder="ชื่อผู้ใช้" autocomplete="username" spellcheck="false" required>'
+      + '      </div>'
+      + '      <div class="lf-input-wrap">'
+      + '        <i class="bi bi-lock-fill lf-icon"></i>'
+      + '        <input type="password" name="password" placeholder="รหัสผ่าน" autocomplete="current-password" required>'
+      + '        <button type="button" class="lf-toggle" data-toggle-pwd tabindex="-1" aria-label="แสดง/ซ่อนรหัสผ่าน"><i class="bi bi-eye"></i></button>'
+      + '      </div>'
+      + '      <div class="lf-row">'
+      + '        <label class="lf-check"><input type="checkbox" name="remember"> จำชื่อผู้ใช้</label>'
+      + '      </div>'
+      + '      <button type="submit" class="lf-submit">'
+      + '        <span class="lf-submit-state lf-submit-state-default"><i class="bi bi-box-arrow-in-right"></i> เข้าสู่ระบบ</span>'
+      + '        <span class="lf-submit-state lf-submit-state-loading"><span class="lf-droplets"><span></span><span></span><span></span></span> <span class="lf-submit-status">กำลังตรวจสอบ...</span></span>'
+      + '        <span class="lf-submit-state lf-submit-state-success"><i class="bi bi-check-circle-fill"></i> เข้าระบบสำเร็จ</span>'
+      + '        <span class="lf-submit-state lf-submit-state-error"><i class="bi bi-exclamation-triangle-fill"></i> ไม่สำเร็จ</span>'
+      + '      </button>'
+      + '      <div class="lf-register-row">ยังไม่มีบัญชี? <button type="button" class="lf-register-btn" id="btn-open-register"><i class="bi bi-person-plus-fill"></i> สมัครสมาชิกพนักงาน</button></div>'
+      + '    </form>'
+      + demoHtml
+      + '  </div>'
+      + '</div>'
+      + '<div class="login-footer">'
+      + '  <div class="lf-copy">' + year + ' © ' + esc(app.name) + ' <span class="lf-version">v' + esc(app.version || '1.0.0') + '</span></div>'
+      + '  <div class="lf-dev">'
+      + '    <a href="' + esc(dev.URL) + '" target="_blank" rel="noopener noreferrer" class="lf-dev-link">'
+      + '      <img class="lf-dev-logo" src="' + esc(dev.LOGO || '') + '" alt="" referrerpolicy="no-referrer">'
+      + '    </a>'
+      + '    <div class="lf-dev-text"><small>ผู้พัฒนาโดย</small><br>'
+      + '      <a href="' + esc(dev.URL) + '" target="_blank" rel="noopener noreferrer">' + esc(dev.NAME) + '</a>'
+      + '    </div>'
+      + '  </div>'
+      + '</div>'
+      + '</div>';
+
+    var root = $('#app-root');
+    if (!root) { showFatalError('ไม่พบ #app-root element'); return; }
+    root.innerHTML = html;
+    try { wireLogin(); } catch (err) { if (window.console) console.error('[LMS] wireLogin error:', err); }
+    hideBootLoader();
+  }
+
+  function wireLogin() {
+    var f = $('#login-form'); if (!f) return;
+    var rememberedUser = '';
+    try { rememberedUser = localStorage.getItem('lms.lastUser') || ''; } catch (e) {}
+    if (rememberedUser) {
+      f.username.value = rememberedUser;
+      f.querySelector('input[name="remember"]').checked = true;
+      try { f.password.focus(); } catch (e) {}
+    } else {
+      try { f.username.focus(); } catch (e) {}
+    }
+
+    // toggle password
+    $$('.lf-toggle', f).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var inp = btn.parentNode.querySelector('input');
+        var show = inp.type === 'password';
+        inp.type = show ? 'text' : 'password';
+        btn.querySelector('i').className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+      });
+    });
+
+    // demo cards
+    $$('.lf-demo-card').forEach(function (card) {
+      card.addEventListener('click', function () {
+        f.username.value = card.getAttribute('data-user');
+        f.password.value = '123456';
+        try {
+          if (typeof f.requestSubmit === 'function') f.requestSubmit();
+          else f.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        } catch (e) { f.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); }
+      });
+    });
+
+    f.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var btn = f.querySelector('.lf-submit');
+      var statusEl = btn.querySelector('.lf-submit-status');
+      var stages = ['กำลังตรวจสอบ...','ยืนยันตัวตน...','เตรียมระบบ...','เกือบเสร็จ...'];
+      var idx = 0;
+      btn.setAttribute('data-state', 'loading');
+      if (statusEl) statusEl.textContent = stages[0];
+      var stageTimer = setInterval(function () {
+        idx = (idx + 1) % stages.length;
+        if (statusEl) statusEl.textContent = stages[idx];
+      }, 700);
+
+      var u = f.username.value.trim();
+      var p = f.password.value;
+      var remember = f.querySelector('input[name="remember"]').checked;
+
+      call('auth.login', { username: u, password: p, user_agent: navigator.userAgent }).then(function (res) {
+        clearInterval(stageTimer);
+        btn.setAttribute('data-state', 'success');
+        Store.token = res.token; Store.user = res.user; Store.caps = res.caps || [];
+        try {
+          localStorage.setItem('lms.token', res.token);
+          if (remember) localStorage.setItem('lms.lastUser', u);
+          else localStorage.removeItem('lms.lastUser');
+        } catch (e) {}
+        setTimeout(function () {
+          // ★ ต้องเรียก dispatch ตรงๆ — hashchange listener ยังไม่ถูก register จนกว่า renderShell จะรัน
+          if (!location.hash || location.hash === '#') {
+            try { history.replaceState(null, '', location.pathname + location.search + '#/dashboard'); } catch (e) { location.hash = '#/dashboard'; }
+          }
+          dispatch();
+        }, 600);
+      }).catch(function (err) {
+        clearInterval(stageTimer);
+        btn.setAttribute('data-state', 'error');
+        toast(err.message || 'เข้าสู่ระบบไม่สำเร็จ', 'error', 4500);
+        setTimeout(function () { btn.removeAttribute('data-state'); }, 1600);
+      });
+    });
+
+    // ── Register button → open registration modal ───────────
+    var regBtn = $('#btn-open-register');
+    if (regBtn) {
+      regBtn.addEventListener('click', function () { openRegisterModal(); });
+    }
+  }
+
+  function openRegisterModal() {
+    var html = '<div class="reg-notice">'
+      + '<i class="bi bi-info-circle-fill"></i>'
+      + '<div><strong>การสมัครสมาชิกพนักงานใหม่</strong>'
+      + '<span style="display:block;margin-top:4px;color:#94a3b8;font-size:12px">หลังจากสมัครแล้ว บัญชีจะรออนุมัติจากผู้ดูแลระบบหรือฝ่ายบุคคลก่อนจึงจะเข้าใช้งานได้</span>'
+      + '</div></div>'
+      + '<div class="reg-form-grid">'
+      + '<div class="field"><label>ชื่อผู้ใช้ (username) <span class="req">*</span></label>'
+      + '<input type="text" name="username" class="input" placeholder="ตัวอักษร a-z, 0-9, _ . - (3-30 ตัว)" pattern="[-a-z0-9_.]{3,30}" required autocomplete="username"></div>'
+      + '<div class="field"><label>ชื่อ-สกุล <span class="req">*</span></label>'
+      + '<input type="text" name="full_name" class="input" placeholder="ชื่อจริง นามสกุล" required></div>'
+      + '<div class="field"><label>ตำแหน่ง</label>'
+      + '<input type="text" name="position" class="input" placeholder="ตำแหน่งงาน"></div>'
+      + '<div class="field"><label>สังกัด / แผนก</label>'
+      + '<input type="text" name="department" class="input" placeholder="แผนกหรือหน่วยงาน"></div>'
+      + '<div class="field"><label>อีเมล <span class="req">*</span></label>'
+      + '<input type="email" name="email" class="input" placeholder="อีเมลสำหรับรับการแจ้งเตือน" required></div>'
+      + '<div class="field"><label>โทรศัพท์ <span class="req">*</span></label>'
+      + '<input type="tel" name="phone" class="input" placeholder="หมายเลขโทรศัพท์" required></div>'
+      + '<div class="field field-full"><label>รหัสผ่าน <span class="req">*</span></label>'
+      + '<input type="password" name="password" class="input" placeholder="อย่างน้อย 6 ตัวอักษร" required autocomplete="new-password">'
+      + '<div class="reg-pw-hint">รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร — คุณสามารถเปลี่ยนได้ภายหลัง</div></div>'
+      + '</div>';
+
+    var footer = '<button class="btn btn-ghost" data-modal-close>ยกเลิก</button>'
+      + '<button class="btn btn-primary" id="reg-submit"><i class="bi bi-person-check-fill"></i> สมัครสมาชิก</button>';
+
+    Modal.open({
+      title: 'สมัครสมาชิกพนักงานใหม่',
+      large: true,
+      html: html,
+      footer: footer,
+      onOpen: function () {
+        $('#reg-submit').addEventListener('click', function () {
+          var f = document.querySelector('.modal-body') || document.querySelector('.md-body');
+          function gv(n) { var el = f ? f.querySelector('[name="' + n + '"]') : document.querySelector('[name="' + n + '"]'); return el ? el.value.trim() : ''; }
+          var data = {
+            username:   gv('username'),
+            full_name:  gv('full_name'),
+            position:   gv('position'),
+            department: gv('department'),
+            email:      gv('email'),
+            phone:      gv('phone'),
+            password:   gv('password')
+          };
+          if (!data.username)  { toast('กรุณากรอกชื่อผู้ใช้ (username)', 'warning'); return; }
+          if (!data.full_name) { toast('กรุณากรอกชื่อ-สกุล', 'warning'); return; }
+          if (!data.email)     { toast('กรุณากรอกอีเมล', 'warning'); return; }
+          if (!data.phone)     { toast('กรุณากรอกเบอร์โทรศัพท์', 'warning'); return; }
+          if (!data.password || data.password.length < 6) { toast('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 'warning'); return; }
+          Spinner.show('กำลังส่งคำขอสมัคร...');
+          call('user.register', data).then(function () {
+            Spinner.hide();
+            Modal.close();
+            Swal.fire({
+              icon: 'success',
+              title: 'สมัครสมาชิกสำเร็จ!',
+              html: '<p style="font-size:15px;color:#64748b">บัญชีของคุณ <strong style="color:#6366f1">@' + esc(data.username) + '</strong> ถูกส่งเพื่อรออนุมัติแล้ว<br>กรุณารอผู้ดูแลระบบหรือฝ่ายบุคคลอนุมัติก่อนเข้าใช้งาน</p>',
+              confirmButtonText: 'รับทราบ',
+              confirmButtonColor: '#6366f1'
+            });
+          }).catch(function (err) {
+            Spinner.hide();
+            toast(err.message || 'เกิดข้อผิดพลาด', 'error', 5000);
+          });
+        });
+      }
+    });
+  }
+
+  // ── Render Shell ───────────────────────────────────
+  function renderShell() {
+    var u = Store.user || {};
+    var meta = PAGE_META[location.hash] || PAGE_META['#/dashboard'];
+    var dev = (Store.boot && Store.boot.dev) || APP_DEV;
+    var app = (Store.boot && Store.boot.app) || {};
+    var year = new Date().getFullYear();
+
+    var initial = (u.full_name || u.username || '?').substring(0, 1).toUpperCase();
+    var avatarHtml = u.avatar
+      ? '<img src="' + esc(u.avatar) + '" alt="" referrerpolicy="no-referrer">'
+      : initial;
+
+    var html = '<div class="shell">'
+      + '  <aside class="sidebar" id="sidebar">'
+      + '    <div class="sb-power">'
+      + '      <div class="sb-brand">'
+      + '        <div class="sb-brand-icon"><i class="bi bi-' + (app.logo_icon || 'calendar2-check-fill') + '"></i></div>'
+      + '        <div><div class="sb-brand-name">' + esc(app.name) + '</div>'
+      + '             <div class="sb-brand-orga">' + esc(app.orga) + '</div></div>'
+      + '      </div>'
+      + '      <div class="sb-clock">'
+      + '        <div class="sb-clock-time" id="sb-clock-time">--:--:--</div>'
+      + '        <div class="sb-clock-date" id="sb-clock-date">-</div>'
+      + '      </div>'
+      + '      <div class="sb-user">'
+      + '        <div class="sb-user-avatar">' + avatarHtml + '</div>'
+      + '        <div class="sb-user-info">'
+      + '          <div class="sb-user-name">' + esc(u.full_name || u.username) + '</div>'
+      + '          <div class="sb-user-role"><span class="role-chip role-chip-' + esc(u.role) + '"><i class="bi bi-shield-check"></i> ' + esc((Store.boot.roles||{})[u.role]||u.role) + '</span></div>'
+      + '        </div>'
+      + '      </div>'
+      + '    </div>'
+      + '    <nav class="sb-nav">' + sidebarNavHtml() + '</nav>'
+      + '  </aside>'
+      + '  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>'
+      + '  <main class="main-area">'
+      + '    <header class="navbar">'
+      + '      <button class="nav-burger" id="nav-burger" aria-label="เปิดเมนู"><i class="bi bi-list"></i></button>'
+      + '      <div class="nav-page">'
+      + '        <div class="nav-page-icon"><i class="bi bi-' + meta.icon + '"></i></div>'
+      + '        <div><div class="nav-page-title">' + esc(meta.title) + '</div>'
+      + '             <div class="nav-page-sub">' + esc(meta.sub) + '</div></div>'
+      + '      </div>'
+      + '      <span class="nav-pill nav-pill-online">ออนไลน์</span>'
+      + '      <span class="nav-clock" id="nav-clock">-</span>'
+      + '      <button class="nav-profile" id="nav-profile-btn">'
+      + '        <span class="nav-profile-avatar">' + avatarHtml + '</span>'
+      + '        <span class="nav-profile-name">' + esc(u.full_name || u.username) + '</span>'
+      + '        <i class="bi bi-chevron-down" style="font-size:11px;color:#94a3b8"></i>'
+      + '      </button>'
+      + '    </header>'
+      + '    <div class="page-wrap" id="page"></div>'
+      + appFooterHtml(year, app, dev)
+      + '  </main>'
+      + '</div>'
+      + bottomNavHtml();
+
+    $('#app-root').innerHTML = html;
+    wireShell();
+    startClock();
+    hideBootLoader();
+  }
+
+  function sidebarNavHtml() {
+    return MENU_GROUPS().map(function (g) {
+      var visible = g.items.filter(function (it) { return hasCap(it.cap); });
+      if (visible.length === 0) return '';
+      return '<div class="sb-section-title">' + esc(g.title) + '</div>'
+        + visible.map(function (it) {
+            var active = (location.hash === it.hash || location.hash.indexOf(it.hash + '/') === 0) ? ' is-active' : '';
+            var badgeHtml = '';
+            if (it.badge === 'pending') {
+              var cnt = Store._pendingCount || 0;
+              if (cnt > 0) badgeHtml = '<span class="sb-nav-badge">' + cnt + '</span>';
+            }
+            return '<a href="' + it.hash + '" class="sb-link' + active + '"><i class="bi bi-' + it.icon + '"></i> ' + esc(it.label) + badgeHtml + '</a>';
+          }).join('');
+    }).join('')
+    + '<div class="sb-section-title">บัญชี</div>'
+    + '<a href="#" class="sb-link is-logout" data-action="logout"><i class="bi bi-box-arrow-right"></i> ออกจากระบบ</a>';
+  }
+
+  function bottomNavHtml() {
+    var u = Store.user || {};
+    var role = u.role;
+    // 5 items max, role-aware — slot 2 = primary action ของ role
+    var items = [{ hash: '#/dashboard', icon: 'house-fill', label: 'หน้าแรก', cap: '*' }];
+
+    // Slot 2-3: primary action
+    if (role === 'teacher' || (!hasCap('leave.check|leave.comment|leave.approve') && hasCap('leave.create_own'))) {
+      // teacher / staff that ยื่นใบลาเอง
+      items.push({ hash: '#/leaves/new', icon: 'plus-circle-fill', label: 'ยื่นใบลา', cap: 'leave.create_own' });
+      items.push({ hash: '#/leaves/mine', icon: 'person-vcard', label: 'ของฉัน', cap: 'leave.view_own' });
+    } else if (role === 'checker' || (hasCap('leave.check') && !hasCap('leave.approve'))) {
+      items.push({ hash: '#/leaves/inbox', icon: 'shield-check', label: 'ตรวจสอบ', cap: 'leave.check' });
+      items.push({ hash: '#/leaves/mine', icon: 'person-vcard', label: 'ของฉัน', cap: 'leave.view_own' });
+    } else if (role === 'supervisor' || (hasCap('leave.comment') && !hasCap('leave.approve'))) {
+      items.push({ hash: '#/leaves/inbox', icon: 'chat-text-fill', label: 'ความเห็น', cap: 'leave.comment' });
+      items.push({ hash: '#/leaves/mine', icon: 'person-vcard', label: 'ของฉัน', cap: 'leave.view_own' });
+    } else if (role === 'approver' || hasCap('leave.approve')) {
+      items.push({ hash: '#/leaves/inbox', icon: 'check2-circle', label: 'อนุมัติ', cap: 'leave.approve' });
+      items.push({ hash: '#/leaves/all', icon: 'inbox-fill', label: 'ทั้งหมด', cap: 'leave.view_all' });
+    } else if (role === 'admin' || hasCap('leave.view_all')) {
+      items.push({ hash: '#/leaves/inbox', icon: 'check2-square', label: 'รอดำเนินการ', cap: 'leave.check|leave.comment|leave.approve' });
+      items.push({ hash: '#/leaves/all', icon: 'inbox-fill', label: 'ทั้งหมด', cap: 'leave.view_all' });
+    }
+
+    // Slot 4: work shortcuts (calendar / mission / reports)
+    if (hasCap('calendar.view_all|calendar.view_department|calendar.view_own')) {
+      items.push({ hash: '#/calendar', icon: 'calendar3', label: 'ปฏิทิน', cap: 'calendar.view_own' });
+    } else if (hasCap('mission.view_all|mission.view_department|mission.view_own|mission.create_own')) {
+      items.push({ hash: '#/missions', icon: 'signpost-2-fill', label: 'งาน', cap: 'mission.view_own' });
+    } else if (hasCap('report.view_all') || hasCap('report.view_own')) {
+      items.push({ hash: '#/reports', icon: 'graph-up', label: 'รายงาน', cap: 'report.view_own' });
+    }
+    // Slot 5: profile
+    items.push({ hash: '#/profile', icon: 'person-circle', label: 'โปรไฟล์', cap: '*' });
+
+    // กรอง cap + ตัดที่ 5 รายการ
+    var visible = items.filter(function (i) { return hasCap(i.cap); }).slice(0, 5);
+    return '<nav class="bottom-nav" id="bottom-nav">' + visible.map(function (it) {
+      var active = (location.hash === it.hash || location.hash.indexOf(it.hash + '/') === 0) ? ' is-active' : '';
+      return '<a href="' + it.hash + '" class="bn-item' + active + '"><i class="bi bi-' + it.icon + '"></i><span>' + esc(it.label) + '</span></a>';
+    }).join('') + '</nav>';
+  }
+
+  function appFooterHtml(year, app, dev) {
+    return '<div class="app-footer">'
+      + '<div><span class="af-year">' + year + '</span> © ' + esc(app.name) + ' <span class="af-version">v' + esc(app.version || '1.0.0') + '</span></div>'
+      + '<div class="af-dev">'
+      + '  <a class="af-dev-link" href="' + esc(dev.URL) + '" target="_blank" rel="noopener noreferrer">'
+      + '    <img class="af-dev-logo" src="' + esc(dev.LOGO || '') + '" alt="" referrerpolicy="no-referrer">'
+      + '  </a>'
+      + '  <div style="line-height:1.4">'
+      + '    <small style="color:#94a3b8;font-size:10px">ผู้พัฒนาโดย</small><br>'
+      + '    <a href="' + esc(dev.URL) + '" target="_blank" rel="noopener noreferrer" style="font-weight:600">' + esc(dev.NAME) + '</a>'
+      + '  </div>'
+      + '</div>'
+      + '</div>';
+  }
+
+  function startClock() {
+    if (window.__lmsClockTimer) clearInterval(window.__lmsClockTimer);
+    function tick() {
+      var now = new Date();
+      var t = pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+      var elT = $('#sb-clock-time'); if (elT) elT.textContent = t;
+      var elD = $('#sb-clock-date'); if (elD) elD.textContent = TH.dateLongWeekday(now);
+      var elN = $('#nav-clock'); if (elN) elN.textContent = TH.dateWeekday(now) + ' · ' + t.substring(0, 5) + ' น.';
+    }
+    tick();
+    window.__lmsClockTimer = setInterval(tick, 1000);
+  }
+
+  function refreshShell() {
+    var pathOnly = location.hash.split('?')[0];
+    var meta = PAGE_META[pathOnly] || PAGE_META['#/dashboard'];
+    var titleEl = $('.nav-page-title'); if (titleEl) titleEl.textContent = meta.title;
+    var subEl = $('.nav-page-sub'); if (subEl) subEl.textContent = meta.sub;
+    var iconEl = $('.nav-page-icon i'); if (iconEl) iconEl.className = 'bi bi-' + meta.icon;
+    var nav = $('.sb-nav'); if (nav) nav.innerHTML = sidebarNavHtml();
+    // Replace bottom nav (re-render เพื่อ update active state)
+    var oldBn = $('#bottom-nav');
+    if (oldBn) {
+      var tmp = document.createElement('div');
+      tmp.innerHTML = bottomNavHtml();
+      oldBn.parentNode.replaceChild(tmp.firstElementChild, oldBn);
+    }
+  }
+
+  // Sidebar/burger/popover wiring (idempotent)
+  function wireShell() {
+    if (window.__lmsShellWired) return;
+    window.__lmsShellWired = true;
+
+    document.addEventListener('click', function (e) {
+      // 1) data-action handlers ก่อน hash interceptor
+      var actEl = e.target.closest && e.target.closest('[data-action]');
+      if (actEl) {
+        var act = actEl.getAttribute('data-action');
+        if (act === 'logout') {
+          e.preventDefault();
+          var pop = $('.nav-profile-popover'); if (pop) pop.remove();
+          doLogout();
+          return;
+        }
+      }
+
+      // 2) data-modal-close
+      var closeEl = e.target.closest && e.target.closest('[data-modal-close]');
+      if (closeEl) { e.preventDefault(); Modal.close(); return; }
+
+      // 3) burger
+      var burger = e.target.closest && e.target.closest('#nav-burger');
+      if (burger) { e.preventDefault(); toggleSidebar(); return; }
+      var bd = e.target.closest && e.target.closest('#sidebar-backdrop');
+      if (bd) { closeSidebar(); return; }
+
+      // 4) profile popover toggle
+      var pBtn = e.target.closest && e.target.closest('#nav-profile-btn');
+      if (pBtn) { e.preventDefault(); toggleProfilePopover(); return; }
+
+      // 5) Outside click for popover
+      var pop2 = $('.nav-profile-popover');
+      if (pop2 && !e.target.closest('.nav-profile-popover') && !e.target.closest('#nav-profile-btn')) {
+        pop2.remove();
+      }
+
+      // 6) Modal backdrop click → close
+      if (e.target.id === 'modal-host') { Modal.close(); return; }
+
+      // 7) Hash links
+      var a = e.target.closest && e.target.closest('a[href]');
+      if (a) {
+        var href = a.getAttribute('href');
+        if (href && href.charAt(0) === '#') {
+          if (href === '#') return;
+          if (a.target && a.target !== '_top' && a.target !== '_self') return;
+          e.preventDefault();
+          // close mobile sidebar after click
+          if (window.innerWidth <= 1024) setTimeout(closeSidebar, 50);
+          if (href === location.hash) dispatch();
+          else location.hash = href;
+        }
+      }
+    }, true);
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        Modal.close();
+        var pop = $('.nav-profile-popover'); if (pop) pop.remove();
+        closeSidebar();
+      }
+    });
+
+    window.addEventListener('hashchange', dispatch);
+    window.addEventListener('resize', function () {
+      if (window.innerWidth > 1024) closeSidebar();
+    });
+  }
+  function toggleSidebar() {
+    var sb = $('#sidebar'); var bd = $('#sidebar-backdrop');
+    if (!sb) return;
+    var open = sb.classList.toggle('open');
+    if (bd) bd.classList.toggle('show', open);
+  }
+  function closeSidebar() {
+    var sb = $('#sidebar'); if (sb) sb.classList.remove('open');
+    var bd = $('#sidebar-backdrop'); if (bd) bd.classList.remove('show');
+  }
+  function toggleProfilePopover() {
+    var existing = $('.nav-profile-popover');
+    if (existing) { existing.remove(); return; }
+    var u = Store.user || {};
+    var avatarHtml = u.avatar
+      ? '<img src="' + esc(u.avatar) + '" alt="">'
+      : (u.full_name || '?').substring(0,1).toUpperCase();
+    var html = '<div class="nav-profile-popover">'
+      + '<div class="npp-card">'
+      + '  <div class="npp-avatar">' + avatarHtml + '</div>'
+      + '  <div><div class="npp-name">' + esc(u.full_name || u.username) + '</div>'
+      + '       <div class="npp-email">' + esc(u.email || '-') + '</div></div>'
+      + '</div>'
+      + '<a href="#/profile" class="npp-item"><i class="bi bi-person-circle"></i> โปรไฟล์</a>'
+      + '<a href="#" class="npp-item" data-action="change-password"><i class="bi bi-key-fill"></i> เปลี่ยนรหัสผ่าน</a>'
+      + '<div class="npp-divider"></div>'
+      + '<a href="#" class="npp-item is-danger" data-action="logout"><i class="bi bi-box-arrow-right"></i> ออกจากระบบ</a>'
+      + '</div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+    // ผูก change-password
+    var cp = document.querySelector('.npp-item[data-action="change-password"]');
+    if (cp) cp.addEventListener('click', function (e) {
+      e.preventDefault();
+      var pop = $('.nav-profile-popover'); if (pop) pop.remove();
+      openChangePasswordModal();
+    });
+  }
+
+  function openChangePasswordModal() {
+    Modal.open({
+      title: 'เปลี่ยนรหัสผ่าน',
+      html: '<form id="cp-form">'
+        + '<div class="field"><label>รหัสผ่านเดิม <span class="req">*</span></label>'
+        + '  <input type="password" name="old_password" class="input" required></div>'
+        + '<div class="field"><label>รหัสผ่านใหม่ <span class="req">*</span></label>'
+        + '  <input type="password" name="new_password" class="input" required>'
+        + '  <div class="field-hint">อย่างน้อย 6 ตัวอักษร</div></div>'
+        + '<div class="field"><label>ยืนยันรหัสผ่านใหม่ <span class="req">*</span></label>'
+        + '  <input type="password" name="confirm" class="input" required></div>'
+        + '</form>',
+      footer: '<button class="btn btn-ghost" data-modal-close>ยกเลิก</button>'
+        + '<button class="btn btn-primary" id="cp-submit"><i class="bi bi-check-lg"></i> บันทึก</button>',
+      onOpen: function () {
+        $('#cp-submit').addEventListener('click', function () {
+          var f = $('#cp-form');
+          var op = f.old_password.value;
+          var np = f.new_password.value;
+          var cf = f.confirm.value;
+          if (!op || !np) return toast('กรุณากรอกข้อมูลให้ครบ', 'warning');
+          if (np.length < 6) return toast('รหัสผ่านใหม่ต้องอย่างน้อย 6 ตัวอักษร', 'warning');
+          if (np !== cf) return toast('ยืนยันรหัสผ่านไม่ตรงกัน', 'warning');
+          Spinner.show('กำลังเปลี่ยนรหัสผ่าน...', { stages: ['ตรวจสอบรหัสเดิม','สร้างรหัสใหม่','บันทึก'] });
+          call('auth.change_password', { old_password: op, new_password: np }).then(function () {
+            Spinner.hide(); Modal.close();
+            alertSuccess('สำเร็จ', 'เปลี่ยนรหัสผ่านเรียบร้อย — ครั้งหน้าใช้รหัสใหม่เข้าระบบ');
+          }).catch(function (e) { Spinner.hide(); alertError('ไม่สำเร็จ', e.message); });
+        });
+      }
+    });
+  }
+
+  function doLogout() {
+    confirmModal({ title: 'ออกจากระบบ?', message: 'คุณจะถูกพากลับไปยังหน้าเข้าสู่ระบบ', okText: 'ออกจากระบบ', danger: true })
+    .then(function (ok) {
+      if (!ok) return;
+      var token = Store.token;
+      Store.token = null; Store.user = null; Store.caps = [];
+      try { localStorage.removeItem('lms.token'); } catch (e) {}
+      try { call('auth.logout', {}).catch(function () {}); } catch (e) {}
+      Modal.close(); Spinner.hide();
+      if (window.__lmsClockTimer) { clearInterval(window.__lmsClockTimer); window.__lmsClockTimer = null; }
+      history.replaceState(null, '', location.pathname + location.search);
+      renderLogin();
+      toast('ออกจากระบบเรียบร้อย', 'success', 2000);
+    });
+  }
+
+  // ── Router ─────────────────────────────────────────
+  function dispatch() {
+    if (!Store.token || !Store.user) { renderLogin(); return; }
+    if (!$('#app-root')) return;
+    if (!$('#sidebar')) {
+      renderShell();
+      // Fetch pending registrations count for badge (admin/approver only)
+      if (hasCap('user.manage')) {
+        call('user.list_pending', {}).then(function (r) {
+          Store._pendingCount = (r && r.total) || 0;
+          var nav = $('.sb-nav'); if (nav) nav.innerHTML = sidebarNavHtml();
+        }).catch(function () {});
+      }
+    } else {
+      refreshShell();
+    }
+    var hash = location.hash || '#/dashboard';
+    var handler = Routes[hash];
+    if (!handler) handler = Routes[hash.split('?')[0]];
+    if (!handler) {
+      var parts = hash.split('?')[0].split('/');
+      while (parts.length > 1 && !handler) {
+        parts.pop();
+        var p = parts.join('/');
+        if (p && p !== '#') handler = Routes[p];
+        else break;
+      }
+    }
+    if (!handler) handler = Routes['#/dashboard'];
+    if (handler) try { handler(hash); } catch (e) { console.error(e); toast('โหลดหน้าไม่สำเร็จ: ' + e.message, 'error'); }
+  }
+
+  // ── Bootstrap ──────────────────────────────────────
+  function hideBootLoader() {
+    var bl = $('#boot-loader');
+    if (bl) { bl.style.opacity = '0'; bl.style.transition = 'opacity .3s'; setTimeout(function () { try { bl.remove(); } catch (e) {} }, 320); }
+  }
+
+  function setBootText(t) { var el = $('#bl-text'); if (el) el.textContent = t; }
+
+  function showFatalError(msg, detail) {
+    // ลบ boot loader ก่อนเพื่อให้เห็น error ชัดเจน
+    var bl = $('#boot-loader'); if (bl) try { bl.remove(); } catch (e) {}
+    var root = $('#app-root');
+    var html = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:linear-gradient(135deg,#0f172a,#1e293b)">'
+      + '<div style="max-width:480px;background:rgba(255,255,255,.04);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:32px;color:#f1f5f9;text-align:center">'
+      + '<div style="width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:linear-gradient(135deg,#ef4444,#dc2626);display:flex;align-items:center;justify-content:center;font-size:32px;color:#fff;box-shadow:0 12px 32px rgba(239,68,68,.4)"><i class="bi bi-exclamation-triangle-fill"></i></div>'
+      + '<h2 style="font-size:18px;font-weight:700;margin:0 0 8px">เกิดข้อผิดพลาด</h2>'
+      + '<p style="font-size:14px;color:rgba(241,245,249,.7);margin:0 0 14px">' + esc(msg) + '</p>'
+      + (detail ? '<details style="text-align:left;background:rgba(0,0,0,.2);border-radius:8px;padding:10px;margin-bottom:14px;font-size:11px;color:#a5b4fc"><summary style="cursor:pointer;font-weight:600">รายละเอียด</summary><pre style="white-space:pre-wrap;word-break:break-all;font-size:10px;margin-top:8px">' + esc(detail) + '</pre></details>' : '')
+      + '<button onclick="location.reload()" style="padding:10px 20px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:0;border-radius:10px;cursor:pointer;font-weight:600;font-family:inherit"><i class="bi bi-arrow-clockwise"></i> ลองใหม่</button>'
+      + '</div></div>';
+    if (root) root.innerHTML = html;
+  }
+
+  function boot() {
+    setBootText('กำลังโหลดข้อมูลเริ่มต้น...');
+    var token = '';
+    try { token = localStorage.getItem('lms.token') || ''; } catch (e) {}
+    Store.token = token;
+    call('app.bootstrap', {}).then(function (data) {
+      try {
+        if (!data || typeof data !== 'object') throw new Error('ข้อมูล bootstrap ไม่ถูกต้อง');
+        Store.boot = data;
+        Store.user = data.me || null;
+        Store.caps = data.caps || [];
+        // ★ ซ่อน boot loader ทันที (ไม่รอ renderLogin/renderShell)
+        hideBootLoader();
+        if (Store.user) {
+          // ★ ต้องตั้ง hash + dispatch ตรงๆ — hashchange listener ยังไม่ register
+          if (!location.hash || location.hash === '#') {
+            try { history.replaceState(null, '', location.pathname + location.search + '#/dashboard'); } catch (e) { location.hash = '#/dashboard'; }
+          }
+          dispatch();
+        } else {
+          Store.token = null;
+          try { localStorage.removeItem('lms.token'); } catch (e) {}
+          renderLogin();
+        }
+      } catch (renderErr) {
+        if (window.console) console.error('[LMS] Render error:', renderErr, renderErr && renderErr.stack);
+        showFatalError('การแสดงผลล้มเหลว: ' + (renderErr.message || renderErr), renderErr && renderErr.stack);
+      }
+    }).catch(function (e) {
+      if (window.console) console.error('[LMS] Bootstrap failed:', e);
+      var msg = (e && e.message) || 'ไม่สามารถเชื่อมต่อระบบ';
+      showFatalError(msg, e && e.stack);
+    });
+  }
+
+  // ── Public Surface (cross-IIFE) ────────────────────
+  window.LMS_boot = boot;
+  window.LMS = {
+    Store: Store, Routes: Routes, PAGE_META: PAGE_META,
+    $: $, $$: $$, esc: esc, pad: pad, TH: TH,
+    hasCap: hasCap, call: call,
+    toast: toast, alertSuccess: alertSuccess, alertError: alertError, alertInfo: alertInfo, confirmModal: confirmModal,
+    Spinner: Spinner, Modal: Modal,
+    dispatch: dispatch, renderLogin: renderLogin, renderShell: renderShell, refreshShell: refreshShell,
+    get LEAVE_TYPE_LABEL() { return (Store.boot && Store.boot.leave_types) || { sick: 'ลาป่วย', personal: 'ลากิจส่วนตัว', annual: 'ลาพักร้อน' }; }
+  };
+})();
+</script>
