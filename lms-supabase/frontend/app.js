@@ -4692,41 +4692,23 @@ window.SupabaseBridge = {
 
   })();
 
+
 (function () {
-  function setText(t) { var el = document.getElementById('bl-text'); if (el) el.textContent = t; }
-  function injectAll() {
-    var scripts = document.querySelectorAll('script[type^="text/x-lms-"]');
-    if (!scripts.length) { setText('❌ ไม่พบ script blocks ของระบบ'); return; }
-    setText('กำลังโหลดสคริปต์ ' + scripts.length + ' ส่วน...');
-    for (var i = 0; i < scripts.length; i++) {
-      var src = scripts[i].textContent || '';
-      if (!src) continue;
+  function start() {
+    if (typeof window.LMS_boot === "function") {
       try {
-        var s = document.createElement('script');
-        s.text = src;
-        document.body.appendChild(s);
+        window.LMS_boot();
       } catch (e) {
-        setText('❌ Inject error: ' + e.message);
-        return;
+        var el = document.getElementById("bl-text");
+        if (el) el.textContent = "❌ Boot error: " + e.message;
       }
+    } else {
+      var el = document.getElementById("bl-text");
+      if (el) el.textContent = "❌ ไม่พบฟังก์ชัน LMS_boot — สคริปต์หลักอาจโหลดไม่สำเร็จ";
     }
-    // Fallback boot — กรณี IIFE register handler ไม่ทัน
-    setTimeout(function () {
-      if (typeof window.LMS_boot === 'function' && !window.__lmsBootCalled) {
-        window.__lmsBootCalled = true;
-        try { window.LMS_boot(); } catch (e) {
-          setText('❌ Boot error: ' + e.message);
-          if (window.console) console.error('[LMS] LMS_boot threw:', e);
-        }
-      } else if (typeof window.LMS_boot !== 'function') {
-        setText('❌ ไม่พบฟังก์ชัน LMS_boot — สคริปต์หลักอาจโหลดไม่สำเร็จ');
-        if (window.console) console.error('[LMS] window.LMS_boot is not a function. window.LMS =', window.LMS);
-      }
-    }, 200);
   }
-  function start() { injectAll(); }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start, false);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start, false);
   } else {
     start();
   }
