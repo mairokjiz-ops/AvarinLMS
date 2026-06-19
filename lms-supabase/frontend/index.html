@@ -820,6 +820,12 @@
   
   <!-- Supabase JS Client CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.2/dist/umd/supabase-js.js"></script>
+  <script>
+    if (!window.supabase) {
+      console.warn("Failed to load Supabase from jsdelivr, trying unpkg...");
+      document.write('<script src="https://unpkg.com/@supabase/supabase-js@2.39.2/dist/umd/supabase-js.js"><\/script>');
+    }
+  </script>
   
   <!-- Custom SPA Controller script -->
   <script src="app.js"></script>
