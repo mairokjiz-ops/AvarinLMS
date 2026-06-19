@@ -7,7 +7,11 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Drop existing triggers and tables if they exist (clean setup)
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS trg_check_profile_update ON public.profiles;
+DROP TRIGGER IF EXISTS trg_check_leave_update ON public.leaves;
 DROP FUNCTION IF EXISTS public.handle_new_user;
+DROP FUNCTION IF EXISTS public.check_profile_update;
+DROP FUNCTION IF EXISTS public.check_leave_update;
 DROP TABLE IF EXISTS public.audit_logs;
 DROP TABLE IF EXISTS public.expenses;
 DROP TABLE IF EXISTS public.missions;
@@ -299,7 +303,7 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 
--- ── 5. ROW LEVEL SECURITY (RLS) POLICIES ─────────────────────────
+-- ── 5. ROW LEVEL SECURITY (RLS) POLICIES & TRIGGER INTEGRATION ────
 
 -- Enable RLS on all tables
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -316,22 +320,77 @@ RETURNS TEXT AS $$
   SELECT role FROM public.profiles WHERE id = auth.uid();
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
+-- Trigger to validate profile updates (non-admins cannot modify role/is_active)
+CREATE OR REPLACE FUNCTION public.check_profile_update()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF (NEW.role IS DISTINCT FROM OLD.role OR NEW.is_active IS DISTINCT FROM OLD.is_active) THEN
+    IF public.get_my_role() IS DISTINCT FROM 'admin' THEN
+      RAISE EXCEPTION 'Only admins can modify roles or active status';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER trg_check_profile_update
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.check_profile_update();
+
 -- 5A. Profiles Policies
 CREATE POLICY "Allow authenticated users to read all profiles" 
   ON public.profiles FOR SELECT TO authenticated USING (TRUE);
 
 CREATE POLICY "Allow users to update own profiles" 
   ON public.profiles FOR UPDATE TO authenticated 
-  USING (auth.uid() = id) 
-  WITH CHECK (
-    auth.uid() = id 
-    AND (NEW.role = OLD.role OR public.get_my_role() = 'admin')
-    AND (NEW.is_active = OLD.is_active OR public.get_my_role() = 'admin')
-  );
+  USING (auth.uid() = id);
 
 CREATE POLICY "Allow admin to manage profiles" 
   ON public.profiles FOR ALL TO authenticated 
   USING (public.get_my_role() = 'admin');
+
+-- Trigger to validate leave updates
+CREATE OR REPLACE FUNCTION public.check_leave_update()
+RETURNS TRIGGER AS $$
+DECLARE
+  current_user_role TEXT;
+BEGIN
+  current_user_role := public.get_my_role();
+
+  -- If the user is just an employee, enforce limits
+  IF COALESCE(current_user_role, 'employee') = 'employee' THEN
+    -- Must be the owner
+    IF auth.uid() <> OLD.requester_id THEN
+      RAISE EXCEPTION 'You can only update your own leaves';
+    END IF;
+
+    -- Can only update if in draft, pending, or cancelled status
+    IF OLD.status NOT IN ('draft', 'pending', 'cancelled') THEN
+      RAISE EXCEPTION 'You can only update draft, pending, or cancelled leaves';
+    END IF;
+
+    -- Prevent tampering with approval columns
+    IF NEW.checker_id IS DISTINCT FROM OLD.checker_id OR
+       NEW.checker_comment IS DISTINCT FROM OLD.checker_comment OR
+       NEW.checker_at IS DISTINCT FROM OLD.checker_at OR
+       NEW.supervisor_id IS DISTINCT FROM OLD.supervisor_id OR
+       NEW.supervisor_comment IS DISTINCT FROM OLD.supervisor_comment OR
+       NEW.supervisor_at IS DISTINCT FROM OLD.supervisor_at OR
+       NEW.approver_id IS DISTINCT FROM OLD.approver_id OR
+       NEW.approver_comment IS DISTINCT FROM OLD.approver_comment OR
+       NEW.approver_decision IS DISTINCT FROM OLD.approver_decision OR
+       NEW.approver_at IS DISTINCT FROM OLD.approver_at THEN
+      RAISE EXCEPTION 'Cannot modify approval columns';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER trg_check_leave_update
+  BEFORE UPDATE ON public.leaves
+  FOR EACH ROW EXECUTE FUNCTION public.check_leave_update();
 
 -- 5B. Leaves Policies
 CREATE POLICY "Allow users to view own leaves or managers/admins to view assigned/all" 
@@ -350,28 +409,11 @@ CREATE POLICY "Allow users to create leaves for themselves"
   ON public.leaves FOR INSERT TO authenticated
   WITH CHECK (requester_id = auth.uid());
 
-CREATE POLICY "Allow user to update own pending/draft leaves" 
-  ON public.leaves FOR UPDATE TO authenticated
-  USING (requester_id = auth.uid() AND status IN ('draft', 'pending', 'cancelled'))
-  WITH CHECK (
-    requester_id = auth.uid() 
-    AND status IN ('draft', 'pending', 'cancelled')
-    -- Prevent tampering of approval fields
-    AND NEW.checker_id = OLD.checker_id
-    AND NEW.checker_comment = OLD.checker_comment
-    AND NEW.supervisor_id = OLD.supervisor_id
-    AND NEW.supervisor_comment = OLD.supervisor_comment
-    AND NEW.approver_id = OLD.approver_id
-    AND NEW.approver_comment = OLD.approver_comment
-  );
-
-CREATE POLICY "Allow checkers, supervisors, approvers, and admins to review leaves"
+CREATE POLICY "Allow users to update leaves" 
   ON public.leaves FOR UPDATE TO authenticated
   USING (
-    public.get_my_role() IN ('admin', 'approver', 'supervisor', 'checker')
-  )
-  WITH CHECK (
-    public.get_my_role() IN ('admin', 'approver', 'supervisor', 'checker')
+    requester_id = auth.uid()
+    OR public.get_my_role() IN ('admin', 'approver', 'supervisor', 'checker')
   );
 
 CREATE POLICY "Allow admin to delete leaves"
