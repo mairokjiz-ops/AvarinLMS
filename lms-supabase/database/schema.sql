@@ -259,16 +259,19 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
   default_role TEXT := 'employee';
+  is_active_val BOOLEAN := FALSE;
   username_val TEXT;
 BEGIN
   -- Extract details from metadata if provided, otherwise fallback
   username_val := COALESCE(NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1));
   
-  -- Force 'admin' for the first user if necessary, or read from meta
+  -- Force 'admin' and active for the first user, others are 'employee' and inactive (pending)
   IF NOT EXISTS (SELECT 1 FROM public.profiles) THEN
     default_role := 'admin';
+    is_active_val := TRUE;
   ELSE
     default_role := COALESCE(NEW.raw_user_meta_data->>'role', 'employee');
+    is_active_val := FALSE;
   END IF;
 
   INSERT INTO public.profiles (
@@ -295,7 +298,7 @@ BEGIN
     COALESCE(NEW.raw_user_meta_data->>'department', 'ทั่วไป'),
     COALESCE(NEW.raw_user_meta_data->>'phone', ''),
     COALESCE(NEW.raw_user_meta_data->>'avatar', ''),
-    TRUE
+    is_active_val
   );
   RETURN NEW;
 END;
@@ -527,3 +530,19 @@ INSERT INTO public.holidays (holiday_date, name) VALUES
 (date_trunc('year', now())::date + interval '11 months' + interval '9 days', 'วันรัฐธรรมนูญ'), -- Dec 10
 (date_trunc('year', now())::date + interval '11 months' + interval '30 days', 'วันสิ้นปี') -- Dec 31
 ON CONFLICT (holiday_date) DO NOTHING;
+
+-- ── 5. HELPER FUNCTIONS FOR USERNAME LOGIN ──────────────────────────
+
+-- Helper function to fetch email by username anonymously
+CREATE OR REPLACE FUNCTION public.get_email_by_username(username_input TEXT)
+RETURNS TEXT AS $$
+DECLARE
+  found_email TEXT;
+BEGIN
+  SELECT email INTO found_email FROM public.profiles WHERE LOWER(username) = LOWER(username_input) LIMIT 1;
+  RETURN found_email;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Grant execute privileges to both anon and authenticated users
+GRANT EXECUTE ON FUNCTION public.get_email_by_username(TEXT) TO anon, authenticated;
