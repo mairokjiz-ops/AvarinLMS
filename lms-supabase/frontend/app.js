@@ -35,6 +35,9 @@
       // Initialize Supabase client
       sb = window.supabase.createClient(savedUrl, savedKey);
       
+      // Bind all form submit and click listeners once
+      setupFormListeners();
+      
       // Setup Auth state listener
       sb.auth.onAuthStateChange(async (event, session) => {
         if (session) {
@@ -161,8 +164,6 @@
       } else {
         handleRouting();
       }
-
-      setupFormListeners();
 
     } catch (err) {
       console.error('Fetch Profile Error:', err);
@@ -1041,6 +1042,30 @@
 
   // ── FORM EVENT HANDLERS ───────────────────────────────────────────
   function setupFormListeners() {
+    
+    // Reset Database Config
+    const btnResetDb = document.getElementById('btn-reset-db');
+    if (btnResetDb) {
+      btnResetDb.onclick = (e) => {
+        e.preventDefault();
+        Swal.fire({
+          title: 'ยืนยันการตั้งค่าคีย์ใหม่?',
+          text: 'คุณต้องการล้างคีย์การเชื่อมต่อเดิมเพื่อระบุคีย์ใหม่หรือไม่?',
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#d33',
+          cancelButtonColor: '#3085d6',
+          confirmButtonText: 'ใช่, ตั้งค่าใหม่',
+          cancelButtonText: 'ยกเลิก'
+        }).then((result) => {
+          if (result.isConfirmed) {
+            localStorage.removeItem('LMS_SUPABASE_URL');
+            localStorage.removeItem('LMS_SUPABASE_KEY');
+            window.location.reload();
+          }
+        });
+      };
+    }
     
     // Auth Tab Forms
     document.getElementById('form-login').onsubmit = async (e) => {
