@@ -87,10 +87,18 @@
       allowEscapeKey: false,
       confirmButtonText: 'บันทึกและเชื่อมต่อ',
       preConfirm: () => {
-        const url = document.getElementById('sb-url').value.trim();
+        let url = document.getElementById('sb-url').value.trim();
         const key = document.getElementById('sb-key').value.trim();
         if (!url || !key) {
           Swal.showValidationMessage('กรุณากรอกข้อมูลให้ครบถ้วน');
+          return false;
+        }
+        // Auto-fix URL formatting
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          url = 'https://' + url;
+        }
+        if (url.endsWith('/')) {
+          url = url.slice(0, -1);
         }
         return { url, key };
       }
