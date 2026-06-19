@@ -5,20 +5,23 @@
 -- Enable uuid-ossp for UUID generation if needed
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Drop existing triggers and tables if they exist (clean setup)
+-- Drop trigger on auth.users (system table, so it always exists)
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-DROP TRIGGER IF EXISTS trg_check_profile_update ON public.profiles;
-DROP TRIGGER IF EXISTS trg_check_leave_update ON public.leaves;
-DROP FUNCTION IF EXISTS public.handle_new_user;
-DROP FUNCTION IF EXISTS public.check_profile_update;
-DROP FUNCTION IF EXISTS public.check_leave_update;
-DROP TABLE IF EXISTS public.audit_logs;
-DROP TABLE IF EXISTS public.expenses;
-DROP TABLE IF EXISTS public.missions;
-DROP TABLE IF EXISTS public.leaves;
-DROP TABLE IF EXISTS public.holidays;
-DROP TABLE IF EXISTS public.settings;
-DROP TABLE IF EXISTS public.profiles;
+
+-- Drop custom functions (order: dependencies first)
+DROP FUNCTION IF EXISTS public.handle_new_user CASCADE;
+DROP FUNCTION IF EXISTS public.check_profile_update CASCADE;
+DROP FUNCTION IF EXISTS public.check_leave_update CASCADE;
+DROP FUNCTION IF EXISTS public.get_my_role CASCADE;
+
+-- Drop tables with CASCADE to automatically drop all foreign keys, indexes, and triggers
+DROP TABLE IF EXISTS public.audit_logs CASCADE;
+DROP TABLE IF EXISTS public.expenses CASCADE;
+DROP TABLE IF EXISTS public.missions CASCADE;
+DROP TABLE IF EXISTS public.leaves CASCADE;
+DROP TABLE IF EXISTS public.holidays CASCADE;
+DROP TABLE IF EXISTS public.settings CASCADE;
+DROP TABLE IF EXISTS public.profiles CASCADE;
 
 -- ── 2. TABLES CREATION ─────────────────────────────────────────────
 
