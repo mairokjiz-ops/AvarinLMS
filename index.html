@@ -4315,6 +4315,15 @@ async function Leaves_check(user, p) {
     checker_at: cfg_iso_(cfg_now_())
   });
   await Audit_log_(user, 'leave.check', 'leave', lv.id, {});
+
+  var requesterUser = DB_findById(SHEETS.USERS, lv.requester_id);
+  if (requesterUser) {
+    try {
+      Notify_onLeaveChecked_(updated, requesterUser, user);
+    } catch (err) {
+      console.error('Notify_onLeaveChecked_ error: ' + err.message);
+    }
+  }
   return updated;
 }
 
@@ -4334,6 +4343,15 @@ async function Leaves_comment(user, p) {
     supervisor_at: cfg_iso_(cfg_now_())
   });
   await Audit_log_(user, 'leave.comment', 'leave', lv.id, {});
+
+  var requesterUser = DB_findById(SHEETS.USERS, lv.requester_id);
+  if (requesterUser) {
+    try {
+      Notify_onLeaveCommented_(updated, requesterUser, user);
+    } catch (err) {
+      console.error('Notify_onLeaveCommented_ error: ' + err.message);
+    }
+  }
   return updated;
 }
 
@@ -5576,8 +5594,54 @@ function Notify_onRegistrationRejected_(u, rejectReason, rejector) {
 }
 
 function Notify_onLeaveCreated_() {}
-function Notify_onLeaveChecked_() {}
-function Notify_onLeaveCommented_() {}
+
+function Notify_onLeaveChecked_(leave, requester, checker) {
+  var users = DB_readAll('Users');
+  var supervisors = users.filter(function (u) { return u.role === 'supervisor' && u.department === requester.department && u.email && String(u.is_active).toLowerCase() === 'yes'; });
+  if (supervisors.length === 0) {
+    supervisors = users.filter(function (u) { return u.role === 'supervisor' && u.email && String(u.is_active).toLowerCase() === 'yes'; });
+  }
+  var emails = supervisors.map(function (s) { return s.email; });
+  if (emails.length > 0) {
+    var html = '<h2>ใบลาผ่านการตรวจสอบแล้ว รอความเห็นจากหัวหน้างาน</h2>'
+      + '<p>เรียน หัวหน้างาน,</p>'
+      + '<p>ใบลาเลขที่ <code>' + esc(leave.leave_no) + '</code> ได้รับการตรวจสอบขั้นต้นโดย ' + esc(checker.full_name) + ' เรียบร้อยแล้ว และรอความเห็นจากคุณ:</p>'
+      + '<ul>'
+      + '<li><strong>ผู้ขอลา:</strong> ' + esc(requester.full_name) + ' (' + esc(requester.position || '-') + ')</li>'
+      + '<li><strong>แผนก/สังกัด:</strong> ' + esc(requester.department || '-') + '</li>'
+      + '<li><strong>ประเภทการลา:</strong> ' + esc((LMS.LEAVE_TYPE_LABEL || {})[leave.leave_type] || leave.leave_type) + '</li>'
+      + '<li><strong>ช่วงเวลา:</strong> ' + formatThDate(leave.start_date) + ' ถึง ' + formatThDate(leave.end_date) + ' (' + leave.days + ' วัน)</li>'
+      + '<li><strong>ความเห็นผู้ตรวจสอบ:</strong> ' + esc(leave.checker_comment || '-') + '</li>'
+      + '</ul>'
+      + '<p><a href="' + window.location.origin + window.location.pathname + '#/leaves/inbox" style="display:inline-block;background:#6366f1;color:#fff;padding:8px 16px;text-decoration:none;border-radius:6px;font-weight:bold">แสดงความเห็นใบลา</a></p>'
+      + '<hr><p style="font-size:12px;color:#888">นี่คือข้อความอัตโนมัติจากระบบ AvarinLMS</p>';
+    _sendEmail_(emails, 'ใบลาผ่านการตรวจสอบแล้วรอความเห็นหัวหน้างาน: ' + leave.leave_no, html);
+  }
+}
+
+function Notify_onLeaveCommented_(leave, requester, supervisor) {
+  var users = DB_readAll('Users');
+  var approvers = users.filter(function (u) { return u.role === 'approver' && u.email && String(u.is_active).toLowerCase() === 'yes'; });
+  var emails = approvers.map(function (a) { return a.email; });
+  if (emails.length === 0 && GLOBAL_SETTINGS.org_email) {
+    emails.push(GLOBAL_SETTINGS.org_email);
+  }
+  if (emails.length > 0) {
+    var html = '<h2>ใบลาผ่านการกลั่นกรองแล้ว รออนุมัติขั้นสุดท้าย</h2>'
+      + '<p>เรียน ผู้อนุมัติ/ฝ่ายบุคคล,</p>'
+      + '<p>ใบลาเลขที่ <code>' + esc(leave.leave_no) + '</code> ผ่านการเสนอความเห็นจากหัวหน้างาน ' + esc(supervisor.full_name) + ' เรียบร้อยแล้ว และรออนุมัติขั้นสุดท้ายจากคุณ:</p>'
+      + '<ul>'
+      + '<li><strong>ผู้ขอลา:</strong> ' + esc(requester.full_name) + ' (' + esc(requester.position || '-') + ')</li>'
+      + '<li><strong>แผนก/สังกัด:</strong> ' + esc(requester.department || '-') + '</li>'
+      + '<li><strong>ประเภทการลา:</strong> ' + esc((LMS.LEAVE_TYPE_LABEL || {})[leave.leave_type] || leave.leave_type) + '</li>'
+      + '<li><strong>ช่วงเวลา:</strong> ' + formatThDate(leave.start_date) + ' ถึง ' + formatThDate(leave.end_date) + ' (' + leave.days + ' วัน)</li>'
+      + '<li><strong>ความเห็นหัวหน้างาน:</strong> ' + esc(leave.supervisor_comment || '-') + '</li>'
+      + '</ul>'
+      + '<p><a href="' + window.location.origin + window.location.pathname + '#/leaves/inbox" style="display:inline-block;background:#6366f1;color:#fff;padding:8px 16px;text-decoration:none;border-radius:6px;font-weight:bold">พิจารณาอนุมัติใบลา</a></p>'
+      + '<hr><p style="font-size:12px;color:#888">นี่คือข้อความอัตโนมัติจากระบบ AvarinLMS</p>';
+    _sendEmail_(emails, 'ใบลาผ่านการพิจารณาจากหัวหน้างานแล้วรออนุมัติ: ' + leave.leave_no, html);
+  }
+}
 
 function Notify_onLeaveSubmit_(leave, user) {
   var users = DB_readAll('Users');
