@@ -16,7 +16,9 @@ serve(async (req) => {
   }
 
   try {
-    const { to, subject, html, from_alias } = await req.json()
+    const body = await req.json();
+    console.log('Received send-email request:', body);
+    const { to, subject, html, from_alias } = body;
 
     if (!RESEND_API_KEY) {
       throw new Error('Missing RESEND_API_KEY environment variable')
@@ -30,6 +32,7 @@ serve(async (req) => {
     // By default, if onboarding/not verified, Resend requires sender to be "onboarding@resend.dev"
     // We allow setting this from the Global Settings alias, defaulting to "onboarding@resend.dev"
     const fromAddress = from_alias || 'AvarinLMS <onboarding@resend.dev>'
+    console.log('Sending via Resend from:', fromAddress, 'to:', to);
 
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -46,6 +49,7 @@ serve(async (req) => {
     })
 
     const result = await response.json()
+    console.log('Resend API response:', result);
     
     if (!response.ok) {
       throw new Error(result.message || 'Failed to send email via Resend')
@@ -60,6 +64,7 @@ serve(async (req) => {
     })
 
   } catch (error: any) {
+    console.error('Edge Function Error:', error);
     return new Response(JSON.stringify({ ok: false, error: error.message }), {
       status: 400,
       headers: {
