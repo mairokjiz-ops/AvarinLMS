@@ -2429,7 +2429,7 @@ function Notify_onLeaveChecked_(leave, requester, checker) {
   var users = DB_readAll('Users');
   var supervisors = users.filter(function (u) { return u.role === 'supervisor' && u.department === requester.department && u.email && String(u.is_active).toLowerCase() === 'yes'; });
   if (supervisors.length === 0) {
-    supervisors = users.filter(function (u) { return u.role === 'supervisor' && u.email && String(u.is_active).toLowerCase() === 'yes'; });
+    supervisors = users.filter(function (u) { return u.role === 'approver' && u.email && String(u.is_active).toLowerCase() === 'yes'; });
   }
   var emails = supervisors.map(function (s) { return s.email; });
   if (emails.length > 0) {
@@ -2482,7 +2482,7 @@ function Notify_onLeaveSubmit_(leave, user) {
   } else if (stages === 2) {
     recipients = users.filter(function (u) { return u.role === 'supervisor' && u.department === user.department && u.email && String(u.is_active).toLowerCase() === 'yes'; });
     if (recipients.length === 0) {
-      recipients = users.filter(function (u) { return (u.role === 'supervisor' || u.role === 'approver') && u.email && String(u.is_active).toLowerCase() === 'yes'; });
+      recipients = users.filter(function (u) { return u.role === 'approver' && u.email && String(u.is_active).toLowerCase() === 'yes'; });
     }
   } else {
     recipients = users.filter(function (u) { return u.role === 'approver' && u.email && String(u.is_active).toLowerCase() === 'yes'; });
