@@ -1,7 +1,9 @@
-// === SUPABASE EDGE FUNCTION: send-email ===
+// === SUPABASE EDGE FUNCTION: send-email (Gmail SMTP) ===
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import nodemailer from "npm:nodemailer"
 
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
+const SMTP_USER = Deno.env.get('SMTP_USER') || '';
+const SMTP_PASS = Deno.env.get('SMTP_PASS') || '';
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -20,42 +22,47 @@ serve(async (req) => {
     console.log('Received send-email request:', body);
     const { to, subject, html, from_alias } = body;
 
-    if (!RESEND_API_KEY) {
-      throw new Error('Missing RESEND_API_KEY environment variable')
+    if (!SMTP_USER || !SMTP_PASS) {
+      throw new Error('Missing SMTP_USER or SMTP_PASS environment variables')
     }
 
     if (!to || !subject || !html) {
       throw new Error('Missing required fields: to, subject, html')
     }
 
-    // With Resend, you can define your verified domain alias, e.g. "hr@yourcompany.com"
-    // By default, if onboarding/not verified, Resend requires sender to be "onboarding@resend.dev"
-    // We allow setting this from the Global Settings alias, defaulting to "onboarding@resend.dev"
-    const fromAddress = from_alias || 'AvarinLMS <onboarding@resend.dev>'
-    console.log('Sending via Resend from:', fromAddress, 'to:', to);
+    // Configure Nodemailer for Gmail SMTP
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASS
+      }
+    });
 
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${RESEND_API_KEY}`
-      },
-      body: JSON.stringify({
-        from: fromAddress,
-        to: Array.isArray(to) ? to : [to],
-        subject: subject,
-        html: html
-      })
-    })
-
-    const result = await response.json()
-    console.log('Resend API response:', result);
-    
-    if (!response.ok) {
-      throw new Error(result.message || 'Failed to send email via Resend')
+    // Gmail SMTP requires the sender email to match the authenticated Gmail account.
+    // If from_alias is provided, we can use format: "Name <gmail@address.com>"
+    // Otherwise we default to "AvarinLMS <gmail@address.com>"
+    let fromAddress = `AvarinLMS <${SMTP_USER}>`;
+    if (from_alias) {
+      // If user provided a name like "HR Department", format it as: "HR Department <gmail@address.com>"
+      // Gmail SMTP does not allow spoofing different 'from' domains, so we must keep the SMTP_USER email.
+      const cleanName = from_alias.replace(/<.*>/, '').trim();
+      fromAddress = `"${cleanName}" <${SMTP_USER}>`;
     }
 
-    return new Response(JSON.stringify({ ok: true, data: result }), {
+    console.log('Sending via Gmail SMTP from:', fromAddress, 'to:', to);
+
+    const mailOptions = {
+      from: fromAddress,
+      to: Array.isArray(to) ? to.join(', ') : to,
+      subject: subject,
+      html: html
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Gmail SMTP response:', info);
+
+    return new Response(JSON.stringify({ ok: true, data: info }), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
