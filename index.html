@@ -5467,6 +5467,30 @@ async function Holidays_delete(user, p) {
 
 // === NOTIFICATIONS LOGIC ===
 
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatThDate(isoString) {
+  if (!isoString) return '-';
+  try {
+    var parts = isoString.split('T')[0].split('-');
+    if (parts.length !== 3) return isoString;
+    var y = parseInt(parts[0], 10) + 543;
+    var m = parseInt(parts[1], 10);
+    var d = parseInt(parts[2], 10);
+    var monthsShort = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+    return d + ' ' + monthsShort[m - 1] + ' ' + y;
+  } catch (e) {
+    return isoString;
+  }
+}
+
 async function _sendEmail_(to, subject, html) {
   var settings = GLOBAL_SETTINGS || {};
   var fromAlias = settings.email_from_alias || '';
@@ -5582,7 +5606,7 @@ function Notify_onLeaveSubmit_(leave, user) {
       + '<li><strong>ผู้ขอลา:</strong> ' + esc(user.full_name) + ' (' + esc(user.position || '-') + ')</li>'
       + '<li><strong>แผนก/สังกัด:</strong> ' + esc(user.department || '-') + '</li>'
       + '<li><strong>ประเภทการลา:</strong> ' + esc((LMS.LEAVE_TYPE_LABEL || {})[leave.leave_type] || leave.leave_type) + '</li>'
-      + '<li><strong>ช่วงเวลา:</strong> ' + TH.date(leave.start_date) + ' ถึง ' + TH.date(leave.end_date) + ' (' + leave.days + ' วัน)</li>'
+      + '<li><strong>ช่วงเวลา:</strong> ' + formatThDate(leave.start_date) + ' ถึง ' + formatThDate(leave.end_date) + ' (' + leave.days + ' วัน)</li>'
       + '<li><strong>เหตุผลการลา:</strong> ' + esc(leave.reason) + '</li>'
       + '</ul>'
       + '<p><a href="' + window.location.origin + window.location.pathname + '#/leaves/inbox" style="display:inline-block;background:#6366f1;color:#fff;padding:8px 16px;text-decoration:none;border-radius:6px;font-weight:bold">เปิดดูรายการรอดำเนินการ</a></p>'
@@ -5630,7 +5654,7 @@ function Notify_onLeaveResultToRequester_(leave, requester, approver) {
     + '</div>'
     + '<ul>'
     + '<li><strong>ประเภทการลา:</strong> ' + esc((LMS.LEAVE_TYPE_LABEL || {})[leave.leave_type] || leave.leave_type) + '</li>'
-    + '<li><strong>ช่วงเวลา:</strong> ' + TH.date(leave.start_date) + ' ถึง ' + TH.date(leave.end_date) + ' (' + leave.days + ' วัน)</li>'
+    + '<li><strong>ช่วงเวลา:</strong> ' + formatThDate(leave.start_date) + ' ถึง ' + formatThDate(leave.end_date) + ' (' + leave.days + ' วัน)</li>'
     + '</ul>'
     + '<p><a href="' + window.location.origin + window.location.pathname + '#/leaves/mine" style="display:inline-block;background:#6366f1;color:#fff;padding:8px 16px;text-decoration:none;border-radius:6px;font-weight:bold">ตรวจสอบใบลาของฉัน</a></p>'
     + '<hr><p style="font-size:12px;color:#888">นี่คือข้อความอัตโนมัติจากระบบ AvarinLMS</p>';
