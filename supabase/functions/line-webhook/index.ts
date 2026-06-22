@@ -7,6 +7,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 // === ENVIRONMENT VARIABLES ===
 const DENO_SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const DENO_SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY') || '';
+const SUPABASE_RECEIPT_BUCKET = 'receipts';
 
 // === GLOBAL CACHE OBJECTS ===
 let GLOBAL_SETTINGS: any = {};
@@ -31,8 +32,13 @@ class ScriptCache {
     this.map.delete(key);
   }
 }
+
+// IMPORTANT: return the same cache instance every time.
+// Returning a new ScriptCache on each call caused LINE flow state
+// (leave/expense step data) to disappear immediately between webhook events.
+const GLOBAL_SCRIPT_CACHE = new ScriptCache();
 const CacheService = {
-  getScriptCache: () => new ScriptCache()
+  getScriptCache: () => GLOBAL_SCRIPT_CACHE
 };
 
 const UrlFetchApp = {
@@ -291,7 +297,7 @@ const SETTINGS_DEFAULTS = Object.freeze({
   line_channel_access_token: '',
   line_channel_secret: '',
   // web portal url
-  web_url: 'http://localhost:8000',
+  web_url: 'https://mairokjiz-ops.github.io/AvarinLMS/',
   // email settings
   email_from_alias: ''
 });
@@ -520,14 +526,23 @@ function _dbIdCol_(table) {
   return 'id';
 }
 
-// Warm the database cache (must be called at start of every API invocation)
-async function DB_warmCache() {
-  var tables = ['Users', 'Leaves', 'Sessions', 'Settings', 'AuditLog', 'Missions', 'Expenses', 'Holidays'];
-  for (var i = 0; i < tables.length; i++) {
-    var t = tables[i];
+// Warm only the database tables that are needed for the current request.
+// If no table list is provided, keep the legacy behavior and warm everything.
+async function DB_warmCache(tables) {
+  var defaultTables = ['Users', 'Leaves', 'Sessions', 'Settings', 'AuditLog', 'Missions', 'Expenses', 'Holidays'];
+  var list = Array.isArray(tables) && tables.length ? tables.slice() : defaultTables.slice();
+  var seen = {};
+  list = list.filter(function (t) {
+    if (!t || seen[t]) return false;
+    seen[t] = true;
+    return true;
+  });
+
+  await Promise.all(list.map(async function (t) {
+    if (DB_CACHE[t]) return;
     var rows = await sbFetch('GET', t, 'select=*&limit=10000');
     DB_CACHE[t] = rows || [];
-  }
+  }));
 }
 
 // Synchronous Reads!
@@ -616,6 +631,87 @@ async function DB_delete(table, id) {
   }
   
   return { ok: true };
+}
+
+// ============================================================
+// LINE cache warm-up helpers (load only the tables each event needs)
+// ============================================================
+function _LINE_uniqueTables_(arr) {
+  var out = [];
+  var seen = {};
+  (arr || []).forEach(function (t) {
+    if (!t || seen[t]) return;
+    seen[t] = 1;
+    out.push(t);
+  });
+  return out;
+}
+
+function _LINE_tablesForEvent_(event) {
+  var tables = ['Users', 'Settings'];
+  if (!event) return tables;
+
+  var txt = '';
+  if (event.type === 'message' && event.message && event.message.type === 'text') {
+    txt = String(event.message.text || '').trim().toLowerCase();
+    var state = null;
+    try { state = _LINE_getStateSync_(String(event.source && event.source.userId || '')); } catch (e) { state = null; }
+
+    // State-driven branches
+    if (state && String(state.step || '').indexOf('expense_') === 0) {
+      if (state.step === 'expense_confirm') tables.push('Expenses');
+    }
+    if (state && (state.step === 'enter_reason' || state.step === 'confirm')) {
+      tables.push('Leaves', 'Holidays');
+    }
+
+    // Text commands
+    if (txt === 'รายการเบิก' || txt === 'expense list' || txt === 'my expense') {
+      tables.push('Expenses');
+    }
+    if (txt === 'ขอลา' || txt === 'ยื่นใบลา' || txt === 'ลา' || txt === 'leave') {
+      tables.push('Leaves', 'Holidays');
+    }
+    if (txt === 'check quota' || txt === 'เช็กสิทธิ์วันลาคงเหลือ' || txt === 'check_status' || txt === 'ติดตามสถานะใบลาล่าสุด') {
+      tables.push('Leaves', 'Holidays');
+    }
+    if (txt === 'pending leaves' || txt === 'ใบลาค้าง' || txt === 'ใบลาค้างอนุมัติ') {
+      tables.push('Leaves', 'Holidays');
+    }
+    if (txt === 'เบิกค่าใช้จ่าย' || txt === 'เบิก' || txt === 'expense') {
+      // no extra table needed yet
+    }
+  } else if (event.type === 'postback') {
+    var params = _LINE_parseQueryString_(event.postback && event.postback.data || '');
+    var action = String(params.action || '');
+
+    if (action.indexOf('expense_') === 0) {
+      if (action === 'expense_my_list' || action === 'expense_pending' || action === 'expense_confirm_yes' || action === 'expense_decision') {
+        tables.push('Expenses');
+      }
+    }
+
+    if (action.indexOf('submit_') === 0 || action === 'pending_leaves' || action === 'leave_decision' || action === 'check_quota' || action === 'check_status') {
+      tables.push('Leaves', 'Holidays');
+    }
+
+    if (action === 'portal') {
+      // portal only needs user + settings
+    }
+  } else if (event.type === 'follow') {
+    // user + settings only
+  }
+
+  return _LINE_uniqueTables_(tables);
+}
+
+async function LINE_warmTablesForEvents_(events) {
+  var tables = ['Users', 'Settings'];
+  (events || []).forEach(function (event) {
+    var t = _LINE_tablesForEvent_(event);
+    t.forEach(function (x) { tables.push(x); });
+  });
+  await DB_warmCache(_LINE_uniqueTables_(tables));
 }
 
 function DB_invalidate(name) {}
@@ -1652,7 +1748,11 @@ function Dashboard_data(user) {
 function _settingsMap_() {
   var rows = DB_readAll(SHEETS.SETTINGS);
   var map = {};
-  rows.forEach(function (r) { map[String(r.key)] = String(r.value == null ? '' : r.value); });
+  rows.forEach(function (r) {
+    var key = String(r.key || '');
+    if (key.indexOf('line_state:') === 0) return; // internal LINE flow state, do not expose via app settings
+    map[key] = String(r.value == null ? '' : r.value);
+  });
   return map;
 }
 
@@ -2242,6 +2342,39 @@ function Expense_list(user, p) {
   return { items: items, total: items.length };
 }
 
+function _wf_expenseSummary_(rows) {
+  var out = {
+    total_count: 0,
+    total_amount: 0,
+    draft_count: 0,
+    pending_count: 0,
+    approved_count: 0,
+    rejected_count: 0,
+    cancelled_count: 0,
+    approved_amount: 0
+  };
+  (rows || []).forEach(function (r) {
+    out.total_count++;
+    out.total_amount += Number(r.amount || 0);
+    if (r.status === STATUS.DRAFT) out.draft_count++;
+    else if (r.status === STATUS.PENDING) out.pending_count++;
+    else if (r.status === STATUS.APPROVED) {
+      out.approved_count++;
+      out.approved_amount += Number(r.approved_amount != null && r.approved_amount !== '' ? r.approved_amount : r.amount || 0);
+    } else if (r.status === STATUS.REJECTED) {
+      out.rejected_count++;
+    } else if (r.status === STATUS.CANCELLED) {
+      out.cancelled_count++;
+    }
+  });
+  return out;
+}
+
+function Expense_summary(user, p) {
+  var items = _wf_visibleExpenseRows_(user, p || {});
+  return { summary: _wf_expenseSummary_(items), items: items.slice(0, 10) };
+}
+
 function Expense_get(user, p) {
   var id = String((p && p.id) || '').trim();
   if (!id) throw new Error('ระบุ id');
@@ -2253,7 +2386,9 @@ function Expense_get(user, p) {
   if (scope === 'own' && String(ex.created_by) !== String(user.id)) throw new Error('คุณไม่มีสิทธิ์ดูรายการนี้');
   if (scope === 'department') {
     var owner = users[ex.created_by] || {};
-    if (String(owner.department || '') !== String(user.department || ''));
+    if (String(owner.department || '') !== String(user.department || '')) {
+      throw new Error('คุณไม่มีสิทธิ์ดูรายการนี้');
+    }
   }
   
   return {
@@ -2306,7 +2441,7 @@ async function Expense_create(user, p) {
   
   await Audit_log_(user, 'expense.create', 'expense', ex.id, { expense_no: ex.expense_no, status: status });
   
-  if (status === STATUS.PENDING) {
+  if (status === STATUS.PENDING && !data.skip_notify) {
     Notify_onExpenseSubmit_(ex, user);
   }
   
@@ -2542,9 +2677,8 @@ async function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 3. ข้ามการตรวจสอบ Signature
-    // เนื่องจาก Google Apps Script ไม่รองรับการอ่าน Request Headers ในฟังก์ชัน doPost
-    // ความปลอดภัยยังคงได้รับความคุ้มครองผ่าน URL แบบสุ่มที่เป็นความลับของแอปเว็บ (GUID)
+    // 3. วาง cache แบบเลือกเฉพาะตารางที่เกี่ยวข้องกับ event ชุดนี้
+    await LINE_warmTablesForEvents_(events);
 
     // 4. วนลูปประมวลผลแต่ละ Event
     for (var i = 0; i < events.length; i++) {
@@ -2555,6 +2689,8 @@ async function doPost(e) {
 
       if (event.type === 'message' && event.message.type === 'text') {
         await _LINE_handleTextMessage_(event, replyToken, lineUserId);
+      } else if (event.type === 'message' && event.message.type === 'image') {
+        await _LINE_handleImageMessage_(event, replyToken, lineUserId);
       } else if (event.type === 'postback') {
         await _LINE_handlePostbackEvent_(event, replyToken, lineUserId);
       } else if (event.type === 'follow') {
@@ -2636,8 +2772,51 @@ async function _LINE_handleTextMessage_(event, replyToken, lineUserId) {
     var notConnectedFlex = LINE_buildNotConnectedFlex_();
     await LINE_replyMessage_(replyToken, [notConnectedFlex]);
   } else {
-    // เช็กสถานะการยื่นใบลาแบบพิมพ์โต้ตอบ
-    var state = _LINE_getState_(lineUserId);
+    // เช็กสถานะการยื่นใบลา/เบิกค่าใช้จ่ายแบบพิมพ์โต้ตอบ
+    var state = await _LINE_getState_(lineUserId);
+
+    if (state && String(state.step || '').indexOf('expense_') === 0) {
+      if (state.step === 'expense_enter_amount') {
+        var amount = Number(String(txt).replace(/[,฿ ]/g, ''));
+        if (!isFinite(amount) || amount <= 0) {
+          await LINE_replyTextMessage_(replyToken, "⚠️ กรุณาพิมพ์จำนวนเงินเป็นตัวเลขที่ถูกต้อง");
+          return;
+        }
+        state.amount = amount;
+        state.step = 'expense_enter_description';
+        await _LINE_saveState_(lineUserId, state);
+        await LINE_replyTextMessage_(replyToken, "✍️ พิมพ์รายละเอียดค่าใช้จ่าย เช่น ค่ารถไปประชุม / ค่าอาหารระหว่างออกงาน");
+        return;
+      }
+
+      if (state.step === 'expense_enter_description') {
+        if (txt.length < 3) {
+          await LINE_replyTextMessage_(replyToken, "⚠️ โปรดระบุรายละเอียดอย่างน้อย 3 ตัวอักษร");
+          return;
+        }
+        state.description = txt;
+        state.step = 'expense_enter_receipt';
+        await _LINE_saveState_(lineUserId, state);
+        await LINE_replyTextMessage_(replyToken, "📷 ส่งรูปใบเสร็จเป็นภาพถ่ายได้เลย หรือพิมพ์ 'ข้าม' เพื่อไม่แนบใบเสร็จ");
+        return;
+      }
+
+      if (state.step === 'expense_enter_receipt') {
+        var receipt = txt;
+        if (/^(ข้าม|ไม่แนบ|ไม่มี|skip)$/i.test(receipt)) {
+          state.receipt_url = '';
+          state.step = 'expense_confirm';
+          await _LINE_saveState_(lineUserId, state);
+          var expenseConfirmFlex = LINE_buildExpenseConfirmFlex_(user, state);
+          await LINE_replyMessage_(replyToken, [expenseConfirmFlex]);
+          return;
+        }
+
+        await LINE_replyTextMessage_(replyToken, "📷 กรุณาส่งรูปใบเสร็จเป็นภาพถ่ายได้เลย หรือพิมพ์ 'ข้าม' หากไม่ต้องแนบใบเสร็จ");
+        return;
+      }
+    }
+
     if (state && state.step === 'enter_reason') {
       if (txt.length < 3) {
         await LINE_replyTextMessage_(replyToken, "⚠️ โปรดระบุเหตุผลการลาอย่างน้อย 3 ตัวอักษรขึ้นไปครับ");
@@ -2645,7 +2824,7 @@ async function _LINE_handleTextMessage_(event, replyToken, lineUserId) {
       }
       state.step = 'confirm';
       state.reason = txt;
-      _LINE_saveState_(lineUserId, state);
+      await _LINE_saveState_(lineUserId, state);
       
       var confirmFlex = LINE_buildLeaveConfirmFlex_(user, state);
       await LINE_replyMessage_(replyToken, [confirmFlex]);
@@ -2657,10 +2836,52 @@ async function _LINE_handleTextMessage_(event, replyToken, lineUserId) {
       await _LINE_startLeaveFlow_(replyToken, lineUserId);
       return;
     }
+    if (lowTxt === 'เบิกค่าใช้จ่าย' || lowTxt === 'เบิก' || lowTxt === 'expense') {
+      await _LINE_startExpenseFlow_(replyToken, lineUserId);
+      return;
+    }
+    if (lowTxt === 'รายการเบิก' || lowTxt === 'expense list' || lowTxt === 'my expense') {
+      var myExpenses = Expense_list(user, { status: '' }).items || [];
+      await LINE_replyTextMessage_(replyToken, LINE_buildExpenseListText_(myExpenses));
+      return;
+    }
 
     // ถ้าเชื่อมบัญชีแล้ว ส่ง Flex Portal ที่เหมาะสมตามบทบาท (Role)
     var portalFlex = LINE_buildPortalFlexForUser_(user);
     await LINE_replyMessage_(replyToken, [portalFlex]);
+  }
+}
+
+async function _LINE_handleImageMessage_(event, replyToken, lineUserId) {
+  var user = DB_findOne(SHEETS.USERS, function (r) {
+    return String(r.line_user_id) === lineUserId;
+  });
+
+  if (!user) {
+    await LINE_replyTextMessage_(replyToken, '❌ กรุณาเชื่อมบัญชีก่อนใช้งาน');
+    return;
+  }
+
+  var state = await _LINE_getState_(lineUserId);
+  if (!state || state.step !== 'expense_enter_receipt') {
+    await LINE_replyTextMessage_(replyToken, '📷 รูปนี้ยังไม่อยู่ในขั้นตอนแนบใบเสร็จ กรุณาเริ่มเบิกค่าใช้จ่ายใหม่อีกครั้ง');
+    return;
+  }
+
+  try {
+    var imageId = String(event.message && event.message.id || '').trim();
+    if (!imageId) throw new Error('ไม่พบรหัสรูปภาพ');
+    var uploaded = await _LINE_uploadReceiptImage_(imageId, lineUserId);
+    state.receipt_url = uploaded.url;
+    state.receipt_path = uploaded.path;
+    state.step = 'expense_confirm';
+    await _LINE_saveState_(lineUserId, state);
+
+    var expenseConfirmFlex = LINE_buildExpenseConfirmFlex_(user, state);
+    await LINE_replyMessage_(replyToken, [expenseConfirmFlex]);
+  } catch (err) {
+    console.error('Error in _LINE_handleImageMessage_: ' + err.stack);
+    await LINE_replyTextMessage_(replyToken, '❌ อัปโหลดรูปใบเสร็จไม่สำเร็จ: ' + err.message);
   }
 }
 
@@ -2684,6 +2905,75 @@ async function _LINE_handlePostbackEvent_(event, replyToken, lineUserId) {
   if (action === 'portal') {
     var portalFlex = LINE_buildPortalFlexForUser_(user);
     await LINE_replyMessage_(replyToken, [portalFlex]);
+  } else if (action === 'expense_start') {
+    await _LINE_startExpenseFlow_(replyToken, lineUserId);
+  } else if (action === 'expense_my_list') {
+    var myExpenses = Expense_list(user, { status: '' }).items || [];
+    await LINE_replyTextMessage_(replyToken, LINE_buildExpenseListText_(myExpenses));
+  } else if (action === 'expense_pending') {
+    if (!hasCap_(user.role, 'expense.manage')) {
+      await LINE_replyTextMessage_(replyToken, "🔒 ฟังก์ชันนี้เฉพาะผู้อนุมัติเท่านั้นครับ");
+      return;
+    }
+    var pendingExpenses = Expense_list(user, { status: STATUS.PENDING }).items || [];
+    var pendingExpenseFlex = LINE_buildExpensePendingFlex_(user, pendingExpenses);
+    await LINE_replyMessage_(replyToken, [pendingExpenseFlex]);
+  } else if (action === 'expense_select_type') {
+    var state = await _LINE_getState_(lineUserId) || {};
+    state.step = 'expense_select_date';
+    state.expense_type = params.type || 'other';
+    await _LINE_saveState_(lineUserId, state);
+    var startExpensePicker = LINE_buildExpenseDatePickerFlex_("ขั้นตอนที่ 2: เลือกวันที่จ่าย", "action=expense_select_date", "📅 เลือกวันที่จ่าย");
+    await LINE_replyMessage_(replyToken, [startExpensePicker]);
+  } else if (action === 'expense_select_date') {
+    var selectedExpenseDate = event.postback.params && event.postback.params.date;
+    var state = await _LINE_getState_(lineUserId);
+    if (!state || state.step !== 'expense_select_date') {
+      await LINE_replyTextMessage_(replyToken, "❌ เซสชันหมดอายุหรือผิดพลาด กรุณากดเบิกค่าใช้จ่ายใหม่อีกครั้งครับ");
+      await _LINE_clearState_(lineUserId);
+      return;
+    }
+    state.step = 'expense_enter_amount';
+    state.expense_date = selectedExpenseDate;
+    await _LINE_saveState_(lineUserId, state);
+    await LINE_replyTextMessage_(replyToken, "💵 พิมพ์จำนวนเงินที่จ่ายไป เช่น 350 หรือ 1250.50");
+  } else if (action === 'expense_confirm_yes') {
+    var state = await _LINE_getState_(lineUserId);
+    if (!state || state.step !== 'expense_confirm') {
+      await LINE_replyTextMessage_(replyToken, "❌ เซสชันหมดอายุหรือผิดพลาด กรุณากดเบิกค่าใช้จ่ายใหม่อีกครั้งครับ");
+      await _LINE_clearState_(lineUserId);
+      return;
+    }
+    try {
+      var ex = await Expense_create(user, {
+        expense_type: _LINE_getExpenseTypeLabel_(state.expense_type),
+        expense_date: state.expense_date,
+        amount: state.amount,
+        description: state.description,
+        receipt_url: state.receipt_url || '',
+        skip_notify: true
+      });
+      await _LINE_clearState_(lineUserId);
+      var expenseSuccessFlex = LINE_buildExpenseSuccessFlex_(user, ex);
+      await LINE_replyMessage_(replyToken, [expenseSuccessFlex]);
+    } catch (err) {
+      await LINE_replyTextMessage_(replyToken, "❌ ไม่สามารถบันทึกค่าใช้จ่ายได้: " + err.message);
+      await _LINE_clearState_(lineUserId);
+    }
+  } else if (action === 'expense_decision') {
+    if (!hasCap_(user.role, 'expense.manage')) {
+      await LINE_replyTextMessage_(replyToken, "🔒 ฟังก์ชันนี้เฉพาะผู้อนุมัติเท่านั้นครับ");
+      return;
+    }
+    try {
+      var decisionRes = await Expense_approve(user, {
+        id: params.id,
+        decision: params.decision || 'approved'
+      });
+      await LINE_replyTextMessage_(replyToken, "✅ อัปเดตสถานะเรียบร้อย: " + (decisionRes.status_label || decisionRes.status || ''));
+    } catch (err) {
+      await LINE_replyTextMessage_(replyToken, "❌ อัปเดตสถานะไม่สำเร็จ: " + err.message);
+    }
   } else if (action === 'check_quota') {
     var quotaFlex = LINE_buildLeaveQuotaFlex_(user);
     await LINE_replyMessage_(replyToken, [quotaFlex]);
@@ -2702,7 +2992,7 @@ async function _LINE_handlePostbackEvent_(event, replyToken, lineUserId) {
       await LINE_replyTextMessage_(replyToken, "🔒 ฟังก์ชันนี้เฉพาะหัวหน้างานหรือฝ่ายอนุมัติเท่านั้นครับ");
       return;
     }
-    
+
     // ดึงรายการรอพิจารณา
     var leaves = DB_readAll(SHEETS.LEAVES);
     var usersIndex = DB_buildIndex(SHEETS.USERS);
@@ -2718,56 +3008,71 @@ async function _LINE_handlePostbackEvent_(event, replyToken, lineUserId) {
       var pendingFlex = LINE_buildPendingLeavesFlex_(user, pending.slice(0, 5)); // ส่งไปสูงสุด 5 ใบเพื่อไม่ให้เกิน Limit
       await LINE_replyMessage_(replyToken, [pendingFlex]);
     }
+  } else if (action === 'leave_decision') {
+    if (!hasCap_(user.role, 'leave.approve')) {
+      await LINE_replyTextMessage_(replyToken, "🔒 ฟังก์ชันนี้เฉพาะผู้อนุมัติเท่านั้นครับ");
+      return;
+    }
+    try {
+      var leaveDecisionRes = await Leaves_approve(user, {
+        id: params.id,
+        decision: params.decision || 'approved',
+        comment: params.comment || ''
+      });
+      await LINE_replyTextMessage_(replyToken, "✅ อัปเดตสถานะใบลาเรียบร้อย: " + (leaveDecisionRes.status_label || (params.decision === 'rejected' ? 'ไม่อนุมัติ' : 'อนุมัติแล้ว')));
+    } catch (err) {
+      await LINE_replyTextMessage_(replyToken, "❌ อัปเดตใบลาไม่สำเร็จ: " + err.message);
+    }
   } else if (action === 'submit_leave_start') {
     await _LINE_startLeaveFlow_(replyToken, lineUserId);
   } else if (action === 'submit_select_type') {
     var type = params.type;
     var state = { step: 'select_start_date', leave_type: type };
-    _LINE_saveState_(lineUserId, state);
+    await _LINE_saveState_(lineUserId, state);
     
     var startPickerFlex = LINE_buildDatePickerFlex_("ขั้นตอนที่ 2: เลือกวันเริ่มลา", "action=submit_select_start_date", "📅 เลือกวันเริ่มลา");
     await LINE_replyMessage_(replyToken, [startPickerFlex]);
   } else if (action === 'submit_select_start_date') {
     var selectedDate = event.postback.params && event.postback.params.date;
-    var state = _LINE_getState_(lineUserId);
+    var state = await _LINE_getState_(lineUserId);
     if (!state || state.step !== 'select_start_date') {
       await LINE_replyTextMessage_(replyToken, "❌ เซสชันหมดอายุหรือผิดพลาด กรุณากดปุ่มยื่นใบลาใหม่อีกครั้งครับ");
-      _LINE_clearState_(lineUserId);
+      await _LINE_clearState_(lineUserId);
       return;
     }
     
     state.step = 'select_end_date';
     state.start_date = selectedDate;
-    _LINE_saveState_(lineUserId, state);
+    await _LINE_saveState_(lineUserId, state);
     
     var endPickerFlex = LINE_buildDatePickerFlex_("ขั้นตอนที่ 3: เลือกวันสิ้นสุดการลา", "action=submit_select_end_date", "📅 เลือกวันสิ้นสุดการลา");
     await LINE_replyMessage_(replyToken, [endPickerFlex]);
   } else if (action === 'submit_select_end_date') {
     var selectedDate = event.postback.params && event.postback.params.date;
-    var state = _LINE_getState_(lineUserId);
+    var state = await _LINE_getState_(lineUserId);
     if (!state || state.step !== 'select_end_date') {
       await LINE_replyTextMessage_(replyToken, "❌ เซสชันหมดอายุหรือผิดพลาด กรุณากดปุ่มยื่นใบลาใหม่อีกครั้งครับ");
-      _LINE_clearState_(lineUserId);
+      await _LINE_clearState_(lineUserId);
       return;
     }
     
     var days = cfg_daysBetween_(state.start_date, selectedDate);
     if (days <= 0) {
       await LINE_replyTextMessage_(replyToken, "⚠️ ช่วงวันที่ลาไม่ถูกต้อง (วันสิ้นสุดการลาต้องไม่ก่อนหน้าวันเริ่มลา และต้องไม่ใช่ปฏิทินวันหยุดงาน)\n\nกรุณากดเลือกวันเริ่มลาและสิ้นสุดใหม่อีกครั้งครับ");
-      _LINE_clearState_(lineUserId);
+      await _LINE_clearState_(lineUserId);
       return;
     }
     
     state.step = 'enter_reason';
     state.end_date = selectedDate;
-    _LINE_saveState_(lineUserId, state);
+    await _LINE_saveState_(lineUserId, state);
     
     await LINE_replyTextMessage_(replyToken, "✍️ ขั้นตอนสุดท้าย: โปรดพิมพ์เหตุผลในการลาส่งกลับมาในแชตนี้ได้เลยครับ (เช่น เป็นไข้สูงปวดศีรษะ, ไปทำธุระต่างจังหวัด)");
   } else if (action === 'submit_confirm_yes') {
-    var state = _LINE_getState_(lineUserId);
+    var state = await _LINE_getState_(lineUserId);
     if (!state || state.step !== 'confirm') {
       await LINE_replyTextMessage_(replyToken, "❌ เซสชันหมดอายุหรือผิดพลาด กรุณากดปุ่มยื่นใบลาใหม่อีกครั้งครับ");
-      _LINE_clearState_(lineUserId);
+      await _LINE_clearState_(lineUserId);
       return;
     }
     
@@ -2779,16 +3084,16 @@ async function _LINE_handlePostbackEvent_(event, replyToken, lineUserId) {
         reason: state.reason,
         leave_unit: 'day'
       });
-      _LINE_clearState_(lineUserId);
+      await _LINE_clearState_(lineUserId);
       
       var successFlex = LINE_buildSubmitSuccessFlex_(user, res.leave);
       await LINE_replyMessage_(replyToken, [successFlex]);
     } catch (err) {
       await LINE_replyTextMessage_(replyToken, "❌ ไม่สามารถยื่นใบลาได้: " + err.message);
-      _LINE_clearState_(lineUserId);
+      await _LINE_clearState_(lineUserId);
     }
   } else if (action === 'submit_cancel') {
-    _LINE_clearState_(lineUserId);
+    await _LINE_clearState_(lineUserId);
     await LINE_replyTextMessage_(replyToken, "❌ ยกเลิกการยื่นใบลาเรียบร้อยแล้ว");
   }
 }
@@ -2835,7 +3140,7 @@ function _LINE_getLatestLeaveRequest_(userId) {
  * คืนค่า URL ของ Web App ปัจจุบัน เพื่อนำไปเชื่อม Webhook
  */
 function LINE_getWebhookUrl() {
-  return GLOBAL_SETTINGS['web_url'] || 'http://localhost:8000';
+  return GLOBAL_SETTINGS['web_url'] || 'https://mairokjiz-ops.github.io/AvarinLMS/';
 }
 
 /**
@@ -2873,6 +3178,85 @@ async function LINE_replyTextMessage_(replyToken, text) {
     type: "text",
     text: text
   }]);
+}
+
+/**
+ * ดาวน์โหลดไฟล์มีเดียจาก LINE Content API
+ */
+async function LINE_downloadLineContent_(messageId) {
+  var channelAccessToken = _settingsRaw_('line_channel_access_token');
+  if (!channelAccessToken) throw new Error('ยังไม่ได้ตั้งค่า LINE channel access token');
+  var url = 'https://api-data.line.me/v2/bot/message/' + encodeURIComponent(String(messageId || '')) + '/content';
+  var res = await fetch(url, {
+    method: 'GET',
+    headers: { 'Authorization': 'Bearer ' + channelAccessToken }
+  });
+  if (!res.ok) {
+    throw new Error('ดาวน์โหลดรูปจาก LINE ไม่สำเร็จ (HTTP ' + res.status + ')');
+  }
+  var bytes = new Uint8Array(await res.arrayBuffer());
+  var contentType = res.headers.get('content-type') || 'application/octet-stream';
+  return { bytes: bytes, contentType: contentType };
+}
+
+function _LINE_guessImageExtension_(contentType) {
+  var ct = String(contentType || '').toLowerCase();
+  if (ct.indexOf('png') >= 0) return 'png';
+  if (ct.indexOf('webp') >= 0) return 'webp';
+  if (ct.indexOf('gif') >= 0) return 'gif';
+  if (ct.indexOf('heic') >= 0 || ct.indexOf('heif') >= 0) return 'heic';
+  return 'jpg';
+}
+
+function _LINE_buildReceiptStoragePath_(lineUserId, ext) {
+  var now = cfg_now_();
+  var y = now.getFullYear();
+  var m = ('0' + (now.getMonth() + 1)).slice(-2);
+  var stamp = now.getTime();
+  var rand = String(crypto.randomUUID()).replace(/-/g, '').slice(0, 12);
+  return [
+    String(y),
+    String(m),
+    String(lineUserId || 'unknown'),
+    'rcpt_' + stamp + '_' + rand + '.' + ext
+  ].join('/');
+}
+
+function _LINE_publicStorageUrl_(path) {
+  var base = String(SUPABASE_URL || DENO_SUPABASE_URL || '').replace(/\/$/, '');
+  return base + '/storage/v1/object/public/' + SUPABASE_RECEIPT_BUCKET + '/' + path.split('/').map(encodeURIComponent).join('/');
+}
+
+async function _LINE_uploadReceiptImage_(messageId, lineUserId) {
+  var file = await LINE_downloadLineContent_(messageId);
+  var ext = _LINE_guessImageExtension_(file.contentType);
+  var path = _LINE_buildReceiptStoragePath_(lineUserId, ext);
+
+  var base = String(SUPABASE_URL || DENO_SUPABASE_URL || '').replace(/\/$/, '');
+  var uploadUrl = base + '/storage/v1/object/' + SUPABASE_RECEIPT_BUCKET + '/' + path.split('/').map(encodeURIComponent).join('/');
+
+  var headers = {
+    'apikey': DENO_SUPABASE_KEY,
+    'Authorization': 'Bearer ' + DENO_SUPABASE_KEY,
+    'Content-Type': file.contentType || 'application/octet-stream',
+    'x-upsert': 'true'
+  };
+
+  var res = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: headers,
+    body: file.bytes
+  });
+
+  if (!res.ok) {
+    var errText = await res.text().catch(function () { return ''; });
+    throw new Error('อัปโหลดรูปใบเสร็จไม่สำเร็จ: ' + (errText || ('HTTP ' + res.status)));
+  }
+
+  return {
+    path: path,
+    url: _LINE_publicStorageUrl_(path)
+  };
 }
 
 /**
@@ -2976,6 +3360,22 @@ function LINE_buildPortalFlexForUser_(user) {
               height: "sm",
               margin: "sm",
               action: { type: "postback", label: "🔍 ติดตามสถานะใบลาล่าสุด", data: "action=check_status" }
+            },
+            {
+              type: "button",
+              style: "primary",
+              color: "#0f766e",
+              height: "sm",
+              margin: "sm",
+              action: { type: "postback", label: "💰 เบิกค่าใช้จ่าย", data: "action=expense_start" }
+            },
+            {
+              type: "button",
+              style: "secondary",
+              color: "#e0f2fe",
+              height: "sm",
+              margin: "sm",
+              action: { type: "postback", label: "📋 รายการเบิกของฉัน", data: "action=expense_my_list" }
             }
           ]
         }
@@ -2992,6 +3392,14 @@ function LINE_buildPortalFlexForUser_(user) {
       height: "sm",
       margin: "sm",
       action: { type: "postback", label: "📥 พิจารณาใบลาค้างอนุมัติ", data: "action=pending_leaves" }
+    });
+    bubble.body.contents[2].contents.push({
+      type: "button",
+      style: "primary",
+      color: "#0f172a",
+      height: "sm",
+      margin: "sm",
+      action: { type: "postback", label: "📥 พิจารณาค่าใช้จ่ายค้าง", data: "action=expense_pending" }
     });
   }
 
@@ -3497,6 +3905,22 @@ function LINE_buildPendingLeavesFlex_(user, pendingLeaves) {
             style: "primary",
             color: "#10b981",
             height: "sm",
+            action: { type: "postback", label: "✅ อนุมัติใบลา", data: "action=leave_decision&id=" + lv.id + "&decision=approved" }
+          },
+          {
+            type: "button",
+            style: "primary",
+            color: "#ef4444",
+            height: "sm",
+            margin: "sm",
+            action: { type: "postback", label: "❌ ไม่อนุมัติ", data: "action=leave_decision&id=" + lv.id + "&decision=rejected" }
+          },
+          {
+            type: "button",
+            style: "secondary",
+            color: "#6366f1",
+            height: "sm",
+            margin: "sm",
             action: { type: "uri", label: "📝 ดำเนินการบนเว็บบอร์ด", uri: webUrl }
           }
         ]
@@ -3595,35 +4019,311 @@ function LINE_runLocalTests() {
 
 // ── LINE Chat-based Leave Submission Flow Helpers ───────────────────────────
 
-function _LINE_getState_(lineUserId) {
+function _LINE_stateKey_(lineUserId) {
+  return 'line_state:' + String(lineUserId || '').trim();
+}
+
+/**
+ * Fast sync lookup used only in warm-up heuristics.
+ * This reads the current in-memory cache only.
+ */
+function _LINE_getStateSync_(lineUserId) {
   try {
-    var raw = CacheService.getScriptCache().get('line_state:' + lineUserId);
+    var raw = CacheService.getScriptCache().get(_LINE_stateKey_(lineUserId));
     return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function _LINE_getState_(lineUserId) {
+  var key = _LINE_stateKey_(lineUserId);
+  try {
+    // 1) Fast path: memory cache
+    var cached = CacheService.getScriptCache().get(key);
+    if (cached) return JSON.parse(cached);
+
+    // 2) Persistent path: Settings table (stores line_state:* keys)
+    var row = DB_findById(SHEETS.SETTINGS, key);
+    if (row && typeof row.value !== 'undefined' && row.value !== null && String(row.value) !== '') {
+      var raw = String(row.value);
+      CacheService.getScriptCache().put(key, raw, 86400);
+      return JSON.parse(raw);
+    }
+    return null;
   } catch (e) {
     console.error('Error in _LINE_getState_: ' + e.message);
     return null;
   }
 }
 
-function _LINE_saveState_(lineUserId, state) {
+async function _LINE_saveState_(lineUserId, state) {
+  var key = _LINE_stateKey_(lineUserId);
+  var raw = JSON.stringify(state || {});
   try {
-    CacheService.getScriptCache().put('line_state:' + lineUserId, JSON.stringify(state), 600); // 10 minutes TTL
+    CacheService.getScriptCache().put(key, raw, 86400); // refresh local cache immediately
+  } catch (e) {}
+  try {
+    var existing = DB_findById(SHEETS.SETTINGS, key);
+    if (existing) {
+      await DB_update(SHEETS.SETTINGS, key, { value: raw });
+    } else {
+      await DB_insert(SHEETS.SETTINGS, { key: key, value: raw });
+    }
   } catch (e) {
     console.error('Error in _LINE_saveState_: ' + e.message);
   }
 }
 
-function _LINE_clearState_(lineUserId) {
+async function _LINE_clearState_(lineUserId) {
+  var key = _LINE_stateKey_(lineUserId);
   try {
-    CacheService.getScriptCache().remove('line_state:' + lineUserId);
+    CacheService.getScriptCache().remove(key);
+  } catch (e) {}
+  try {
+    var existing = DB_findById(SHEETS.SETTINGS, key);
+    if (existing) await DB_delete(SHEETS.SETTINGS, key);
   } catch (e) {
     console.error('Error in _LINE_clearState_: ' + e.message);
   }
 }
 
+function _LINE_getExpenseTypeLabel_(type) {
+  var map = {
+    travel: "ค่าเดินทาง",
+    meal: "ค่าอาหาร",
+    lodging: "ค่าที่พัก",
+    office: "ค่าวัสดุ/อุปกรณ์",
+    other: "อื่นๆ"
+  };
+  return map[type] || "ค่าใช้จ่าย";
+}
+
+function _LINE_formatThaiDate_(iso) {
+  if (!iso) return '-';
+  var d = new Date(String(iso).substring(0, 10) + 'T00:00:00');
+  if (isNaN(d.getTime())) return String(iso);
+  var day = d.getDate();
+  var month = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][d.getMonth()];
+  var year = d.getFullYear() + 543;
+  return day + ' ' + month + ' ' + year;
+}
+
+async function _LINE_startExpenseFlow_(replyToken, lineUserId) {
+  var state = { step: 'expense_select_type' };
+  await _LINE_saveState_(lineUserId, state);
+
+  var flex = {
+    type: "flex",
+    altText: "เบิกค่าใช้จ่าย - เลือกประเภท",
+    contents: {
+      type: "bubble",
+      size: "mega",
+      header: {
+        type: "box",
+        layout: "vertical",
+        backgroundColor: "#0f766e",
+        paddingAll: "20px",
+        contents: [
+          { type: "text", text: "EXPENSE REQUEST", color: "#99f6e4", size: "xs", weight: "bold" },
+          { type: "text", text: "ขั้นตอนที่ 1: เลือกประเภทค่าใช้จ่าย", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
+        ]
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "20px",
+        spacing: "sm",
+        contents: [
+          { type: "button", style: "primary", color: "#0891b2", height: "sm", action: { type: "postback", label: "🚕 ค่าเดินทาง", data: "action=expense_select_type&type=travel" } },
+          { type: "button", style: "primary", color: "#14b8a6", height: "sm", action: { type: "postback", label: "🍱 ค่าอาหาร", data: "action=expense_select_type&type=meal" } },
+          { type: "button", style: "primary", color: "#10b981", height: "sm", action: { type: "postback", label: "🏨 ค่าที่พัก", data: "action=expense_select_type&type=lodging" } },
+          { type: "button", style: "primary", color: "#06b6d4", height: "sm", action: { type: "postback", label: "🧾 ค่าวัสดุ/อุปกรณ์", data: "action=expense_select_type&type=office" } },
+          { type: "button", style: "secondary", color: "#f3f4f6", height: "sm", action: { type: "postback", label: "📝 อื่นๆ", data: "action=expense_select_type&type=other" } },
+          { type: "separator", margin: "md" },
+          { type: "button", style: "secondary", color: "#f3f4f6", height: "sm", action: { type: "postback", label: "❌ ยกเลิก", data: "action=expense_cancel" } }
+        ]
+      }
+    }
+  };
+
+  await LINE_replyMessage_(replyToken, [flex]);
+}
+
+function LINE_buildExpenseDatePickerFlex_(title, postbackData, btnLabel) {
+  return {
+    type: "flex",
+    altText: title,
+    contents: {
+      type: "bubble",
+      size: "mega",
+      header: {
+        type: "box",
+        layout: "vertical",
+        backgroundColor: "#0f766e",
+        paddingAll: "20px",
+        contents: [
+          { type: "text", text: "EXPENSE DATE", color: "#99f6e4", size: "xs", weight: "bold" },
+          { type: "text", text: title, color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
+        ]
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "20px",
+        spacing: "md",
+        contents: [
+          { type: "button", style: "primary", color: "#0f766e", height: "sm", action: { type: "datetimepicker", label: btnLabel, data: postbackData, mode: "date" } },
+          { type: "button", style: "secondary", color: "#f3f4f6", height: "sm", action: { type: "postback", label: "❌ ยกเลิก", data: "action=expense_cancel" } }
+        ]
+      }
+    }
+  };
+}
+
+function LINE_buildExpenseConfirmFlex_(user, state) {
+  var bubble = {
+    type: "bubble",
+    size: "mega",
+    header: {
+      type: "box",
+      layout: "vertical",
+      backgroundColor: "#111827",
+      paddingAll: "20px",
+      contents: [
+        { type: "text", text: "CONFIRM EXPENSE", color: "#93c5fd", size: "xs", weight: "bold" },
+        { type: "text", text: "โปรดตรวจสอบข้อมูลก่อนบันทึก", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
+      ]
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      paddingAll: "20px",
+      spacing: "sm",
+      contents: [
+        { type: "text", text: "ประเภท: " + (_LINE_getExpenseTypeLabel_(state.expense_type)), size: "xs", color: "#374151", wrap: true },
+        { type: "text", text: "วันที่: " + _LINE_formatThaiDate_(state.expense_date), size: "xs", color: "#374151", wrap: true },
+        { type: "text", text: "จำนวน: " + Number(state.amount || 0).toLocaleString('en-US') + " บาท", size: "xs", color: "#374151", wrap: true, weight: "bold" },
+        { type: "text", text: "รายละเอียด: " + String(state.description || '-'), size: "xs", color: "#374151", wrap: true },
+        { type: "text", text: "ใบเสร็จ: " + (state.receipt_url ? "อัปโหลดแล้ว" : "ไม่แนบ"), size: "xs", color: "#374151", wrap: true },
+        { type: "separator", margin: "md" },
+        {
+          type: "box",
+          layout: "vertical",
+          spacing: "sm",
+          contents: [
+            { type: "button", style: "primary", color: "#10b981", height: "sm", action: { type: "postback", label: "✅ ยืนยันบันทึก", data: "action=expense_confirm_yes" } },
+            { type: "button", style: "secondary", color: "#f3f4f6", height: "sm", action: { type: "postback", label: "❌ ยกเลิก", data: "action=expense_cancel" } }
+          ]
+        }
+      ]
+    }
+  };
+  return {
+    type: "flex",
+    altText: "โปรดยืนยันรายการเบิกค่าใช้จ่าย",
+    contents: bubble
+  };
+}
+
+function LINE_buildExpenseSuccessFlex_(user, ex) {
+  var bubble = {
+    type: "bubble",
+    size: "mega",
+    header: {
+      type: "box",
+      layout: "vertical",
+      backgroundColor: "#059669",
+      paddingAll: "20px",
+      contents: [
+        { type: "text", text: "บันทึกค่าใช้จ่ายแล้ว", color: "#d1fae5", size: "xs", weight: "bold" },
+        { type: "text", text: "ส่งเข้าระบบเรียบร้อย", color: "#ffffff", size: "lg", weight: "bold", margin: "xs" }
+      ]
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      paddingAll: "20px",
+      spacing: "sm",
+      contents: [
+        { type: "text", text: "เลขที่: " + ex.expense_no, size: "xs", color: "#374151", wrap: true },
+        { type: "text", text: "ประเภท: " + (ex.expense_type || '-'), size: "xs", color: "#374151", wrap: true },
+        { type: "text", text: "จำนวน: " + Number(ex.amount || 0).toLocaleString('en-US') + " บาท", size: "xs", color: "#374151", wrap: true, weight: "bold" },
+        { type: "text", text: "สถานะ: " + (ex.status_label || ex.status || '-'), size: "xs", color: "#374151", wrap: true }
+      ]
+    }
+  };
+  return {
+    type: "flex",
+    altText: "บันทึกค่าใช้จ่ายเรียบร้อยแล้ว",
+    contents: bubble
+  };
+}
+
+function LINE_buildExpenseListText_(items) {
+  if (!items || items.length === 0) return "ℹ️ ยังไม่พบรายการเบิกค่าใช้จ่ายของคุณ";
+  var lines = items.slice(0, 5).map(function (ex, i) {
+    return (i + 1) + ") " + ex.expense_no + " · " + (ex.expense_type || '-') + " · " + Number(ex.amount || 0).toLocaleString('en-US') + " บาท · " + (ex.status_label || ex.status || '-');
+  });
+  return "📋 รายการเบิกล่าสุด\n\n" + lines.join("\n");
+}
+
+function LINE_buildExpensePendingFlex_(user, items) {
+  var rows = (items || []).slice(0, 5).map(function (ex) {
+    return {
+      type: "box",
+      layout: "vertical",
+      spacing: "xs",
+      margin: "md",
+      contents: [
+        { type: "text", text: ex.expense_no + " · " + (ex.requester ? ex.requester.full_name : '-') , size: "sm", weight: "bold", wrap: true },
+        { type: "text", text: (ex.expense_type || '-') + " · " + Number(ex.amount || 0).toLocaleString('en-US') + " บาท", size: "xs", color: "#374151", wrap: true },
+        { type: "text", text: "สถานะ: " + (ex.status_label || ex.status || '-'), size: "xs", color: "#6b7280", wrap: true },
+        {
+          type: "box",
+          layout: "horizontal",
+          spacing: "sm",
+          contents: [
+            { type: "button", style: "primary", color: "#059669", height: "sm", action: { type: "postback", label: "✅ อนุมัติ", data: "action=expense_decision&id=" + encodeURIComponent(ex.id) + "&decision=approved" } },
+            { type: "button", style: "secondary", color: "#ef4444", height: "sm", action: { type: "postback", label: "❌ ไม่อนุมัติ", data: "action=expense_decision&id=" + encodeURIComponent(ex.id) + "&decision=rejected" } }
+          ]
+        }
+      ]
+    };
+  });
+
+  return {
+    type: "flex",
+    altText: "รายการค่าใช้จ่ายรออนุมัติ",
+    contents: {
+      type: "bubble",
+      size: "mega",
+      header: {
+        type: "box",
+        layout: "vertical",
+        backgroundColor: "#0f172a",
+        paddingAll: "20px",
+        contents: [
+          { type: "text", text: "EXPENSE APPROVAL", color: "#93c5fd", size: "xs", weight: "bold" },
+          { type: "text", text: "รายการค่าใช้จ่ายรออนุมัติ", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
+        ]
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "20px",
+        spacing: "sm",
+        contents: rows.length ? rows : [
+          { type: "text", text: "✅ ไม่มีรายการรออนุมัติ", size: "sm", color: "#374151", wrap: true }
+        ]
+      }
+    }
+  };
+}
+
 async function _LINE_startLeaveFlow_(replyToken, lineUserId) {
   var state = { step: 'select_type' };
-  _LINE_saveState_(lineUserId, state);
+  await _LINE_saveState_(lineUserId, state);
   
   var flex = {
     type: "flex",
@@ -3897,8 +4597,8 @@ serve(async (req) => {
     const bodyText = await req.text();
     const signature = req.headers.get('x-line-signature') || '';
 
-    // Warm database cache before processing (necessary for _settingsRaw_ to read settings from DB)
-    await DB_warmCache();
+    // Warm only settings first so webhook can read LINE credentials fast.
+    await DB_warmCache(['Settings']);
     GLOBAL_SETTINGS = _settingsMap_();
 
     const channelSecret = Deno.env.get('LINE_CHANNEL_SECRET') || _settingsRaw_('line_channel_secret') || '';

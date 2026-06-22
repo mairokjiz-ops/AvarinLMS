@@ -5484,6 +5484,8 @@ async function api(req) {
   // ── Profile ────────────────────────────────────────
   Routes['#/profile'] = function () {
     var u = LMS.Store.user || {};
+    var chosenAvatarBase64 = u.avatar || '';
+    var initial = (u.full_name || u.username || '?').substring(0, 1).toUpperCase();
     var html = '<div class="hero" style="margin-bottom:14px">'
       + '<span class="hero-pill"><i class="bi bi-person-circle"></i> โปรไฟล์ของฉัน</span>'
       + '<div class="hero-greet">' + esc(u.full_name) + '</div>'
@@ -5503,8 +5505,18 @@ async function api(req) {
       + '<div class="field"><label>อีเมล</label><input type="email" name="email" class="input" value="' + esc(u.email) + '"></div>'
       + '<div class="field"><label>โทรศัพท์</label><input type="tel" name="phone" class="input" value="' + esc(u.phone) + '"></div>'
       + '</div>'
-      + '<div class="field"><label>URL รูปโปรไฟล์ (lh3 link)</label>'
-      + '<input type="url" name="avatar" class="input" value="' + esc(u.avatar) + '" placeholder="https://lh3.googleusercontent.com/..."></div>'
+      + '<div class="field"><label>รูปโปรไฟล์</label>'
+      + '  <div style="display:flex;align-items:center;gap:16px;margin-top:8px">'
+      + '    <div class="pf-avatar-preview" id="pf-avatar-preview-container" style="width:80px;height:80px;border-radius:50%;overflow:hidden;border:2px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:bold;color:#64748b;flex-shrink:0">'
+      + '      ' + (u.avatar ? '<img src="' + esc(u.avatar) + '" style="width:100%;height:100%;object-fit:cover" id="pf-avatar-img">' : '<span id="pf-avatar-init">' + esc(initial) + '</span>')
+      + '    </div>'
+      + '    <div style="flex:1">'
+      + '      <input type="file" id="pf-file" accept="image/*" style="display:none">'
+      + '      <button type="button" class="btn btn-ghost" onclick="document.getElementById(\'pf-file\').click()" style="border:1px solid #cbd5e1;padding:8px 16px"><i class="bi bi-camera"></i> เลือกรูปภาพ</button>'
+      + '      <div class="field-hint" style="margin-top:4px">แนะนำรูปทรงจัตุรัส ขนาดไม่เกิน 5MB (ระบบจะย่อขนาดให้อัตโนมัติ)</div>'
+      + '    </div>'
+      + '  </div>'
+      + '</div>'
       + '<div style="display:flex;gap:8px;justify-content:flex-end">'
       + '<button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> บันทึก</button>'
       + '</div>'
@@ -5530,6 +5542,78 @@ async function api(req) {
       + '  <div style="height:40px;background:#f1f5f9;animation:pulse 1.5s infinite;border-radius:6px"></div>'
       + '</div></div>';
     setPage(html);
+
+    var fileInput = $('#pf-file');
+    if (fileInput) {
+      fileInput.addEventListener('change', function (evt) {
+        var file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+
+        var previewContainer = $('#pf-avatar-preview-container');
+        if (previewContainer) {
+          previewContainer.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" style="width:1.5rem;height:1.5rem"></span>';
+        }
+
+        var reader = new FileReader();
+        reader.onload = function (e) {
+          var img = new Image();
+          img.onload = function () {
+            var canvas = document.createElement('canvas');
+            var size = 300;
+            canvas.width = size;
+            canvas.height = size;
+            var ctx = canvas.getContext('2d');
+
+            var w = img.width;
+            var h = img.height;
+            var sx = 0, sy = 0, sSize = 0;
+            if (w > h) {
+              sSize = h;
+              sx = (w - h) / 2;
+            } else {
+              sSize = w;
+              sy = (h - w) / 2;
+            }
+            ctx.drawImage(img, sx, sy, sSize, sSize, 0, 0, size, size);
+
+            var max_bytes = 64000;
+            var quality = 0.7;
+            var dataUrl = '';
+            var attempt = 0;
+            while (attempt < 5) {
+              try {
+                dataUrl = canvas.toDataURL('image/jpeg', quality);
+              } catch (err) {
+                dataUrl = e.target.result;
+                break;
+              }
+              if (dataUrl.length <= max_bytes) break;
+              quality = Math.max(0.2, quality - 0.1);
+              attempt++;
+            }
+
+            chosenAvatarBase64 = dataUrl;
+            if (previewContainer) {
+              previewContainer.innerHTML = '<img src="' + esc(dataUrl) + '" style="width:100%;height:100%;object-fit:cover" id="pf-avatar-img">';
+            }
+          };
+          img.onerror = function () {
+            chosenAvatarBase64 = e.target.result;
+            if (previewContainer) {
+              previewContainer.innerHTML = '<img src="' + esc(e.target.result) + '" style="width:100%;height:100%;object-fit:cover" id="pf-avatar-img">';
+            }
+          };
+          img.src = e.target.result;
+        };
+        reader.onerror = function () {
+          toast('ไม่สามารถอ่านไฟล์ได้', 'error');
+          if (previewContainer) {
+            previewContainer.innerHTML = u.avatar ? '<img src="' + esc(u.avatar) + '" style="width:100%;height:100%;object-fit:cover" id="pf-avatar-img">' : '<span id="pf-avatar-init">' + esc(initial) + '</span>';
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+    }
 
     function loadLINEStatus() {
       var body = $('#line-profile-body');
@@ -5588,12 +5672,22 @@ async function api(req) {
       e.preventDefault();
       var f = e.target;
       var data = {};
-      ['full_name','position','level','department','email','phone','avatar'].forEach(function (k) { data[k] = f[k].value; });
+      ['full_name','position','level','department','email','phone'].forEach(function (k) { data[k] = f[k].value; });
+      data.avatar = chosenAvatarBase64;
       Spinner.show('กำลังบันทึก...');
       call('user.update_profile', data).then(function (u) {
         Spinner.hide();
         LMS.Store.user = u;
         toast('บันทึกแล้ว', 'success');
+
+        // Update sidebar and navbar avatars dynamically
+        var newInitial = (u.full_name || u.username || '?').substring(0, 1).toUpperCase();
+        var newAvatarHtml = u.avatar ? '<img src="' + esc(u.avatar) + '" alt="" referrerpolicy="no-referrer">' : newInitial;
+        var sbAv = $('.sb-user-avatar');
+        if (sbAv) sbAv.innerHTML = newAvatarHtml;
+        var nvAv = $('.nav-profile-avatar');
+        if (nvAv) nvAv.innerHTML = newAvatarHtml;
+
         LMS.refreshShell();
       }).catch(function (er) { Spinner.hide(); alertError('ผิดพลาด', er.message); });
     });
