@@ -5465,17 +5465,200 @@ async function Holidays_delete(user, p) {
 }
 
 
-// === NOTIFICATIONS NO-OPS ===
-function Notify_onNewRegistration_() {}
-function Notify_onRegistrationApproved_() {}
-function Notify_onRegistrationRejected_() {}
+// === NOTIFICATIONS LOGIC ===
+
+async function _sendEmail_(to, subject, html) {
+  var settings = GLOBAL_SETTINGS || {};
+  var fromAlias = settings.email_from_alias || '';
+  var url = SUPABASE_URL + '/functions/v1/send-email';
+  var opts = {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      to: to,
+      subject: subject,
+      html: html,
+      from_alias: fromAlias
+    })
+  };
+  try {
+    var r = await fetch(url, opts);
+    var res = await r.json().catch(function(){ return {}; });
+    if (!r.ok) {
+      console.error('Email send error:', res.error || 'Unknown error');
+    }
+  } catch (e) {
+    console.error('Failed to send email:', e);
+  }
+}
+
+function Notify_onNewRegistration_(newU) {
+  var users = DB_readAll('Users');
+  var admins = users.filter(function (u) { return u.role === 'admin' && u.email && String(u.is_active).toLowerCase() === 'yes'; });
+  var emails = admins.map(function (r) { return r.email; });
+  if (emails.length === 0 && GLOBAL_SETTINGS.org_email) {
+    emails.push(GLOBAL_SETTINGS.org_email);
+  }
+  if (emails.length > 0) {
+    var html = '<h2>มีคำขอสมัครสมาชิกใหม่รอยืนยัน</h2>'
+      + '<p>เรียน ผู้ดูแลระบบ,</p>'
+      + '<p>มีผู้ใช้งานลงทะเบียนใหม่ในระบบ AvarinLMS และรอการเปิดใช้งานบัญชี:</p>'
+      + '<ul>'
+      + '<li><strong>ชื่อผู้ใช้ (Username):</strong> @' + esc(newU.username) + '</li>'
+      + '<li><strong>ชื่อ-สกุล:</strong> ' + esc(newU.full_name) + '</li>'
+      + '<li><strong>สังกัด/ฝ่าย:</strong> ' + esc(newU.department || '-') + '</li>'
+      + '<li><strong>ตำแหน่ง:</strong> ' + esc(newU.position || '-') + '</li>'
+      + '<li><strong>อีเมล:</strong> ' + esc(newU.email || '-') + '</li>'
+      + '</ul>'
+      + '<p><a href="' + window.location.origin + window.location.pathname + '#/pending-users" style="display:inline-block;background:#6366f1;color:#fff;padding:8px 16px;text-decoration:none;border-radius:6px;font-weight:bold">ตรวจสอบและอนุมัติสมาชิก</a></p>'
+      + '<hr><p style="font-size:12px;color:#888">นี่คือข้อความอัตโนมัติจากระบบ AvarinLMS</p>';
+    _sendEmail_(emails, 'สมัครสมาชิกใหม่: ' + newU.full_name, html);
+  }
+}
+
+function Notify_onRegistrationApproved_(u, role, approver) {
+  if (!u || !u.email) return;
+  var roles = (LMS.Store.boot && LMS.Store.boot.roles) || {};
+  var roleLabel = roles[role] || role;
+  var html = '<h2>ยินดีต้อนรับเข้าสู่ระบบ AvarinLMS</h2>'
+    + '<p>เรียน คุณ ' + esc(u.full_name) + ',</p>'
+    + '<p>บัญชีผู้ใช้ <code>@' + esc(u.username) + '</code> ของคุณได้รับการอนุมัติให้เข้าใช้งานแล้ว:</p>'
+    + '<ul>'
+    + '<li><strong>บทบาทของคุณ:</strong> ' + esc(roleLabel) + '</li>'
+    + '<li><strong>ผู้อนุมัติ:</strong> ' + esc(approver ? approver.full_name : 'ผู้ดูแลระบบ') + '</li>'
+    + '</ul>'
+    + '<p>คุณสามารถเข้าสู่ระบบเพื่อยื่นใบลาและขอเบิกค่าใช้จ่ายได้ทันที</p>'
+    + '<p><a href="' + window.location.origin + window.location.pathname + '" style="display:inline-block;background:#10b981;color:#fff;padding:8px 16px;text-decoration:none;border-radius:6px;font-weight:bold">เข้าสู่ระบบ</a></p>'
+    + '<hr><p style="font-size:12px;color:#888">นี่คือข้อความอัตโนมัติจากระบบ AvarinLMS</p>';
+  _sendEmail_(u.email, 'บัญชี AvarinLMS ของคุณได้รับการอนุมัติแล้ว', html);
+}
+
+function Notify_onRegistrationRejected_(u, rejectReason, rejector) {
+  if (!u || !u.email) return;
+  var html = '<h2>แจ้งผลการสมัครเข้าใช้งานระบบ AvarinLMS</h2>'
+    + '<p>เรียน คุณ ' + esc(u.full_name) + ',</p>'
+    + '<p>คำขอสมัครใช้งานระบบของคุณไม่ได้รับอนุมัติ เนื่องจาก:</p>'
+    + '<div style="background:#fef2f2;padding:16px;border-radius:8px;border-left:4px solid #ef4444;margin:16px 0">'
+    + '  <div style="font-weight:bold;color:#ef4444">เหตุผลที่ไม่ได้รับการอนุมัติ:</div>'
+    + '  <div style="margin-top:4px">' + esc(rejectReason || 'ข้อมูลไม่ถูกต้องหรือไม่ใช่บุคลากรในหน่วยงาน') + '</div>'
+    + '</div>'
+    + '<p>หากมีข้อสงสัยเพิ่มเติม กรุณาติดต่อฝ่ายทรัพยากรบุคคลหรือผู้เกี่ยวข้อง</p>'
+    + '<hr><p style="font-size:12px;color:#888">นี่คือข้อความอัตโนมัติจากระบบ AvarinLMS</p>';
+  _sendEmail_(u.email, 'แจ้งผลการปฏิเสธบัญชี AvarinLMS', html);
+}
+
 function Notify_onLeaveCreated_() {}
 function Notify_onLeaveChecked_() {}
 function Notify_onLeaveCommented_() {}
-function Notify_onLeaveApproved_() {}
-function Notify_onLeaveSubmit_() {}
-function Notify_onLeaveResultToRequester_() {}
-function Notify_onExpenseSubmit_() {}
+
+function Notify_onLeaveSubmit_(leave, user) {
+  var users = DB_readAll('Users');
+  var stages = _stages_();
+  var recipients = [];
+  if (stages === 3) {
+    recipients = users.filter(function (u) { return u.role === 'checker' && u.email && String(u.is_active).toLowerCase() === 'yes'; });
+  } else if (stages === 2) {
+    recipients = users.filter(function (u) { return u.role === 'supervisor' && u.department === user.department && u.email && String(u.is_active).toLowerCase() === 'yes'; });
+    if (recipients.length === 0) {
+      recipients = users.filter(function (u) { return (u.role === 'supervisor' || u.role === 'approver') && u.email && String(u.is_active).toLowerCase() === 'yes'; });
+    }
+  } else {
+    recipients = users.filter(function (u) { return u.role === 'approver' && u.email && String(u.is_active).toLowerCase() === 'yes'; });
+  }
+  if (recipients.length === 0 && GLOBAL_SETTINGS.org_email) {
+    recipients.push({ email: GLOBAL_SETTINGS.org_email });
+  }
+  var emails = recipients.map(function (r) { return r.email; });
+  if (emails.length > 0) {
+    var html = '<h2>มีใบลาใหม่รอการอนุมัติ / ตรวจสอบ</h2>'
+      + '<p>เรียน ผู้อนุมัติ/ผู้ตรวจสอบ,</p>'
+      + '<p>มีใบลาใหม่ยื่นเข้ามาในระบบ รายละเอียดดังนี้:</p>'
+      + '<ul>'
+      + '<li><strong>เลขที่ใบลา:</strong> <code>' + esc(leave.leave_no) + '</code></li>'
+      + '<li><strong>ผู้ขอลา:</strong> ' + esc(user.full_name) + ' (' + esc(user.position || '-') + ')</li>'
+      + '<li><strong>แผนก/สังกัด:</strong> ' + esc(user.department || '-') + '</li>'
+      + '<li><strong>ประเภทการลา:</strong> ' + esc((LMS.LEAVE_TYPE_LABEL || {})[leave.leave_type] || leave.leave_type) + '</li>'
+      + '<li><strong>ช่วงเวลา:</strong> ' + TH.date(leave.start_date) + ' ถึง ' + TH.date(leave.end_date) + ' (' + leave.days + ' วัน)</li>'
+      + '<li><strong>เหตุผลการลา:</strong> ' + esc(leave.reason) + '</li>'
+      + '</ul>'
+      + '<p><a href="' + window.location.origin + window.location.pathname + '#/leaves/inbox" style="display:inline-block;background:#6366f1;color:#fff;padding:8px 16px;text-decoration:none;border-radius:6px;font-weight:bold">เปิดดูรายการรอดำเนินการ</a></p>'
+      + '<hr><p style="font-size:12px;color:#888">นี่คือข้อความอัตโนมัติจากระบบ AvarinLMS</p>';
+    _sendEmail_(emails, 'ใบลาใหม่รออนุมัติ: ' + leave.leave_no + ' (' + user.full_name + ')', html);
+  }
+}
+
+function Notify_onLeaveApproved_(leave, requester, approver) {
+  var users = DB_readAll('Users');
+  var admins = users.filter(function (u) { return u.role === 'admin' && u.email && String(u.is_active).toLowerCase() === 'yes'; });
+  var emails = admins.map(function (r) { return r.email; });
+  if (emails.length === 0 && GLOBAL_SETTINGS.org_email) {
+    emails.push(GLOBAL_SETTINGS.org_email);
+  }
+  if (emails.length > 0) {
+    var html = '<h2>ใบลาได้รับการอนุมัติสมบูรณ์แล้ว</h2>'
+      + '<p>เรียน แอดมิน/ฝ่ายบุคคล,</p>'
+      + '<p>ใบลาเลขที่ <code>' + esc(leave.leave_no) + '</code> ได้รับการอนุมัติเรียบร้อยแล้ว:</p>'
+      + '<ul>'
+      + '<li><strong>ผู้ขอลา:</strong> ' + esc(requester.full_name) + ' (' + esc(requester.department || '-') + ')</li>'
+      + '<li><strong>ประเภทการลา:</strong> ' + esc((LMS.LEAVE_TYPE_LABEL || {})[leave.leave_type] || leave.leave_type) + '</li>'
+      + '<li><strong>จำนวนวันลา:</strong> ' + leave.days + ' วัน</li>'
+      + '<li><strong>ผู้อนุมัติ:</strong> ' + esc(approver ? approver.full_name : 'ผู้ดูแลระบบ') + '</li>'
+      + '</ul>'
+      + '<p><a href="' + window.location.origin + window.location.pathname + '#/leaves/all" style="display:inline-block;background:#6366f1;color:#fff;padding:8px 16px;text-decoration:none;border-radius:6px;font-weight:bold">ตรวจสอบใบลาทั้งหมด</a></p>'
+      + '<hr><p style="font-size:12px;color:#888">นี่คือข้อความอัตโนมัติจากระบบ AvarinLMS</p>';
+    _sendEmail_(emails, 'ใบลาอนุมัติแล้ว: ' + leave.leave_no + ' (' + requester.full_name + ')', html);
+  }
+}
+
+function Notify_onLeaveResultToRequester_(leave, requester, approver) {
+  if (!requester || !requester.email) return;
+  var isApp = leave.status === STATUS.APPROVED;
+  var statusLabel = isApp ? 'อนุมัติแล้ว' : 'ปฏิเสธ/ไม้อนุมัติ';
+  var statusColor = isApp ? '#10b981' : '#ef4444';
+  var comment = leave.approver_comment || leave.supervisor_comment || leave.checker_comment || '-';
+  var html = '<h2>แจ้งผลการอนุมัติใบลา</h2>'
+    + '<p>เรียน คุณ ' + esc(requester.full_name) + ',</p>'
+    + '<p>ใบลาเลขที่ <code>' + esc(leave.leave_no) + '</code> ของคุณได้รับการพิจารณาเรียบร้อยแล้ว:</p>'
+    + '<div style="background:#f8fafc;padding:16px;border-radius:8px;border-left:4px solid ' + statusColor + ';margin:16px 0">'
+    + '  <div style="font-size:16px;font-weight:bold;color:' + statusColor + '">ผลการพิจารณา: ' + statusLabel + '</div>'
+    + '  <div style="margin-top:8px"><strong>ผู้อนุมัติ:</strong> ' + esc(approver ? approver.full_name : 'ผู้ดูแลระบบ') + '</div>'
+    + '  <div><strong>ข้อคิดเห็น/เหตุผล:</strong> ' + esc(comment) + '</div>'
+    + '</div>'
+    + '<ul>'
+    + '<li><strong>ประเภทการลา:</strong> ' + esc((LMS.LEAVE_TYPE_LABEL || {})[leave.leave_type] || leave.leave_type) + '</li>'
+    + '<li><strong>ช่วงเวลา:</strong> ' + TH.date(leave.start_date) + ' ถึง ' + TH.date(leave.end_date) + ' (' + leave.days + ' วัน)</li>'
+    + '</ul>'
+    + '<p><a href="' + window.location.origin + window.location.pathname + '#/leaves/mine" style="display:inline-block;background:#6366f1;color:#fff;padding:8px 16px;text-decoration:none;border-radius:6px;font-weight:bold">ตรวจสอบใบลาของฉัน</a></p>'
+    + '<hr><p style="font-size:12px;color:#888">นี่คือข้อความอัตโนมัติจากระบบ AvarinLMS</p>';
+  _sendEmail_(requester.email, 'ผลการอนุมัติใบลา ' + leave.leave_no + ': ' + statusLabel, html);
+}
+
+function Notify_onExpenseSubmit_(expense, user) {
+  var users = DB_readAll('Users');
+  var recipients = users.filter(function (u) { return (u.role === 'admin' || u.role === 'approver') && u.email && String(u.is_active).toLowerCase() === 'yes'; });
+  if (recipients.length === 0 && GLOBAL_SETTINGS.org_email) {
+    recipients.push({ email: GLOBAL_SETTINGS.org_email });
+  }
+  var emails = recipients.map(function (r) { return r.email; });
+  if (emails.length > 0) {
+    var html = '<h2>มีคำขอเบิกค่าใช้จ่ายใหม่รออนุมัติ</h2>'
+      + '<p>เรียน ผู้อนุมัติ,</p>'
+      + '<p>มีใบเบิกค่าใช้จ่ายใหม่ยื่นเข้ามาในระบบ รายละเอียดดังนี้:</p>'
+      + '<ul>'
+      + '<li><strong>หัวข้อรายการ:</strong> ' + esc(expense.title) + '</li>'
+      + '<li><strong>ผู้ขอเบิก:</strong> ' + esc(user.full_name) + ' (' + esc(user.department || '-') + ')</li>'
+      + '<li><strong>จำนวนเงินที่ขอเบิก:</strong> ' + expense.amount + ' บาท</li>'
+      + '<li><strong>รายละเอียด/เหตุผล:</strong> ' + esc(expense.description || '-') + '</li>'
+      + '</ul>'
+      + '<p><a href="' + window.location.origin + window.location.pathname + '#/expenses/pending" style="display:inline-block;background:#6366f1;color:#fff;padding:8px 16px;text-decoration:none;border-radius:6px;font-weight:bold">ตรวจสอบใบเบิกค่าใช้จ่าย</a></p>'
+      + '<hr><p style="font-size:12px;color:#888">นี่คือข้อความอัตโนมัติจากระบบ AvarinLMS</p>';
+    _sendEmail_(emails, 'คำขอเบิกค่าใช้จ่ายใหม่: ' + expense.title + ' (' + user.full_name + ')', html);
+  }
+}
 
 
 // === LINE NO-OPS / WEBHOOK ===
