@@ -3132,6 +3132,7 @@ const APP = Object.freeze({
 // === CLIENT-SIDE API ROUTER PROXY FOR SUPABASE EDGE FUNCTION ===
 const SUPABASE_URL = 'https://djcvqxjwakiorahdiwwk.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqY3ZxeGp3YWtpb3JhaDRpd3drIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NDk4MjUsImV4cCI6MjA5NzQyNTgyNX0.efr2QuUfbk8WNK8I9A-ga4OKzJal7w_dNKoICXX1nPQ';
+const DEPARTMENTS = ['ฝ่ายขาย', 'การตลาด', 'คลังสินค้า', 'บัญชี', 'ฝ่ายทรัพยากรบุคคล'];
 
 async function api(req) {
   var url = SUPABASE_URL + '/functions/v1/api';
@@ -3708,7 +3709,9 @@ async function api(req) {
       + '<div class="field"><label>ตำแหน่ง</label>'
       + '<input type="text" name="position" class="input" placeholder="ตำแหน่งงาน"></div>'
       + '<div class="field"><label>สังกัด / แผนก</label>'
-      + '<input type="text" name="department" class="input" placeholder="แผนกหรือหน่วยงาน"></div>'
+      + '<select name="department" class="select">'
+      + DEPARTMENTS.map(function (d) { return '<option value="' + esc(d) + '">' + esc(d) + '</option>'; }).join('')
+      + '</select></div>'
       + '<div class="field"><label>อีเมล <span class="req">*</span></label>'
       + '<input type="email" name="email" class="input" placeholder="อีเมลสำหรับรับการแจ้งเตือน" required></div>'
       + '<div class="field"><label>โทรศัพท์ <span class="req">*</span></label>'
@@ -5499,7 +5502,16 @@ async function api(req) {
       + '</div>'
       + '<div class="row-2">'
       + '<div class="field"><label>ระดับ</label><input type="text" name="level" class="input" value="' + esc(u.level) + '" placeholder=""></div>'
-      + '<div class="field"><label>สังกัด</label><input type="text" name="department" class="input" value="' + esc(u.department) + '"></div>'
+      + '<div class="field"><label>สังกัด</label>'
+      + '<select name="department" class="select">'
+      + (function() {
+          var opts = DEPARTMENTS.slice();
+          if (u.department && opts.indexOf(u.department) === -1) {
+            opts.unshift(u.department);
+          }
+          return opts.map(function (d) { return '<option value="' + esc(d) + '"' + (u.department === d ? ' selected' : '') + '>' + esc(d) + '</option>'; }).join('');
+        })()
+      + '</select></div>'
       + '</div>'
       + '<div class="row-2">'
       + '<div class="field"><label>อีเมล</label><input type="email" name="email" class="input" value="' + esc(u.email) + '"></div>'
@@ -5768,7 +5780,15 @@ async function api(req) {
         + '</div>'
         + '<div class="row-2">'
         + '<div class="field"><label>ระดับ</label><input type="text" name="level" class="input" value="' + esc(u.level) + '"></div>'
-        + '<div class="field"><label>สังกัด</label><input type="text" name="department" class="input" value="' + esc(u.department) + '"></div>'
+        + '<div class="field"><label>สังกัด</label><select name="department" class="select">'
+        + (function() {
+            var opts = DEPARTMENTS.slice();
+            if (u.department && opts.indexOf(u.department) === -1) {
+              opts.unshift(u.department);
+            }
+            return opts.map(function (d) { return '<option value="' + esc(d) + '"' + (u.department === d ? ' selected' : '') + '>' + esc(d) + '</option>'; }).join('');
+          })()
+        + '</select></div>'
         + '</div>'
         + '<div class="row-2">'
         + '<div class="field"><label>อีเมล</label><input type="email" name="email" class="input" value="' + esc(u.email) + '"></div>'
