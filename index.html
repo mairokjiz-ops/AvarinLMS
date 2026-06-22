@@ -7920,6 +7920,22 @@ async function api(req) {
       + '<button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> บันทึก</button>'
       + '</div>'
       + '</form></div></div>'
+      + '<div class="card" style="margin-top:14px">'
+      + '<div class="card-head"><i class="bi bi-key-fill"></i> <span class="card-title">เปลี่ยนรหัสผ่าน</span></div>'
+      + '<div class="card-body"><form id="pf-cp-form">'
+      + '<div class="field"><label>รหัสผ่านเดิม <span class="req">*</span></label>'
+      + '<input type="password" name="old_password" class="input" required></div>'
+      + '<div class="row-2">'
+      + '<div class="field"><label>รหัสผ่านใหม่ <span class="req">*</span></label>'
+      + '<input type="password" name="new_password" class="input" required>'
+      + '<div class="field-hint">อย่างน้อย 6 ตัวอักษร</div></div>'
+      + '<div class="field"><label>ยืนยันรหัสผ่านใหม่ <span class="req">*</span></label>'
+      + '<input type="password" name="confirm" class="input" required></div>'
+      + '</div>'
+      + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">'
+      + '<button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> บันทึกการเปลี่ยนรหัสผ่าน</button>'
+      + '</div>'
+      + '</form></div></div>'
       + '<div class="card" style="margin-top:14px" id="line-profile-card"><div class="card-head"><i class="bi bi-line" style="color:#06c755"></i> <span class="card-title">เชื่อมต่อ LINE Official Account (LINE OA)</span></div>'
       + '<div class="card-body" id="line-profile-body">'
       + '  <div style="height:40px;background:#f1f5f9;animation:pulse 1.5s infinite;border-radius:6px"></div>'
@@ -7991,6 +8007,23 @@ async function api(req) {
         toast('บันทึกแล้ว', 'success');
         LMS.refreshShell();
       }).catch(function (er) { Spinner.hide(); alertError('ผิดพลาด', er.message); });
+    });
+
+    $('#pf-cp-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var f = e.target;
+      var op = f.old_password.value;
+      var np = f.new_password.value;
+      var cf = f.confirm.value;
+      if (!op || !np || !cf) return toast('กรุณากรอกข้อมูลให้ครบ', 'warning');
+      if (np.length < 6) return toast('รหัสผ่านใหม่ต้องอย่างน้อย 6 ตัวอักษร', 'warning');
+      if (np !== cf) return toast('ยืนยันรหัสผ่านไม่ตรงกัน', 'warning');
+      Spinner.show('กำลังเปลี่ยนรหัสผ่าน...', { stages: ['ตรวจสอบรหัสเดิม','สร้างรหัสใหม่','บันทึก'] });
+      call('auth.change_password', { old_password: op, new_password: np }).then(function () {
+        Spinner.hide();
+        f.reset();
+        alertSuccess('สำเร็จ', 'เปลี่ยนรหัสผ่านเรียบร้อย — ครั้งหน้าใช้รหัสใหม่เข้าระบบ');
+      }).catch(function (er) { Spinner.hide(); alertError('ไม่สำเร็จ', er.message); });
     });
   };
   // ── Users (admin) ──────────────────────────────────
