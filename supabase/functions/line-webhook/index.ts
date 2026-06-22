@@ -377,11 +377,9 @@ function cfg_daysBetween_(start, end) {
     var count = 0;
     var d = new Date(s.getTime());
     while (d.getTime() <= e.getTime()) {
-      var dow = d.getDay();
-      var isWeekend = (dow === 0 || dow === 6);
       var dateStr = cfg_dateOnly_(d);
       var isHoliday = (dateStr in holidays);
-      if (!isWeekend && !isHoliday) {
+      if (!isHoliday) {
         count++;
       }
       d.setDate(d.getDate() + 1);
