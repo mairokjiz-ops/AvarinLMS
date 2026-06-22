@@ -5669,18 +5669,20 @@ function Notify_onExpenseSubmit_(expense, user) {
   }
   var emails = recipients.map(function (r) { return r.email; });
   if (emails.length > 0) {
+    var expenseName = (expense.expense_type || 'ค่าใช้จ่ายทั่วไป') + ' (' + (expense.expense_no || '-') + ')';
     var html = '<h2>มีคำขอเบิกค่าใช้จ่ายใหม่รออนุมัติ</h2>'
       + '<p>เรียน ผู้อนุมัติ,</p>'
       + '<p>มีใบเบิกค่าใช้จ่ายใหม่ยื่นเข้ามาในระบบ รายละเอียดดังนี้:</p>'
       + '<ul>'
-      + '<li><strong>หัวข้อรายการ:</strong> ' + esc(expense.title) + '</li>'
+      + '<li><strong>เลขที่ใบเบิก:</strong> <code>' + esc(expense.expense_no || '-') + '</code></li>'
+      + '<li><strong>ประเภทค่าใช้จ่าย:</strong> ' + esc(expense.expense_type || '-') + '</li>'
       + '<li><strong>ผู้ขอเบิก:</strong> ' + esc(user.full_name) + ' (' + esc(user.department || '-') + ')</li>'
-      + '<li><strong>จำนวนเงินที่ขอเบิก:</strong> ' + expense.amount + ' บาท</li>'
+      + '<li><strong>จำนวนเงินที่ขอเบิก:</strong> ' + (expense.amount || 0) + ' บาท</li>'
       + '<li><strong>รายละเอียด/เหตุผล:</strong> ' + esc(expense.description || '-') + '</li>'
       + '</ul>'
       + '<p><a href="' + window.location.origin + window.location.pathname + '#/expenses/pending" style="display:inline-block;background:#6366f1;color:#fff;padding:8px 16px;text-decoration:none;border-radius:6px;font-weight:bold">ตรวจสอบใบเบิกค่าใช้จ่าย</a></p>'
       + '<hr><p style="font-size:12px;color:#888">นี่คือข้อความอัตโนมัติจากระบบ AvarinLMS</p>';
-    _sendEmail_(emails, 'คำขอเบิกค่าใช้จ่ายใหม่: ' + expense.title + ' (' + user.full_name + ')', html);
+    _sendEmail_(emails, 'คำขอเบิกค่าใช้จ่ายใหม่: ' + expenseName + ' (' + user.full_name + ')', html);
   }
 }
 
