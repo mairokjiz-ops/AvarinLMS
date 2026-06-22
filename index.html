@@ -3709,6 +3709,45 @@ async function Auth_changePassword(user, p) {
   return { ok: true };
 }
 
+async function Auth_forgotPassword(p) {
+  var email = String((p && p.email) || '').trim().toLowerCase();
+  if (!email) throw new Error('กรุณากรอกอีเมล');
+  var users = DB_readAll(SHEETS.USERS);
+  var u = users.find(function (r) {
+    return String(r.email || '').toLowerCase().trim() === email;
+  });
+  if (!u) throw new Error('ไม่พบอีเมลนี้ในระบบ');
+  if (String(u.is_active).toLowerCase() !== 'yes') throw new Error('บัญชีผู้ใช้นี้ยังไม่เปิดใช้งาน หรือ ถูกระงับ');
+  
+  // สุ่มรหัสผ่านชั่วคราว 6 หลัก
+  var tempPassword = Math.floor(100000 + Math.random() * 900000).toString();
+  var salt = cfg_salt_();
+  var passwordHash = await cfg_hash_(tempPassword, salt);
+  
+  await DB_update(SHEETS.USERS, u.id, {
+    salt: salt,
+    password_hash: passwordHash
+  });
+  
+  await Audit_log_(u, 'auth.forgot_password', 'user', u.id, { email: email });
+  
+  var html = '<h2>รีเซ็ตรหัสผ่านชั่วคราวสำหรับ AvarinLMS</h2>'
+    + '<p>เรียน คุณ ' + esc(u.full_name) + ',</p>'
+    + '<p>คุณได้รับการรีเซ็ตรหัสผ่านสำหรับเข้าใช้งานระบบ AvarinLMS เรียบร้อยแล้ว:</p>'
+    + '<div style="background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;margin:16px 0">'
+    + '  <div style="font-size:12.5px;color:#64748b">ชื่อผู้ใช้ของคุณ:</div>'
+    + '  <div style="font-size:16px;font-weight:bold;color:#0f172a;margin-bottom:8px">@' + esc(u.username) + '</div>'
+    + '  <div style="font-size:12.5px;color:#64748b">รหัสผ่านชั่วคราวของคุณ:</div>'
+    + '  <div style="font-size:24px;font-weight:bold;color:#6366f1;font-family:monospace;letter-spacing:1px">' + tempPassword + '</div>'
+    + '</div>'
+    + '<p><strong>คำแนะนำด้านความปลอดภัย:</strong> กรุณาเข้าสู่ระบบด้วยรหัสผ่านชั่วคราวนี้ และทำการเปลี่ยนรหัสผ่านใหม่ทันทีในเมนู "โปรไฟล์ของฉัน" หลังเข้าสู่ระบบแล้ว</p>'
+    + '<p><a href="' + window.location.origin + window.location.pathname + '" style="display:inline-block;background:#6366f1;color:#fff;padding:8px 16px;text-decoration:none;border-radius:6px;font-weight:bold">เข้าสู่ระบบตอนนี้</a></p>'
+    + '<hr><p style="font-size:12px;color:#888">นี่คือการแจ้งเตือนอัตโนมัติจากระบบ AvarinLMS</p>';
+  
+  await _sendEmail_(email, 'รหัสผ่านชั่วคราวสำหรับเข้าใช้ระบบ AvarinLMS', html);
+  return { success: true };
+}
+
 async function Auth_bootstrap(token) {
   // Public bundle (cache-friendly)
   var settings = Settings_get_public_();
@@ -5806,6 +5845,7 @@ async function api(req) {
     if (action === 'auth.login')      return _ok(await Auth_login(p));
     if (action === 'auth.logout')     return _ok(await Auth_logout(token));
     if (action === 'user.register')   return _ok(await Users_register(p));
+    if (action === 'auth.forgot_password') return _ok(await Auth_forgotPassword(p));
 
     // Authenticated endpoints
     var user = await Auth_verify_(token);
@@ -6262,8 +6302,9 @@ async function api(req) {
       + '        <input type="password" name="password" placeholder="รหัสผ่าน" autocomplete="current-password" required>'
       + '        <button type="button" class="lf-toggle" data-toggle-pwd tabindex="-1" aria-label="แสดง/ซ่อนรหัสผ่าน"><i class="bi bi-eye"></i></button>'
       + '      </div>'
-      + '      <div class="lf-row">'
+      + '      <div class="lf-row" style="display:flex;justify-content:space-between;align-items:center">'
       + '        <label class="lf-check"><input type="checkbox" name="remember"> จำชื่อผู้ใช้</label>'
+      + '        <a href="#" id="btn-forgot-password" style="font-size:12.5px;color:var(--brand-1);text-decoration:none;font-weight:500">ลืมรหัสผ่าน?</a>'
       + '      </div>'
       + '      <button type="submit" class="lf-submit">'
       + '        <span class="lf-submit-state lf-submit-state-default"><i class="bi bi-box-arrow-in-right"></i> เข้าสู่ระบบ</span>'
@@ -6376,6 +6417,57 @@ async function api(req) {
     if (regBtn) {
       regBtn.addEventListener('click', function () { openRegisterModal(); });
     }
+
+    // ── Forgot password button → open forgot password modal ─────
+    var fpBtn = $('#btn-forgot-password');
+    if (fpBtn) {
+      fpBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        openForgotPasswordModal();
+      });
+    }
+  }
+
+  function openForgotPasswordModal() {
+    Swal.fire({
+      title: 'ลืมรหัสผ่าน',
+      text: 'กรุณากรอกอีเมลที่ลงทะเบียนไว้ในระบบเพื่อรับรหัสผ่านชั่วคราว',
+      input: 'email',
+      inputPlaceholder: 'กรอกอีเมลของคุณ...',
+      showCancelButton: true,
+      confirmButtonText: 'ส่งรหัสผ่านชั่วคราว',
+      cancelButtonText: 'ยกเลิก',
+      confirmButtonColor: '#6366f1',
+      inputValidator: function (value) {
+        if (!value) {
+          return 'กรุณากรอกอีเมลของคุณ!';
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+          return 'รูปแบบอีเมลไม่ถูกต้อง!';
+        }
+      },
+      showLoaderOnConfirm: true,
+      preConfirm: function (email) {
+        return call('auth.forgot_password', { email: email })
+          .then(function (res) {
+            return { email: email, success: true };
+          })
+          .catch(function (error) {
+            Swal.showValidationMessage('เกิดข้อผิดพลาด: ' + error.message);
+          });
+      },
+      allowOutsideClick: function () { return !Swal.isLoading(); }
+    }).then(function (result) {
+      if (result.isConfirmed && result.value && result.value.success) {
+        Swal.fire({
+          icon: 'success',
+          title: 'ส่งอีเมลสำเร็จ',
+          html: '<div style="font-size:14px;line-height:1.6;color:#475569">ระบบได้ส่งรหัสผ่านชั่วคราวไปที่ <strong>' + esc(result.value.email) + '</strong> เรียบร้อยแล้ว<br>กรุณาตรวจสอบกล่องจดหมายของคุณ (รวมทั้งกล่องจดหมายขยะ/Spam) และใช้รหัสชั่วคราวในการเข้าสู่ระบบ</div>',
+          confirmButtonText: 'ตกลง',
+          confirmButtonColor: '#10b981'
+        });
+      }
+    });
   }
 
   function openRegisterModal() {
