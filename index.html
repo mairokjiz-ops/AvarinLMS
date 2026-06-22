@@ -3713,11 +3713,23 @@ async function Auth_forgotPassword(p) {
   var email = String((p && p.email) || '').trim().toLowerCase();
   if (!email) throw new Error('กรุณากรอกอีเมล');
   var users = DB_readAll(SHEETS.USERS);
+  
+  // ค้นหาบัญชีผู้ใช้ที่เป็นสถานะ active (_yes_(is_active) === true)
   var u = users.find(function (r) {
-    return String(r.email || '').toLowerCase().trim() === email;
+    return String(r.email || '').toLowerCase().trim() === email && _yes_(r.is_active);
   });
-  if (!u) throw new Error('ไม่พบอีเมลนี้ในระบบ');
-  if (String(u.is_active).toLowerCase() !== 'yes') throw new Error('บัญชีผู้ใช้นี้ยังไม่เปิดใช้งาน หรือ ถูกระงับ');
+  
+  if (!u) {
+    // ถ้าไม่พบบัญชีที่เปิดใช้งานอยู่ ให้ลองหาแบบไม่เช็คสถานะเพื่อแจ้ง Error ที่ละเอียดขึ้น
+    var anyUser = users.find(function (r) {
+      return String(r.email || '').toLowerCase().trim() === email;
+    });
+    if (!anyUser) throw new Error('ไม่พบอีเมลนี้ในระบบ');
+    if (String(anyUser.is_active || '').toLowerCase().trim() === 'pending') {
+      throw new Error('บัญชีของคุณอยู่ระหว่างรอการอนุมัติเข้าใช้งาน');
+    }
+    throw new Error('บัญชีผู้ใช้นี้ยังไม่เปิดใช้งาน หรือ ถูกระงับ');
+  }
   
   // สุ่มรหัสผ่านชั่วคราว 6 หลัก
   var tempPassword = Math.floor(100000 + Math.random() * 900000).toString();
