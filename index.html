@@ -3133,6 +3133,7 @@ const APP = Object.freeze({
 const SUPABASE_URL = 'https://djcvqxjwakiorahdiwwk.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqY3ZxeGp3YWtpb3JhaDRpd3drIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NDk4MjUsImV4cCI6MjA5NzQyNTgyNX0.efr2QuUfbk8WNK8I9A-ga4OKzJal7w_dNKoICXX1nPQ';
 const DEPARTMENTS = ['ฝ่ายขาย', 'การตลาด', 'คลังสินค้า', 'บัญชี', 'ฝ่ายทรัพยากรบุคคล', 'จัดซื้อ', 'Sport Triton'];
+const COMPANIES = ['บริษัท เอวริณทร์ อินเตอร์กรุ๊ป จำกัด', 'บริษัท สปอร์ต ไตรตัน จำกัด'];
 
 async function api(req) {
   var url = SUPABASE_URL + '/functions/v1/api';
@@ -6499,6 +6500,15 @@ async function api(req) {
         var avatar = requester.avatar ? '<img src="' + esc(requester.avatar) + '" alt="">' : initial;
         var missionLabel = x.mission_no ? '<span class="lv-meta"><i class="bi bi-signpost-2-fill"></i> ' + esc(x.mission_no) + '</span>' : '';
         var amount = Number(x.amount || 0).toLocaleString();
+        
+        var descText = x.description || '';
+        var companyTag = '';
+        var match = descText.match(/^\[([^\]]+)\]\s*(.*)$/);
+        if (match) {
+          companyTag = '<span class="badge b-slate" style="background:#e2e8f0;color:#334155;font-size:10px;padding:2px 6px;margin-right:6px;border-radius:4px;">' + esc(match[1]) + '</span>';
+          descText = match[2];
+        }
+
         return '<a href="#/expenses/view?id=' + esc(x.id) + '" class="lv-card expense-card">'
           + '<div class="lv-card-head">'
           + '  <div class="lv-avatar expense-avatar">' + avatar + '</div>'
@@ -6512,7 +6522,7 @@ async function api(req) {
           + '  <span class="lv-meta"><i class="bi bi-receipt-cutoff"></i> ' + esc(x.expense_type || '-') + '</span>'
           + missionLabel
           + '</div>'
-          + '<div class="lv-row expense-desc">' + esc(x.description || '-') + '</div>'
+          + '<div class="lv-row expense-desc">' + companyTag + esc(descText || '-') + '</div>'
           + '<div class="lv-row" style="margin-top:8px;align-items:flex-end;justify-content:space-between">'
           + '  <div style="font-size:12px;color:#475569"><i class="bi bi-calendar3"></i> ' + TH.date(x.expense_date) + '</div>'
           + '  <div class="lv-days expense-amount">฿' + amount + '</div>'
@@ -6605,17 +6615,35 @@ async function api(req) {
           chosenReceipts = [preset.receipt_url];
         }
       }
+      
+      var companyValue = '';
+      var descriptionText = preset.description || '';
+      var match = descriptionText.match(/^\[([^\]]+)\]\s*(.*)$/);
+      if (match) {
+        companyValue = match[1];
+        descriptionText = match[2];
+      }
+
       var evidenceNote = chosenReceipts.length > 0 ? 'มีหลักฐานแนบอยู่แล้ว (' + chosenReceipts.length + '/4 รูป)' : 'แนบรูปภาพหลักฐานการจ่ายเงิน (สูงสุด 4 รูป)';
       return '<div class="expense-form-shell">'
         + '<div class="wiz-section expense-form-section">'
         + '  <div class="wiz-section-icon"><i class="bi bi-receipt-cutoff"></i></div>'
         + '  <div><div class="wiz-section-title">รายละเอียดใบเบิก</div><div class="wiz-section-sub">ระบุรายการ ค่าใช้จ่าย และวันที่ใช้งาน</div></div>'
         + '</div>'
+        + '<div class="field"><label>เบิกในนามบริษัท <span class="req">*</span></label>'
+        + '  <select id="fe-company" class="select">'
+        + '    <option value="">-- เลือกบริษัท --</option>'
+        +      COMPANIES.map(function(c) {
+                 var selected = (companyValue === c) ? ' selected' : '';
+                 return '<option value="' + esc(c) + '"' + selected + '>' + esc(c) + '</option>';
+               }).join('')
+        + '  </select>'
+        + '</div>'
         + '<div class="grid-2">'
         + '  <div class="field"><label>ประเภทค่าใช้จ่าย <span class="req">*</span></label><select id="fe-type" class="select">' + typeOpts + '</select></div>'
         + '  <div class="field"><label>จำนวนเงิน (บาท) <span class="req">*</span></label><input id="fe-amt" type="number" class="input" value="' + (preset.amount || '') + '" placeholder="0.00"></div>'
         + '</div>'
-        + '<div class="field"><label>รายละเอียด / หัวข้อ <span class="req">*</span></label><input id="fe-desc" class="input" placeholder="เช่น ค่ารถแท็กซี่ไปพบลูกค้า" value="' + esc(preset.description || '') + '"></div>'
+        + '<div class="field"><label>รายละเอียด / หัวข้อ <span class="req">*</span></label><input id="fe-desc" class="input" placeholder="เช่น ค่ารถแท็กซี่ไปพบลูกค้า" value="' + esc(descriptionText || '') + '"></div>'
         + '<div class="grid-2">'
         + '  <div class="field"><label>วันที่ใช้จ่าย <span class="req">*</span></label><input id="fe-date" type="date" class="input" value="' + (preset.expense_date || TH.iso(new Date())) + '"></div>'
         + '  <div class="field"><label>เชื่อมโยงกับงานออกนอกพื้นที่</label><select id="fe-mission" class="select">' + missionOpts + '</select></div>'
@@ -6717,10 +6745,12 @@ async function api(req) {
 
     function collectExpensePayload(preset) {
       preset = preset || {};
+      var comp = document.getElementById('fe-company') ? document.getElementById('fe-company').value.trim() : '';
       var amt = parseFloat(document.getElementById('fe-amt').value);
       var desc = document.getElementById('fe-desc').value.trim();
       var date = document.getElementById('fe-date').value;
 
+      if (!comp) return Promise.reject(new Error('กรุณาเลือกบริษัทที่ต้องการเบิก'));
       if (!desc) return Promise.reject(new Error('กรุณาระบุรายละเอียด/หัวข้อ'));
       if (isNaN(amt) || amt <= 0) return Promise.reject(new Error('กรุณาระบุจำนวนเงินที่มากกว่า 0'));
       if (!date) return Promise.reject(new Error('กรุณาระบุวันที่ใช้จ่าย'));
@@ -6728,7 +6758,7 @@ async function api(req) {
       var payload = {
         id: preset.id || '',
         expense_type: document.getElementById('fe-type').value,
-        description: desc,
+        description: '[' + comp + '] ' + desc,
         amount: amt,
         expense_date: date,
         mission_id: document.getElementById('fe-mission').value,
@@ -6916,10 +6946,18 @@ async function api(req) {
     } else {
       receiptHtml = '<div style="margin-top:10px;color:#94a3b8;font-size:13px;"><i class="bi bi-image-alt"></i> ไม่มีหลักฐานการจ่ายเงินแนบมา</div>';
     }
+
+    var descText = ex.description || '';
+    var companyName = '';
+    var match = descText.match(/^\[([^\]]+)\]\s*(.*)$/);
+    if (match) {
+      companyName = match[1];
+      descText = match[2];
+    }
       
     var html = '<div class="hero" style="margin-bottom:14px">'
       + '<span class="hero-pill"><i class="bi bi-cash-coin"></i> ใบเบิกค่าใช้จ่าย</span>'
-      + '<div class="hero-greet">' + esc(ex.description || '-') + '</div>'
+      + '<div class="hero-greet">' + esc(descText || '-') + '</div>'
       + '<div class="hero-sub">' + esc(ex.expense_no) + ' · ' + esc((ex.requester && ex.requester.full_name) || '-') + '</div>'
       + '<div class="hero-kpi">'
       + '<div class="hkpi"><div class="hkpi-label"><i class="bi bi-calendar-event"></i> วันที่ใช้จ่าย</div><div class="hkpi-value" style="font-size:18px">' + TH.date(ex.expense_date) + '</div></div>'
@@ -6931,6 +6969,7 @@ async function api(req) {
       + '<div class="card"><div class="card-head"><i class="bi bi-info-circle-fill" style="color:#024ad8"></i> <span class="card-title">ข้อมูลใบเบิก</span></div>'
       + '<div class="card-body">'
       + '<div style="display:grid;gap:12px;">'
+      + detailField('เบิกในนามบริษัท', companyName ? '<span class="badge b-blue" style="background:#e0f2fe;color:#0369a1;font-weight:600;">' + esc(companyName) + '</span>' : '-')
       + detailField('ผู้ขอเบิก', esc((ex.requester && ex.requester.full_name) || '-') + ' (' + esc((ex.requester && ex.requester.department) || '-') + ')')
       + detailField('สถานะใบเบิก', '<span class="badge b-' + esc(ex.status_tone) + '">' + esc(ex.status_label) + '</span>')
       + detailField('เชื่อมโยงงานออกนอกพื้นที่', missionLink)
@@ -7135,6 +7174,14 @@ async function api(req) {
         var w = window.open('', '_blank');
         var org = d.org || {};
         
+        var selectedCompany = '';
+        var printDesc = ex.description || '';
+        var match = printDesc.match(/^\[([^\]]+)\]\s*(.*)$/);
+        if (match) {
+          selectedCompany = match[1];
+          printDesc = match[2];
+        }
+
         var receipts = [];
         if (ex.receipt_url) {
           if (ex.receipt_url.indexOf('[') === 0) {
@@ -7210,7 +7257,7 @@ async function api(req) {
           + '@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}'
           + '</style></head><body>'
           + '<div>'
-          + '  <div class="company-title">บริษัท ' + esc(org.org_name || '.......................................') + ' จำกัด</div>'
+          + '  <div class="company-title">' + esc(selectedCompany || ('บริษัท ' + (org.org_name || '.......................................') + ' จำกัด')) + '</div>'
           + '  <div style="margin-top:3px;">ที่อยู่ ' + esc(org.org_address || '..............................................................................') + '</div>'
           + '  <div style="margin-top:3px;">เบอร์โทรศัพท์ <span class="dotted" style="width:150px;">' + esc(org.org_phone || '-') + '</span></div>'
           + '</div>'
@@ -7221,7 +7268,7 @@ async function api(req) {
           + '<table>'
           + '<thead><tr><th style="width:60px;">ลำดับ</th><th>รายละเอียดการใช้จ่าย</th><th style="width:150px;text-align:right;">จำนวนเงิน (บาท)</th></tr></thead>'
           + '<tbody>'
-          + '<tr><td class="center">1</td><td>' + esc(ex.description) + ' (' + TH.date(ex.expense_date) + ')</td><td class="right">' + Number(ex.amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td></tr>'
+          + '<tr><td class="center">1</td><td>' + esc(printDesc) + ' (' + TH.date(ex.expense_date) + ')</td><td class="right">' + Number(ex.amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td></tr>'
           + '<tr><td colspan="2"><div style="display:flex;justify-content:space-between;"><span>(ตัวอักษร) <span id="baht-text"></span></span><span style="font-weight:bold;">รวมเป็นเงินทั้งสิ้น</span></div></td><td class="right" style="font-weight:bold;">' + Number(ex.amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td></tr>'
           + '</tbody>'
           + '</table>'
