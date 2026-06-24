@@ -6423,6 +6423,7 @@ async function api(req) {
   Routes['#/expenses'] = function (hash) {
     if (!hasCap('expense.create_own|expense.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
     
+    var chosenReceipts = [];
     var params = {};
     if (hash.indexOf('?') >= 0) {
       hash.split('?')[1].split('&').forEach(function (pair) {
@@ -6535,9 +6536,76 @@ async function api(req) {
       }).join('');
     }
 
+    function updateReceiptsPreview() {
+      var container = document.getElementById('fe-previews-container');
+      if (!container) return;
+      container.innerHTML = '';
+      chosenReceipts.forEach(function (url, index) {
+        var wrapper = document.createElement('div');
+        wrapper.style.position = 'relative';
+        wrapper.style.width = '80px';
+        wrapper.style.height = '80px';
+        wrapper.style.borderRadius = '8px';
+        wrapper.style.overflow = 'hidden';
+        wrapper.style.border = '1px solid #cbd5e1';
+        wrapper.style.background = '#f8fafc';
+        
+        var img = document.createElement('img');
+        img.src = url;
+        img.style.width = '100%';
+        img.style.height = '100%';
+        img.style.objectFit = 'cover';
+        wrapper.appendChild(img);
+        
+        var delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.innerHTML = '<i class="bi bi-x"></i>';
+        delBtn.style.position = 'absolute';
+        delBtn.style.top = '2px';
+        delBtn.style.right = '2px';
+        delBtn.style.width = '18px';
+        delBtn.style.height = '18px';
+        delBtn.style.borderRadius = '50%';
+        delBtn.style.background = 'rgba(239, 68, 68, 0.95)';
+        delBtn.style.color = '#fff';
+        delBtn.style.border = 'none';
+        delBtn.style.cursor = 'pointer';
+        delBtn.style.display = 'flex';
+        delBtn.style.alignItems = 'center';
+        delBtn.style.justifyContent = 'center';
+        delBtn.style.fontSize = '11px';
+        delBtn.style.padding = '0';
+        
+        delBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          e.preventDefault();
+          chosenReceipts.splice(index, 1);
+          updateReceiptsPreview();
+          var fi = document.getElementById('fe-file');
+          if (fi) fi.value = '';
+          var note = document.getElementById('fe-file-note');
+          if (note) note.innerHTML = '<span style="color:#64748b">แนบหลักฐานสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
+        });
+        wrapper.appendChild(delBtn);
+        container.appendChild(wrapper);
+      });
+    }
+
     function expenseFormHtml(typeOpts, missionOpts, preset) {
       preset = preset || {};
-      var evidenceNote = preset.receipt_url ? 'มีหลักฐานแนบอยู่แล้ว (เลือกไฟล์ใหม่หากต้องการเปลี่ยน)' : 'แนบรูปภาพหลักฐานการจ่ายเงิน';
+      chosenReceipts = [];
+      if (preset.receipt_url) {
+        if (preset.receipt_url.indexOf('[') === 0) {
+          try {
+            chosenReceipts = JSON.parse(preset.receipt_url);
+          } catch(e) {
+            chosenReceipts = [preset.receipt_url];
+          }
+        } else {
+          chosenReceipts = [preset.receipt_url];
+        }
+      }
+      var evidenceNote = chosenReceipts.length > 0 ? 'มีหลักฐานแนบอยู่แล้ว (' + chosenReceipts.length + '/4 รูป)' : 'แนบรูปภาพหลักฐานการจ่ายเงิน (สูงสุด 4 รูป)';
       return '<div class="expense-form-shell">'
         + '<div class="wiz-section expense-form-section">'
         + '  <div class="wiz-section-icon"><i class="bi bi-receipt-cutoff"></i></div>'
@@ -6554,9 +6622,10 @@ async function api(req) {
         + '</div>'
         + '<div class="wiz-section expense-form-section">'
         + '  <div class="wiz-section-icon"><i class="bi bi-image-fill"></i></div>'
-        + '  <div><div class="wiz-section-title">หลักฐานการจ่ายเงิน</div><div class="wiz-section-sub">แนบรูปใบเสร็จหรือสลิปเพื่อประกอบการอนุมัติ</div></div>'
+        + '  <div><div class="wiz-section-title">หลักฐานการจ่ายเงิน</div><div class="wiz-section-sub">แนบรูปใบเสร็จหรือสลิปเพื่อประกอบการอนุมัติ (สูงสุด 4 รูป)</div></div>'
         + '</div>'
-        + '<div class="field"><label>แนบหลักฐานการจ่ายเงิน (รูปภาพ)</label><input id="fe-file" type="file" accept="image/*" class="input"><div id="fe-file-note" class="field-hint">' + evidenceNote + '</div></div>'
+        + '<div class="field"><label>แนบหลักฐานการจ่ายเงิน (รูปภาพ)</label><input id="fe-file" type="file" accept="image/*" class="input" multiple><div id="fe-file-note" class="field-hint">' + evidenceNote + '</div>'
+        + '<div id="fe-previews-container" style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap;"></div></div>'
         + '</div>';
     }
 
@@ -6564,20 +6633,90 @@ async function api(req) {
       var fi = document.getElementById('fe-file');
       var note = document.getElementById('fe-file-note');
       if (!fi) return;
+      
+      updateReceiptsPreview();
+      
+      if (note && chosenReceipts.length > 0) {
+        note.innerHTML = '<span style="color:#64748b">มีรูปแนบอยู่แล้ว (' + chosenReceipts.length + '/4 รูป)</span>';
+      }
+
       fi.addEventListener('change', function () {
-        var file = fi.files && fi.files[0];
-        if (!file) {
-          if (note) note.textContent = evidenceNote;
+        var files = fi.files;
+        if (!files || files.length === 0) return;
+        
+        var currentCount = chosenReceipts.length;
+        var toAdd = Math.min(files.length, 4 - currentCount);
+        
+        if (toAdd <= 0) {
+          toast('แนบรูปได้สูงสุด 4 รูปเท่านั้น', 'warning');
+          fi.value = '';
           return;
         }
-        if (note) note.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;color:#10b981"><i class="bi bi-image"></i> ' + esc(file.name) + '</span>';
+
+        var loadedCount = 0;
+        if (note) note.innerHTML = '<span style="color:#3b82f6"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="width:12px;height:12px;margin-right:4px;"></span> กำลังประมวลผลรูปภาพ...</span>';
+
+        for (var i = 0; i < toAdd; i++) {
+          (function (file) {
+            var reader = new FileReader();
+            reader.onload = function (e) {
+              var img = new Image();
+              img.onload = function () {
+                var max_size = 600;
+                var quality = 0.5;
+                var dataUrl = '';
+                var attempt = 0;
+                while (attempt < 5) {
+                  var canvas = document.createElement('canvas');
+                  var w = img.width;
+                  var h = img.height;
+                  if (w > h) {
+                    if (w > max_size) { h *= max_size / w; w = max_size; }
+                  } else {
+                    if (h > max_size) { w *= max_size / h; h = max_size; }
+                  }
+                  canvas.width = w; canvas.height = h;
+                  var ctx = canvas.getContext('2d');
+                  ctx.drawImage(img, 0, 0, w, h);
+                  try {
+                    dataUrl = canvas.toDataURL('image/jpeg', quality);
+                  } catch (err) {
+                    dataUrl = e.target.result;
+                    break;
+                  }
+                  if (dataUrl.length <= 48000) break;
+                  max_size = Math.round(max_size * 0.8);
+                  quality = Math.max(0.2, quality - 0.1);
+                  attempt++;
+                }
+                
+                chosenReceipts.push(dataUrl || e.target.result);
+                loadedCount++;
+                if (loadedCount === toAdd) {
+                  updateReceiptsPreview();
+                  if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> อัปโหลดรูปภาพสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
+                  fi.value = '';
+                }
+              };
+              img.onerror = function () {
+                chosenReceipts.push(e.target.result);
+                loadedCount++;
+                if (loadedCount === toAdd) {
+                  updateReceiptsPreview();
+                  if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> อัปโหลดรูปภาพสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
+                  fi.value = '';
+                }
+              };
+              img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+          })(files[i]);
+        }
       });
     }
 
     function collectExpensePayload(preset) {
       preset = preset || {};
-      var fileInput = document.getElementById('fe-file');
-      var file = fileInput && fileInput.files && fileInput.files[0];
       var amt = parseFloat(document.getElementById('fe-amt').value);
       var desc = document.getElementById('fe-desc').value.trim();
       var date = document.getElementById('fe-date').value;
@@ -6593,55 +6732,10 @@ async function api(req) {
         amount: amt,
         expense_date: date,
         mission_id: document.getElementById('fe-mission').value,
-        receipt_url: preset.receipt_url || ''
+        receipt_url: chosenReceipts.length > 0 ? JSON.stringify(chosenReceipts) : ''
       };
 
-      if (!file) return Promise.resolve(payload);
-
-      return new Promise(function (resolve) {
-        var reader = new FileReader();
-        reader.onload = function (e) {
-          var img = new Image();
-          img.onload = function () {
-            var max_size = 600;
-            var quality = 0.5;
-            var dataUrl = '';
-            var attempt = 0;
-            while (attempt < 5) {
-              var canvas = document.createElement('canvas');
-              var w = img.width;
-              var h = img.height;
-              if (w > h) {
-                if (w > max_size) { h *= max_size / w; w = max_size; }
-              } else {
-                if (h > max_size) { w *= max_size / h; h = max_size; }
-              }
-              canvas.width = w; canvas.height = h;
-              var ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0, w, h);
-              try {
-                dataUrl = canvas.toDataURL('image/jpeg', quality);
-              } catch (err) {
-                dataUrl = e.target.result;
-                break;
-              }
-              if (dataUrl.length <= 48000) break;
-              max_size = Math.round(max_size * 0.8);
-              quality = Math.max(0.2, quality - 0.1);
-              attempt++;
-            }
-            payload.receipt_url = dataUrl || e.target.result;
-            resolve(payload);
-          };
-          img.onerror = function () {
-            payload.receipt_url = e.target.result;
-            resolve(payload);
-          };
-          img.src = e.target.result;
-        };
-        reader.onerror = function () { resolve(payload); };
-        reader.readAsDataURL(file);
-      });
+      return Promise.resolve(payload);
     }
 
     function saveExpense(payload, isEdit, onDone) {
@@ -6796,11 +6890,32 @@ async function api(req) {
     var missionLabel = ex.mission_no ? (ex.mission_title ? ex.mission_no + ' : ' + ex.mission_title : ex.mission_no) : '-';
     var missionLink = ex.mission_id ? '<a href="#/missions/view?id=' + encodeURIComponent(ex.mission_id) + '" style="font-weight:600"><i class="bi bi-signpost-2-fill"></i> ' + esc(missionLabel) + '</a>' : '-';
     
-    var receiptHtml = ex.receipt_url
-      ? '<div style="margin-top:10px;"><div style="font-weight:600;font-size:13px;color:#475569;margin-bottom:6px;">หลักฐานการจ่ายเงิน</div>'
-        + '<img src="' + esc(ex.receipt_url) + '" id="receipt-preview" style="max-width:240px;max-height:180px;border-radius:10px;border:1px solid #e2e8f0;cursor:pointer;object-fit:contain;box-shadow:0 4px 12px rgba(0,0,0,0.06);">'
-        + '<div style="font-size:11px;color:#94a3b8;margin-top:4px;"><i class="bi bi-zoom-in"></i> คลิกที่รูปเพื่อขยายใหญ่</div></div>'
-      : '<div style="margin-top:10px;color:#94a3b8;font-size:13px;"><i class="bi bi-image-alt"></i> ไม่มีหลักฐานการจ่ายเงินแนบมา</div>';
+    var receipts = [];
+    if (ex.receipt_url) {
+      if (ex.receipt_url.indexOf('[') === 0) {
+        try {
+          receipts = JSON.parse(ex.receipt_url);
+        } catch(e) {
+          receipts = [ex.receipt_url];
+        }
+      } else {
+        receipts = [ex.receipt_url];
+      }
+    }
+    
+    var receiptHtml = '';
+    if (receipts.length > 0) {
+      receiptHtml = '<div style="margin-top:10px;">'
+        + '<div style="font-weight:600;font-size:13px;color:#475569;margin-bottom:6px;">หลักฐานการจ่ายเงิน (' + receipts.length + ' รูป)</div>'
+        + '<div style="display:flex;gap:10px;flex-wrap:wrap;">';
+      receipts.forEach(function (url, idx) {
+        receiptHtml += '<img src="' + esc(url) + '" class="receipt-preview-item" data-idx="' + idx + '" style="width:110px;height:110px;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer;object-fit:cover;box-shadow:0 2px 6px rgba(0,0,0,0.05);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.05)\'" onmouseout="this.style.transform=\'scale(1)\'">';
+      });
+      receiptHtml += '</div>'
+        + '<div style="font-size:11px;color:#94a3b8;margin-top:6px;"><i class="bi bi-zoom-in"></i> คลิกที่รูปเพื่อขยายใหญ่</div></div>';
+    } else {
+      receiptHtml = '<div style="margin-top:10px;color:#94a3b8;font-size:13px;"><i class="bi bi-image-alt"></i> ไม่มีหลักฐานการจ่ายเงินแนบมา</div>';
+    }
       
     var html = '<div class="hero" style="margin-bottom:14px">'
       + '<span class="hero-pill"><i class="bi bi-cash-coin"></i> ใบเบิกค่าใช้จ่าย</span>'
@@ -6873,15 +6988,20 @@ async function api(req) {
       LMS.dispatch();
     }
     
-    if ($('#receipt-preview')) {
-      $('#receipt-preview').addEventListener('click', function () {
-        Swal.fire({
-          imageUrl: ex.receipt_url,
-          imageAlt: 'หลักฐานการจ่ายเงิน',
-          showConfirmButton: false,
-          showCloseButton: true,
-          width: 'auto',
-          maxWidth: '80%'
+    var previewItems = document.querySelectorAll('.receipt-preview-item');
+    if (previewItems.length > 0) {
+      [].forEach.call(previewItems, function (el) {
+        el.addEventListener('click', function () {
+          var idx = parseInt(this.getAttribute('data-idx'));
+          var url = receipts[idx];
+          Swal.fire({
+            imageUrl: url,
+            imageAlt: 'หลักฐานการจ่ายเงิน รูปที่ ' + (idx + 1),
+            showConfirmButton: false,
+            showCloseButton: true,
+            width: 'auto',
+            maxWidth: '80%'
+          });
         });
       });
     }
@@ -7014,7 +7134,56 @@ async function api(req) {
       $('#exp-print').addEventListener('click', function () {
         var w = window.open('', '_blank');
         var org = d.org || {};
-        var slipImg = ex.receipt_url ? '<div class="evidence-wrap"><img src="' + esc(ex.receipt_url) + '" class="evidence-img"></div>' : '';
+        
+        var receipts = [];
+        if (ex.receipt_url) {
+          if (ex.receipt_url.indexOf('[') === 0) {
+            try {
+              receipts = JSON.parse(ex.receipt_url);
+            } catch(e) {
+              receipts = [ex.receipt_url];
+            }
+          } else {
+            receipts = [ex.receipt_url];
+          }
+        }
+        
+        var slipImg = '';
+        if (receipts.length > 0) {
+          slipImg += '<div class="evidence-wrap">';
+          if (receipts.length === 1) {
+            slipImg += '<div class="evidence-grid grid-1">'
+              + '<div class="evidence-img-box large-box"><img src="' + esc(receipts[0]) + '" class="evidence-img"></div>'
+              + '</div>';
+          } else if (receipts.length === 2) {
+            slipImg += '<div class="evidence-grid grid-2">'
+              + '<div class="evidence-img-box medium-box"><img src="' + esc(receipts[0]) + '" class="evidence-img"></div>'
+              + '<div class="evidence-img-box medium-box"><img src="' + esc(receipts[1]) + '" class="evidence-img"></div>'
+              + '</div>';
+          } else if (receipts.length === 3) {
+            slipImg += '<div class="evidence-grid grid-3">'
+              + '<div class="evidence-row">'
+              + '  <div class="evidence-img-box medium-box"><img src="' + esc(receipts[0]) + '" class="evidence-img"></div>'
+              + '  <div class="evidence-img-box medium-box"><img src="' + esc(receipts[1]) + '" class="evidence-img"></div>'
+              + '</div>'
+              + '<div class="evidence-row row-center">'
+              + '  <div class="evidence-img-box medium-box"><img src="' + esc(receipts[2]) + '" class="evidence-img"></div>'
+              + '</div>'
+              + '</div>';
+          } else {
+            slipImg += '<div class="evidence-grid grid-4">'
+              + '<div class="evidence-row">'
+              + '  <div class="evidence-img-box medium-box"><img src="' + esc(receipts[0]) + '" class="evidence-img"></div>'
+              + '  <div class="evidence-img-box medium-box"><img src="' + esc(receipts[1]) + '" class="evidence-img"></div>'
+              + '</div>'
+              + '<div class="evidence-row">'
+              + '  <div class="evidence-img-box medium-box"><img src="' + esc(receipts[2]) + '" class="evidence-img"></div>'
+              + '  <div class="evidence-img-box medium-box"><img src="' + esc(receipts[3]) + '" class="evidence-img"></div>'
+              + '</div>'
+              + '</div>';
+          }
+          slipImg += '</div>';
+        }
         
         var html = '<html><head><title>ใบเบิกเงินและขออนุมัติค่าใช้จ่าย</title><style>'
           + '@import url("https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600&display=swap");'
@@ -7028,10 +7197,17 @@ async function api(req) {
           + '.signature-box{display:flex;justify-content:space-around;margin-top:18px;}'
           + '.sig-line{text-align:center;width:220px;font-size:11px;}.sig-line div{border-bottom:1px dotted #000;height:18px;margin-bottom:4px;}'
           + '.dotted{border-bottom:1px dotted #000;display:inline-block;padding:0 8px;}'
-          + '.evidence-title{font-weight:bold;margin:10px 0 6px;}'
-          + '.evidence-wrap{text-align:center;margin-top:4px;page-break-inside:avoid;break-inside:avoid;}'
-          + '.evidence-img{display:block;width:auto;max-width:86%;max-height:245px;object-fit:contain;margin:0 auto;border:1px solid #ccc;border-radius:4px;}'
-          + '@media print{.evidence-img{max-height:245px;} body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}'
+          + '.evidence-title{font-weight:bold;margin:8px 0 4px;}'
+          + '.evidence-wrap{margin-top:4px;page-break-inside:avoid;break-inside:avoid;}'
+          + '.evidence-grid{display:flex;flex-direction:column;gap:6px;align-items:center;width:100%;}'
+          + '.evidence-row{display:flex;justify-content:center;gap:10px;width:100%;}'
+          + '.row-center{justify-content:center;}'
+          + '.grid-2{display:flex;flex-direction:row;justify-content:center;gap:10px;width:100%;}'
+          + '.evidence-img-box{border:1px solid #ccc;border-radius:4px;overflow:hidden;background:#f8fafc;display:flex;align-items:center;justify-content:center;}'
+          + '.large-box{width:60%;height:220px;margin:0 auto;}'
+          + '.medium-box{width:46%;height:140px;}'
+          + '.evidence-img{max-width:100%;max-height:100%;object-fit:contain;display:block;}'
+          + '@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}'
           + '</style></head><body>'
           + '<div>'
           + '  <div class="company-title">บริษัท ' + esc(org.org_name || '.......................................') + ' จำกัด</div>'
@@ -7088,12 +7264,22 @@ async function api(req) {
           + '}'
           + 'document.getElementById("baht-text").innerText=tb(' + Number(ex.amount || 0) + ');'
           + 'function triggerPrint(){'
-          + '  var img=document.querySelector(".evidence-img");'
-          + '  if(!img || img.complete || img.naturalWidth>0){'
-          + '    window.print();'
-          + '  }else{'
-          + '    img.onload=function(){window.print();};'
-          + '    img.onerror=function(){window.print();};'
+          + '  var imgs=document.querySelectorAll(".evidence-img");'
+          + '  var total=imgs.length;'
+          + '  if(total===0){ window.print(); return; }'
+          + '  var loaded=0;'
+          + '  function check(){'
+          + '    loaded++;'
+          + '    if(loaded>=total){ window.print(); }'
+          + '  }'
+          + '  for(var i=0;i<total;i++){'
+          + '    var img=imgs[i];'
+          + '    if(img.complete || img.naturalWidth>0){'
+          + '      check();'
+          + '    }else{'
+          + '      img.onload=check;'
+          + '      img.onerror=check;'
+          + '    }'
           + '  }'
           + '}'
           + 'if(document.readyState==="complete"){setTimeout(triggerPrint,200);}'
