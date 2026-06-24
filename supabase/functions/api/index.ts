@@ -2603,6 +2603,11 @@ async function api(req) {
     await Settings_ensureDefaults_();
     
     GLOBAL_SETTINGS = _settingsMap_();
+    if (GLOBAL_SETTINGS.web_url && !REQUEST_ORIGIN.includes("localhost") && !REQUEST_ORIGIN.includes("127.0.0.1")) {
+      var wurl = GLOBAL_SETTINGS.web_url;
+      if (!wurl.endsWith('/')) wurl += '/';
+      REQUEST_ORIGIN = wurl;
+    }
     
     var holidaysRows = DB_readAll('Holidays');
     GLOBAL_HOLIDAYS = {};
@@ -2717,10 +2722,20 @@ serve(async (req) => {
     if (originHeader) {
       try {
         const u = new URL(originHeader);
-        requestOrigin = u.origin;
+        let path = u.pathname || "/";
+        if (path.endsWith(".html") || path.endsWith(".js")) {
+          path = path.substring(0, path.lastIndexOf("/") + 1);
+        }
+        if (!path.endsWith("/")) {
+          path += "/";
+        }
+        requestOrigin = u.origin + path;
       } catch (e) {}
     }
-    REQUEST_ORIGIN = requestOrigin || "http://localhost:8000";
+    if (requestOrigin && !requestOrigin.endsWith("/")) {
+      requestOrigin += "/";
+    }
+    REQUEST_ORIGIN = requestOrigin || "http://localhost:8000/";
 
     const result = await api(reqBody);
     return new Response(JSON.stringify(result), {
