@@ -3134,6 +3134,7 @@ const SUPABASE_URL = 'https://djcvqxjwakiorahdiwwk.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqY3ZxeGp3YWtpb3JhaDRpd3drIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NDk4MjUsImV4cCI6MjA5NzQyNTgyNX0.efr2QuUfbk8WNK8I9A-ga4OKzJal7w_dNKoICXX1nPQ';
 const DEPARTMENTS = ['ฝ่ายขาย', 'การตลาด', 'คลังสินค้า', 'บัญชี', 'ฝ่ายทรัพยากรบุคคล', 'จัดซื้อ', 'Sport Triton'];
 const COMPANIES = ['บริษัท เอวริณทร์ อินเตอร์กรุ๊ป จำกัด', 'บริษัท สปอร์ต ไตรตัน จำกัด'];
+const BRANCHES = ['ออฟฟิต', 'ราชพฤกษ์', 'วิรันด้า', 'ปอโต'];
 
 async function api(req) {
   var url = SUPABASE_URL + '/functions/v1/api';
@@ -3388,6 +3389,7 @@ async function api(req) {
     '#/quotas':       { title: 'จัดการสิทธิ์วันลา',  sub: 'เพิ่มลดและดูแลสิทธิ์คงเหลือของพนักงานทุกคน', icon: 'person-gear' },
     '#/settings':     { title: 'ตั้งค่าระบบ',        sub: 'กำหนดลิมิตการลา · ข้อมูลบริษัท',     icon: 'gear-fill' },
     '#/profile':      { title: 'โปรไฟล์ของฉัน',      sub: 'จัดการข้อมูลส่วนตัว',                  icon: 'person-circle' },
+    '#/branches':     { title: 'ตารางสาขาพนักงาน',   sub: 'รายชื่อพนักงานแยกตามสาขาและข้อมูลติดต่อ', icon: 'building' },
     '#/audit':        { title: 'บันทึกระบบ',         sub: 'ประวัติการใช้งาน',                    icon: 'shield-check' }
   };
 
@@ -3413,7 +3415,8 @@ async function api(req) {
         title: 'กำลังคน',
         items: [
           { hash: '#/calendar',  icon: 'calendar3',         label: 'ปฏิทินลา',          cap: 'calendar.view_own|calendar.view_department|calendar.view_all' },
-          { hash: '#/missions',  icon: 'signpost-2-fill',   label: 'งานออกนอกพื้นที่',   cap: 'mission.create_own|mission.view_own|mission.view_department|mission.view_all' }
+          { hash: '#/missions',  icon: 'signpost-2-fill',   label: 'งานออกนอกพื้นที่',   cap: 'mission.create_own|mission.view_own|mission.view_department|mission.view_all' },
+          { hash: '#/branches',  icon: 'building',          label: 'ตารางสาขาพนักงาน',   cap: '*' }
         ]
       },
       {
@@ -5500,7 +5503,7 @@ async function api(req) {
       + '<div class="field"><label>ชื่อ-สกุล <span class="req">*</span></label><input type="text" name="full_name" class="input" value="' + esc(u.full_name) + '" required></div>'
       + '<div class="field"><label>ตำแหน่ง</label><input type="text" name="position" class="input" value="' + esc(u.position) + '"></div>'
       + '</div>'
-      + '<div class="row-2">'
+      + '<div class="row-3">'
       + '<div class="field"><label>ระดับ</label><input type="text" name="level" class="input" value="' + esc(u.level) + '" placeholder=""></div>'
       + '<div class="field"><label>สังกัด</label>'
       + '<select name="department" class="select">'
@@ -5511,6 +5514,11 @@ async function api(req) {
           }
           return opts.map(function (d) { return '<option value="' + esc(d) + '"' + (u.department === d ? ' selected' : '') + '>' + esc(d) + '</option>'; }).join('');
         })()
+      + '</select></div>'
+      + '<div class="field"><label>สาขา</label>'
+      + '<select name="branch" class="select">'
+      + '<option value="">ไม่ระบุสาขา</option>'
+      + BRANCHES.map(function (b) { return '<option value="' + esc(b) + '"' + (u.branch === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('')
       + '</select></div>'
       + '</div>'
       + '<div class="row-2">'
@@ -5684,7 +5692,7 @@ async function api(req) {
       e.preventDefault();
       var f = e.target;
       var data = {};
-      ['full_name','position','level','department','email','phone'].forEach(function (k) { data[k] = f[k].value; });
+      ['full_name','position','level','department','branch','email','phone'].forEach(function (k) { data[k] = f[k].value; });
       data.avatar = chosenAvatarBase64;
       Spinner.show('กำลังบันทึก...');
       call('user.update_profile', data).then(function (u) {
@@ -5724,6 +5732,116 @@ async function api(req) {
   Routes['#/quotas'] = function () {
     renderQuotasManager();
   };
+  Routes['#/branches'] = function () {
+    renderBranchesDirectory();
+  };
+
+  function renderBranchesDirectory() {
+    var st = { q: '', branch: '' };
+    setPage('<div class="toolbar">'
+      + '<div class="search-box"><i class="bi bi-search"></i><input type="text" id="br-q" placeholder="ค้นหาชื่อพนักงาน/ตำแหน่ง/สังกัด..."></div>'
+      + '<select class="select" id="br-select" style="max-width:200px"><option value="">ทุกสาขา</option>'
+      + BRANCHES.map(function (b) { return '<option value="' + b + '">' + esc(b) + '</option>'; }).join('')
+      + '</select>'
+      + '</div>'
+      + '<div id="br-list" style="margin-top:16px"></div>');
+
+    function load() {
+      var listDiv = $('#br-list');
+      if (!listDiv) return;
+      listDiv.innerHTML = skBlocks(4, 80);
+      call('user.branch_directory', {}).then(function (r) {
+        var items = r.items || [];
+        var filtered = items.filter(function (u) {
+          if (st.q) {
+            var search = st.q.toLowerCase();
+            var nameOk = (u.full_name || '').toLowerCase().indexOf(search) >= 0;
+            var posOk = (u.position || '').toLowerCase().indexOf(search) >= 0;
+            var deptOk = (u.department || '').toLowerCase().indexOf(search) >= 0;
+            if (!nameOk && !posOk && !deptOk) return false;
+          }
+          if (st.branch && u.branch !== st.branch) return false;
+          return true;
+        });
+
+        // Group by branch
+        var branchesMap = {};
+        BRANCHES.forEach(function (b) { branchesMap[b] = []; });
+        branchesMap['ไม่ระบุสาขา'] = [];
+
+        filtered.forEach(function (u) {
+          var b = u.branch || 'ไม่ระบุสาขา';
+          if (!branchesMap[b]) branchesMap[b] = [];
+          branchesMap[b].push(u);
+        });
+
+        var html = '';
+        var branchColors = {
+          'ออฟฟิต': { bg: '#eef2ff', text: '#4f46e5', border: '#c7d2fe' },
+          'ราชพฤกษ์': { bg: '#fef2f2', text: '#dc2626', border: '#fca5a5' },
+          'วิรันด้า': { bg: '#ecfdf5', text: '#059669', border: '#a7f3d0' },
+          'ปอโต': { bg: '#fffbeb', text: '#d97706', border: '#fde68a' },
+          'ไม่ระบุสาขา': { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' }
+        };
+
+        Object.keys(branchesMap).forEach(function (bName) {
+          var uList = branchesMap[bName] || [];
+          if (st.branch && bName !== st.branch) return;
+          if (uList.length === 0) return;
+
+          var col = branchColors[bName] || branchColors['ไม่ระบุสาขา'];
+
+          html += '<div style="margin-bottom:24px">'
+            + '  <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;border-bottom:2px solid ' + col.border + ';padding-bottom:6px">'
+            + '    <i class="bi bi-building" style="color:' + col.text + ';font-size:18px"></i>'
+            + '    <h3 style="margin:0;font-size:16px;font-weight:700;color:#1e293b">' + esc(bName) + ' <span style="font-size:13px;font-weight:500;color:#64748b;margin-left:6px">(' + uList.length + ' คน)</span></h3>'
+            + '  </div>'
+            + '  <div class="grid-3">';
+
+          uList.forEach(function (u) {
+            var initial = (u.full_name || '?').substring(0, 1).toUpperCase();
+            var avatar = u.avatar ? '<img src="' + esc(u.avatar) + '" style="width:100%;height:100%;object-fit:cover" referrerpolicy="no-referrer">' : initial;
+            html += '<div class="card" style="margin:0;display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid #e2e8f0">'
+              + '  <div style="display:flex;align-items:center;gap:12px">'
+              + '    <div class="lv-avatar" style="width:48px;height:48px;font-size:18px;flex-shrink:0;background:#f1f5f9">' + avatar + '</div>'
+              + '    <div style="min-width:0">'
+              + '      <div style="font-weight:700;font-size:15px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(u.full_name) + '</div>'
+              + '      <div style="font-size:12px;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(u.position || '-') + ' / ' + esc(u.department || '-') + '</div>'
+              + '    </div>'
+              + '  </div>'
+              + '  <div style="border-top:1px dashed #e2e8f0;padding-top:10px;display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:#475569">'
+              + '    <div><i class="bi bi-envelope" style="margin-right:6px"></i>' + (u.email ? '<a href="mailto:' + esc(u.email) + '" style="color:#2563eb;text-decoration:none">' + esc(u.email) + '</a>' : '-') + '</div>'
+              + '    <div><i class="bi bi-telephone" style="margin-right:6px"></i>' + (u.phone ? '<a href="tel:' + esc(u.phone) + '" style="color:#2563eb;text-decoration:none">' + esc(u.phone) + '</a>' : '-') + '</div>'
+              + '  </div>'
+              + '</div>';
+          });
+
+          html += '  </div>'
+            + '</div>';
+        });
+
+        if (html === '') {
+          html = '<div class="card" style="text-align:center;padding:40px;color:#94a3b8"><i class="bi bi-people" style="font-size:32px;display:block;margin-bottom:8px"></i>ไม่พบข้อมูลพนักงานในเงื่อนไขการค้นหา</div>';
+        }
+
+        listDiv.innerHTML = html;
+      }).catch(function (e) {
+        listDiv.innerHTML = '<div style="color:#ef4444;text-align:center;padding:20px">' + esc(e.message) + '</div>';
+      });
+    }
+
+    var t;
+    $('#br-q').addEventListener('input', function () {
+      clearTimeout(t);
+      t = setTimeout(function () { st.q = $('#br-q').value; load(); }, 300);
+    });
+    $('#br-select').addEventListener('change', function () {
+      st.branch = $('#br-select').value;
+      load();
+    });
+
+    load();
+  }
 
   function renderQuotasManager() {
     if (!hasCap('setting.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
@@ -5899,13 +6017,14 @@ async function api(req) {
             + '<div><div style="font-weight:600">' + esc(u.full_name) + '</div><div style="font-size:11px;color:#94a3b8">@' + esc(u.username) + '</div></div></div></td>'
             + '<td>' + esc(u.position || '-') + '</td>'
             + '<td>' + esc(u.department || '-') + '</td>'
+            + '<td>' + esc(u.branch || '-') + '</td>'
             + '<td><span class="role-chip role-chip-' + esc(u.role) + '">' + esc((LMS.Store.boot.roles || {})[u.role] || u.role) + '</span></td>'
             + '<td>' + (String(u.is_active).toLowerCase() === 'yes' ? '<span class="badge b-emerald"><i class="bi bi-check-circle"></i> ใช้งาน</span>' : (String(u.is_active).toLowerCase() === 'pending' ? '<span class="pending-badge"><i class="bi bi-clock-fill"></i> รออนุมัติ</span>' : '<span class="badge b-slate"><i class="bi bi-pause-circle"></i> ปิด</span>')) + '</td>'
             + '</tr>';
         }).join('');
         var html = '<table class="data-table">'
-          + '<thead><tr><th>ผู้ใช้</th><th>ตำแหน่ง</th><th>สังกัด</th><th>บทบาท</th><th>สถานะ</th></tr></thead>'
-          + '<tbody>' + (rows || '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:30px">ไม่พบผู้ใช้</td></tr>') + '</tbody></table>';
+          + '<thead><tr><th>ผู้ใช้</th><th>ตำแหน่ง</th><th>สังกัด</th><th>สาขา</th><th>บทบาท</th><th>สถานะ</th></tr></thead>'
+          + '<tbody>' + (rows || '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:30px">ไม่พบผู้ใช้</td></tr>') + '</tbody></table>';
         $('#usr-list').innerHTML = html;
         $$('#usr-list [data-id]').forEach(function (tr) { tr.addEventListener('click', function () { openUserModal(tr.getAttribute('data-id')); }); });
       }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
@@ -5931,7 +6050,7 @@ async function api(req) {
         + '<div class="field"><label>ชื่อ-สกุล <span class="req">*</span></label><input type="text" name="full_name" class="input" value="' + esc(u.full_name) + '" required></div>'
         + '<div class="field"><label>ตำแหน่ง</label><input type="text" name="position" class="input" value="' + esc(u.position) + '"></div>'
         + '</div>'
-        + '<div class="row-2">'
+        + '<div class="row-3">'
         + '<div class="field"><label>ระดับ</label><input type="text" name="level" class="input" value="' + esc(u.level) + '"></div>'
         + '<div class="field"><label>สังกัด</label><select name="department" class="select">'
         + (function() {
@@ -5941,6 +6060,10 @@ async function api(req) {
             }
             return opts.map(function (d) { return '<option value="' + esc(d) + '"' + (u.department === d ? ' selected' : '') + '>' + esc(d) + '</option>'; }).join('');
           })()
+        + '</select></div>'
+        + '<div class="field"><label>สาขา</label><select name="branch" class="select">'
+        + '<option value="">ไม่ระบุสาขา</option>'
+        + BRANCHES.map(function (b) { return '<option value="' + esc(b) + '"' + (u.branch === b ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join('')
         + '</select></div>'
         + '</div>'
         + '<div class="row-2">'
@@ -5965,7 +6088,7 @@ async function api(req) {
           $('#user-save').addEventListener('click', function () {
             var f = $('#user-form');
             var data = { id: u.id || '' };
-            ['username','password','full_name','position','level','department','role','email','phone','avatar'].forEach(function (k) {
+            ['username','password','full_name','position','level','department','role','email','phone','avatar','branch'].forEach(function (k) {
               if (f[k]) data[k] = f[k].value;
             });
             data.is_active = f.is_active.checked;

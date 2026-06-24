@@ -79,7 +79,7 @@ const SHEETS = Object.freeze({
 
 // ── Schemas ─────────────────────────────────────────────────
 const SCHEMAS = Object.freeze({
-  Users: ['id','username','password_hash','salt','full_name','position','level','department','role','email','phone','avatar','is_active','created_at','updated_at','line_user_id','line_connect_code'],
+  Users: ['id','username','password_hash','salt','full_name','position','level','department','role','email','phone','avatar','is_active','created_at','updated_at','line_user_id','line_connect_code','branch'],
   Leaves: ['id','leave_no','requester_id','leave_type','reason','start_date','end_date','days','contact_address','contact_phone','last_leave_type','last_leave_start','last_leave_end','last_leave_days','status','checker_id','checker_comment','checker_at','supervisor_id','supervisor_comment','supervisor_at','approver_id','approver_decision','approver_comment','approver_at','written_at','written_place','fiscal_year','attachment_url','created_at','updated_at','leave_unit','start_time','end_time','hours'],
   Sessions: ['token','user_id','created_at','expires_at','user_agent'],
   Settings: ['key','value','updated_at'],
@@ -523,7 +523,8 @@ function Auth_publicUser_(u) {
     email: u.email, phone: u.phone, avatar: u.avatar,
     is_active: u.is_active,
     line_user_id: u.line_user_id,
-    line_connect_code: u.line_connect_code
+    line_connect_code: u.line_connect_code,
+    branch: u.branch
   };
 }
 
@@ -710,6 +711,26 @@ function Users_get(user, p) {
   return Auth_publicUser_(u);
 }
 
+function Users_branchDirectory(user, p) {
+  var users = DB_readAll(SHEETS.USERS).filter(function (u) {
+    return String(u.is_active).toLowerCase() === 'yes';
+  });
+  var list = users.map(function (u) {
+    return {
+      id: u.id,
+      full_name: u.full_name,
+      username: u.username,
+      position: u.position,
+      department: u.department,
+      branch: u.branch,
+      email: u.email,
+      phone: u.phone,
+      avatar: u.avatar
+    };
+  });
+  return { items: list };
+}
+
 async function Users_upsert(user, p) {
   Auth_requireCap(user, 'user.manage');
   var data = p || {};
@@ -737,7 +758,8 @@ async function Users_upsert(user, p) {
       email: String(data.email || '').trim(),
       phone: String(data.phone || '').trim(),
       avatar: String(data.avatar || '').trim(),
-      is_active: data.is_active === false ? 'no' : 'yes'
+      is_active: data.is_active === false ? 'no' : 'yes',
+      branch: String(data.branch || '').trim()
     };
     if (data.password) {
       var salt = cfg_salt_();
@@ -761,7 +783,8 @@ async function Users_upsert(user, p) {
       email: String(data.email || '').trim(),
       phone: String(data.phone || '').trim(),
       avatar: String(data.avatar || '').trim(),
-      is_active: data.is_active === false ? 'no' : 'yes'
+      is_active: data.is_active === false ? 'no' : 'yes',
+      branch: String(data.branch || '').trim()
     });
     await Audit_log_(user, 'user.create', 'user', newU.id, { username: newU.username, role: newU.role });
     return Auth_publicUser_(newU);
@@ -812,7 +835,8 @@ async function Users_updateProfile(user, p) {
     department: String(data.department || '').trim(),
     email: String(data.email || '').trim(),
     phone: String(data.phone || '').trim(),
-    avatar: String(data.avatar || '').trim()
+    avatar: String(data.avatar || '').trim(),
+    branch: String(data.branch || '').trim()
   };
   if (!patch.full_name) throw new Error('กรุณากรอกชื่อ-สกุล');
   var updated = await DB_update(SHEETS.USERS, user.id, patch);
@@ -2689,6 +2713,7 @@ async function api(req) {
 
       case 'user.list':               return _ok(Users_list(user, p));
       case 'user.get':                return _ok(Users_get(user, p));
+      case 'user.branch_directory':   return _ok(Users_branchDirectory(user, p));
       case 'user.upsert':             return _ok(await Users_upsert(user, p));
       case 'user.delete':             return _ok(await Users_delete(user, p));
       case 'user.reset_password':     return _ok(await Users_resetPassword(user, p));
