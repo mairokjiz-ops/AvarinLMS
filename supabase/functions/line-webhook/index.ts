@@ -226,18 +226,22 @@ const CAPS = Object.freeze({
 });
 // ── Leave types & statuses ──────────────────────────────────
 const LEAVE_TYPE = Object.freeze({
-  SICK:      'sick',
-  PERSONAL:  'personal',
-  MATERNITY: 'maternity',
-  ANNUAL:    'annual'
+  SICK:         'sick',
+  PERSONAL:     'personal',
+  MATERNITY:    'maternity',
+  ANNUAL:       'annual',
+  COMPENSATORY: 'compensatory',
+  WORK_OFFDAY:  'work_offday'
 });
 const LEAVE_TYPE_LABEL = Object.freeze({
-  sick:      'ลาป่วย',
-  personal:  'ลากิจส่วนตัว',
-  maternity: 'ลาพักร้อน',
-  annual:    'ลาพักร้อน'
+  sick:         'ลาป่วย',
+  personal:     'ลากิจส่วนตัว',
+  maternity:    'ลาพักร้อน',
+  annual:       'ลาพักร้อน',
+  compensatory: 'ลาหยุดชดเชย',
+  work_offday:  'ทำงานในวันหยุด'
 });
-const ACTIVE_LEAVE_TYPES = Object.freeze(['sick','personal','annual']);
+const ACTIVE_LEAVE_TYPES = Object.freeze(['sick','personal','annual','compensatory','work_offday']);
 const STATUS = Object.freeze({
   DRAFT:     'draft',
   PENDING:   'pending',     // ยื่นแล้วรอตรวจสอบ
@@ -267,10 +271,12 @@ const STATUS_TONE = Object.freeze({
 });
 // ── Default leave limits (per fiscal year, days) ────────────
 const DEFAULT_LIMITS = Object.freeze({
-  sick:      30,
-  personal:  6,
-  maternity: 10,
-  annual:    10
+  sick:         30,
+  personal:     6,
+  maternity:    10,
+  annual:       10,
+  compensatory: 0,
+  work_offday:  0
 });
 // ── Settings defaults ───────────────────────────────────────
 const SETTINGS_DEFAULTS = Object.freeze({
@@ -1192,13 +1198,90 @@ function _leaveUsedDays_(userId, type, fiscalYear) {
   }, 0);
 }
 
+function _getMonthlyCompensatoryQuota_(userId, year, month) {
+  var userObj = DB_findById(SHEETS.USERS, userId);
+  var targetBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+  var isTargetUser = userObj && targetBranches.indexOf(userObj.branch) >= 0;
+  
+  var holidaysInMonth = 0;
+  var lastDay = new Date(year, month, 0).getDate();
+  if (isTargetUser) {
+    var holidaysMap = cfg_getHolidaysMap_();
+    for (var d = 1; d <= lastDay; d++) {
+      var dateObj = new Date(year, month - 1, d);
+      var dateStr = Utilities.formatDate(dateObj, 'Asia/Bangkok', 'yyyy-MM-dd');
+      if (dateStr in holidaysMap) {
+        holidaysInMonth++;
+      }
+    }
+  }
+  
+  var workedOffdays = 0;
+  var usedQuota = 0;
+  var allLeaves = DB_readAll(SHEETS.LEAVES);
+  
+  allLeaves.forEach(function (lv) {
+    if (String(lv.requester_id) !== String(userId)) return;
+    if (lv.status !== STATUS.APPROVED) return;
+    var lvDate = new Date(lv.start_date);
+    if (lvDate.getFullYear() === year && (lvDate.getMonth() + 1) === month) {
+      if (lv.leave_type === 'work_offday') {
+        workedOffdays += Number(lv.days || 1);
+      } else if (lv.leave_type === 'compensatory') {
+        usedQuota += Number(lv.days || 1);
+      }
+    }
+  });
+  
+  var adjKey = 'quota_adj_' + userId + '_compensatory_' + year;
+  var adjustedQuota = Number(_settingsRaw_(adjKey) || 0);
+  
+  var totalQuota = holidaysInMonth + workedOffdays + adjustedQuota;
+  var remainingQuota = Math.max(0, totalQuota - usedQuota);
+  
+  return {
+    holidays_quota: holidaysInMonth,
+    worked_offdays: workedOffdays,
+    adjusted_quota: adjustedQuota,
+    total_quota: totalQuota,
+    used_quota: usedQuota,
+    remaining_quota: remainingQuota
+  };
+}
+
 function _leaveStats_(userId, fiscalYear) {
   var fy = Number(fiscalYear || cfg_fiscalYear_(cfg_now_()));
   var stats = {};
   ACTIVE_LEAVE_TYPES.forEach(function (t) {
     var used = _leaveUsedDays_(userId, t, fy);
-    var limit = _leaveLimit_(t);
+    var baseLimit = _leaveLimit_(t);
+    
+    if (t === 'compensatory') {
+      var targetBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+      var userObj = DB_findById(SHEETS.USERS, userId);
+      var isTargetUser = userObj && targetBranches.indexOf(userObj.branch) >= 0;
+      
+      var holidaysCount = 0;
+      if (isTargetUser) {
+        var holidaysMap = cfg_getHolidaysMap_();
+        Object.keys(holidaysMap).forEach(function (dateStr) {
+          var y = Number(dateStr.substring(0, 4));
+          if (y === fy) {
+            holidaysCount++;
+          }
+        });
+      }
+      
+      var earned = _leaveUsedDays_(userId, 'work_offday', fy);
+      baseLimit = holidaysCount + earned;
+    }
+    
+    var adjKey = 'quota_adj_' + userId + '_' + t + '_' + fy;
+    var adj = Number(_settingsRaw_(adjKey) || 0);
+    var limit = Math.max(0, baseLimit + adj);
     stats[t] = {
+      base_limit: baseLimit,
+      adjustment: adj,
       used: used,
       limit: limit,
       remaining: Math.max(0, limit - used),
@@ -1302,6 +1385,14 @@ async function Leaves_create(user, p) {
   var s = stats.items[data.leave_type];
   var afterUsed = s.used + days;
   var over = (s.limit > 0) && (afterUsed > s.limit);
+
+  if (data.leave_type === 'compensatory') {
+    var lvDate = new Date(startISO);
+    var q = _getMonthlyCompensatoryQuota_(user.id, lvDate.getFullYear(), lvDate.getMonth() + 1);
+    if (days > q.remaining_quota) {
+      throw new Error('โควตาหยุดชดเชยไม่เพียงพอสำหรับเดือนนี้ (คงเหลือ ' + q.remaining_quota + ' วัน, ขอใช้ ' + days + ' วัน)');
+    }
+  }
 
   // pull last leave (ลาครั้งสุดท้าย)
   var last = _findLastLeave_(user.id, startISO);
@@ -2099,7 +2190,7 @@ function _wf_scopeFor_(user, ownCap, deptCap, allCap) {
   return 'own';
 }
 function _wf_leaveTone_(type) {
-  return ({ sick: 'rose', personal: 'amber', annual: 'emerald', maternity: 'emerald' })[type] || 'indigo';
+  return ({ sick: 'rose', personal: 'amber', annual: 'emerald', maternity: 'emerald', compensatory: 'blue', work_offday: 'sky' })[type] || 'indigo';
 }
 function _wf_overlapDays_(a1, a2, b1, b2) { return !(a2 < b1 || a1 > b2); }
 function _wf_asDateOnly_(v) {
@@ -2831,7 +2922,7 @@ async function _LINE_handleTextMessage_(event, replyToken, lineUserId) {
 
     var lowTxt = txt.toLowerCase();
     if (lowTxt === 'ขอลา' || lowTxt === 'ยื่นใบลา' || lowTxt === 'ลา' || lowTxt === 'leave') {
-      await _LINE_startLeaveFlow_(replyToken, lineUserId);
+      await _LINE_startLeaveFlow_(replyToken, lineUserId, user);
       return;
     }
     if (lowTxt === 'เบิกค่าใช้จ่าย' || lowTxt === 'เบิก' || lowTxt === 'expense') {
@@ -3071,8 +3162,8 @@ async function _LINE_handlePostbackEvent_(event, replyToken, lineUserId) {
       await LINE_replyTextMessage_(replyToken, "❌ อัปเดตใบลาไม่สำเร็จ: " + err.message);
     }
   } else if (action === 'submit_leave_start') {
-    await _LINE_startLeaveFlow_(replyToken, lineUserId);
-  } else if (action === 'submit_select_type') {
+    await _LINE_startLeaveFlow_(replyToken, lineUserId, user);
+  } else if (action === 'submit_select_type')  {
     var type = params.type;
     var state = { step: 'select_unit', leave_type: type };
     await _LINE_saveState_(lineUserId, state);
@@ -3683,6 +3774,8 @@ function LINE_buildLeaveQuotaFlex_(user) {
     if (key === 'sick') { icon = "🤢"; color = "#ef4444"; }
     else if (key === 'personal') { icon = "💼"; color = "#f59e0b"; }
     else if (key === 'annual') { icon = "🏖️"; color = "#10b981"; }
+    else if (key === 'compensatory') { icon = "⏳"; color = "#3b82f6"; }
+    else if (key === 'work_offday') { icon = "💪"; color = "#0284c7"; }
 
     rows.push({
       type: "box",
@@ -4523,10 +4616,28 @@ function LINE_buildExpensePendingFlex_(user, items) {
   };
 }
 
-async function _LINE_startLeaveFlow_(replyToken, lineUserId) {
+async function _LINE_startLeaveFlow_(replyToken, lineUserId, user) {
   var state = { step: 'select_type' };
   await _LINE_saveState_(lineUserId, state);
   
+  var buttons = [
+    { type: "button", style: "primary", color: "#ef4444", height: "sm", action: { type: "postback", label: "🤒 ลาป่วย (Sick Leave)", data: "action=submit_select_type&type=sick" } },
+    { type: "button", style: "primary", color: "#f59e0b", height: "sm", action: { type: "postback", label: "💼 ลากิจส่วนตัว (Personal)", data: "action=submit_select_type&type=personal" } },
+    { type: "button", style: "primary", color: "#10b981", height: "sm", action: { type: "postback", label: "🏖️ ลาพักร้อน (Annual)", data: "action=submit_select_type&type=annual" } }
+  ];
+
+  var targetBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+  var isTargetUser = user && user.department === 'ฝ่ายขาย' && targetBranches.indexOf(user.branch) >= 0;
+  var isManagerOrTarget = isTargetUser || (user && (user.role === 'admin' || (user.role === 'supervisor' && user.department === 'ฝ่ายขาย')));
+
+  if (isManagerOrTarget) {
+    buttons.push({ type: "button", style: "primary", color: "#3b82f6", height: "sm", action: { type: "postback", label: "⏳ ลาหยุดชดเชย (Compensatory)", data: "action=submit_select_type&type=compensatory" } });
+    buttons.push({ type: "button", style: "primary", color: "#0284c7", height: "sm", action: { type: "postback", label: "💪 ขอทำงานในวันหยุด (Work on Off-day)", data: "action=submit_select_type&type=work_offday" } });
+  }
+
+  buttons.push({ type: "separator", margin: "md" });
+  buttons.push({ type: "button", style: "secondary", color: "#f3f4f6", height: "sm", action: { type: "postback", label: "❌ ยกเลิก", data: "action=submit_cancel" } });
+
   var flex = {
     type: "flex",
     altText: "ขั้นตอนที่ 1: เลือกประเภทการลา",
@@ -4548,13 +4659,7 @@ async function _LINE_startLeaveFlow_(replyToken, lineUserId) {
         layout: "vertical",
         paddingAll: "20px",
         spacing: "md",
-        contents: [
-          { type: "button", style: "primary", color: "#ef4444", height: "sm", action: { type: "postback", label: "🤒 ลาป่วย (Sick Leave)", data: "action=submit_select_type&type=sick" } },
-          { type: "button", style: "primary", color: "#f59e0b", height: "sm", action: { type: "postback", label: "💼 ลากิจส่วนตัว (Personal)", data: "action=submit_select_type&type=personal" } },
-          { type: "button", style: "primary", color: "#10b981", height: "sm", action: { type: "postback", label: "🏖️ ลาพักร้อน (Annual)", data: "action=submit_select_type&type=annual" } },
-          { type: "separator", margin: "md" },
-          { type: "button", style: "secondary", color: "#f3f4f6", height: "sm", action: { type: "postback", label: "❌ ยกเลิก", data: "action=submit_cancel" } }
-        ]
+        contents: buttons
       }
     }
   };

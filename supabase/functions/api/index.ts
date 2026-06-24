@@ -123,7 +123,7 @@ const CAPS = Object.freeze({
     'expense.manage','expense.create_own','setting.read'
   ],
   supervisor: [
-    'leave.view_all','leave.create_own','leave.cancel_own','leave.comment',
+    'leave.view_all','leave.create_own','leave.cancel_own','leave.comment','leave.adjust_quota',
     'report.view_all','report.view_own','file.upload',
     'calendar.view_department',
     'mission.view_department','mission.view_own','mission.create_own',
@@ -147,18 +147,22 @@ const CAPS = Object.freeze({
 
 // ── Leave types & statuses ──────────────────────────────────
 const LEAVE_TYPE = Object.freeze({
-  SICK:      'sick',
-  PERSONAL:  'personal',
-  MATERNITY: 'maternity',
-  ANNUAL:    'annual'
+  SICK:         'sick',
+  PERSONAL:     'personal',
+  MATERNITY:    'maternity',
+  ANNUAL:       'annual',
+  COMPENSATORY: 'compensatory',
+  WORK_OFFDAY:  'work_offday'
 });
 const LEAVE_TYPE_LABEL = Object.freeze({
-  sick:      'ลาป่วย',
-  personal:  'ลากิจส่วนตัว',
-  maternity: 'ลาพักร้อน',
-  annual:    'ลาพักร้อน'
+  sick:         'ลาป่วย',
+  personal:     'ลากิจส่วนตัว',
+  maternity:    'ลาพักร้อน',
+  annual:       'ลาพักร้อน',
+  compensatory: 'ลาหยุดชดเชย',
+  work_offday:  'ทำงานในวันหยุด'
 });
-const ACTIVE_LEAVE_TYPES = Object.freeze(['sick','personal','annual']);
+const ACTIVE_LEAVE_TYPES = Object.freeze(['sick','personal','annual','compensatory','work_offday']);
 const STATUS = Object.freeze({
   DRAFT:     'draft',
   PENDING:   'pending',
@@ -188,10 +192,12 @@ const STATUS_TONE = Object.freeze({
 });
 
 const DEFAULT_LIMITS = Object.freeze({
-  sick:      30,
-  personal:  6,
-  maternity: 10,
-  annual:    10
+  sick:         30,
+  personal:     6,
+  maternity:    10,
+  annual:       10,
+  compensatory: 0,
+  work_offday:  0
 });
 
 // ── Settings defaults ───────────────────────────────────────
@@ -204,6 +210,8 @@ const SETTINGS_DEFAULTS = Object.freeze({
   limit_personal:  '6',
   limit_maternity: '10',
   limit_annual:    '10',
+  limit_compensatory: '0',
+  limit_work_offday:  '0',
   leave_workday_hours: '8',
   warn_threshold:  '80',
   show_demo_users: 'yes',
@@ -732,6 +740,57 @@ function Users_branchDirectory(user, p) {
   return { items: list };
 }
 
+function _getMonthlyCompensatoryQuota_(userId, year, month) {
+  var userObj = DB_findById(SHEETS.USERS, userId);
+  var targetBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+  var isTargetUser = userObj && targetBranches.indexOf(userObj.branch) >= 0;
+  
+  var holidaysInMonth = 0;
+  var lastDay = new Date(year, month, 0).getDate();
+  if (isTargetUser) {
+    var holidaysMap = cfg_getHolidaysMap_();
+    for (var d = 1; d <= lastDay; d++) {
+      var dateObj = new Date(year, month - 1, d);
+      var dateStr = Utilities.formatDate(dateObj, 'Asia/Bangkok', 'yyyy-MM-dd');
+      if (dateStr in holidaysMap) {
+        holidaysInMonth++;
+      }
+    }
+  }
+  
+  var workedOffdays = 0;
+  var usedQuota = 0;
+  var allLeaves = DB_readAll(SHEETS.LEAVES);
+  
+  allLeaves.forEach(function (lv) {
+    if (String(lv.requester_id) !== String(userId)) return;
+    if (lv.status !== STATUS.APPROVED) return;
+    var lvDate = new Date(lv.start_date);
+    if (lvDate.getFullYear() === year && (lvDate.getMonth() + 1) === month) {
+      if (lv.leave_type === 'work_offday') {
+        workedOffdays += Number(lv.days || 1);
+      } else if (lv.leave_type === 'compensatory') {
+        usedQuota += Number(lv.days || 1);
+      }
+    }
+  });
+  
+  var adjKey = 'quota_adj_' + userId + '_compensatory_' + year;
+  var adjustedQuota = Number(_settingsRaw_(adjKey) || 0);
+  
+  var totalQuota = holidaysInMonth + workedOffdays + adjustedQuota;
+  var remainingQuota = Math.max(0, totalQuota - usedQuota);
+  
+  return {
+    holidays_quota: holidaysInMonth,
+    worked_offdays: workedOffdays,
+    adjusted_quota: adjustedQuota,
+    total_quota: totalQuota,
+    used_quota: usedQuota,
+    remaining_quota: remainingQuota
+  };
+}
+
 function Schedule_monthly(user, p) {
   var year = Number(p && p.year) || new Date().getFullYear();
   var month = Number(p && p.month) || (new Date().getMonth() + 1);
@@ -760,6 +819,13 @@ function Schedule_monthly(user, p) {
   });
 
   var lastDay = new Date(year, month, 0).getDate();
+
+  // Calculate monthly quota for each target user
+  var quotas = {};
+  targetUsers.forEach(function (u) {
+    quotas[u.id] = _getMonthlyCompensatoryQuota_(u.id, year, month);
+  });
+
   var dates = [];
   
   for (var d = 1; d <= lastDay; d++) {
@@ -772,23 +838,31 @@ function Schedule_monthly(user, p) {
     
     targetUsers.forEach(function (u) {
       var leaveInfo = null;
-      var onLeave = leaves.some(function (lv) {
-        if (String(lv.requester_id) !== String(u.id)) return false;
+      var activeLeave = null;
+      
+      leaves.forEach(function (lv) {
+        if (String(lv.requester_id) !== String(u.id)) return;
         var start = new Date(lv.start_date + 'T00:00:00+07:00').getTime();
         var end = new Date((lv.end_date || lv.start_date) + 'T23:59:59+07:00').getTime();
         var current = new Date(dateStr + 'T12:00:00+07:00').getTime();
         if (current >= start && current <= end) {
-          leaveInfo = { leave_type: lv.leave_type, leave_no: lv.leave_no };
-          return true;
+          activeLeave = lv;
+          leaveInfo = { id: lv.id, leave_type: lv.leave_type, leave_no: lv.leave_no };
         }
-        return false;
       });
       
       var isOffDay = u.off_day !== null && u.off_day !== undefined && u.off_day !== '' && Number(u.off_day) === dayOfWeek;
       
       var status = 'working';
-      if (onLeave) status = 'leave';
-      else if (isOffDay) status = 'off';
+      if (activeLeave) {
+        if (activeLeave.leave_type === 'work_offday') {
+          status = 'working';
+        } else {
+          status = 'leave';
+        }
+      } else if (isOffDay) {
+        status = 'off';
+      }
       
       var empState = {
         id: u.id,
@@ -837,7 +911,8 @@ function Schedule_monthly(user, p) {
   return {
     year: year,
     month: month,
-    dates: dates
+    dates: dates,
+    quotas: quotas
   };
 }
 
@@ -1176,6 +1251,27 @@ function _leaveStats_(userId, fiscalYear) {
   ACTIVE_LEAVE_TYPES.forEach(function (t) {
     var used = _leaveUsedDays_(userId, t, fy);
     var baseLimit = _leaveLimit_(t);
+    
+    if (t === 'compensatory') {
+      var targetBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+      var userObj = DB_findById(SHEETS.USERS, userId);
+      var isTargetUser = userObj && targetBranches.indexOf(userObj.branch) >= 0;
+      
+      var holidaysCount = 0;
+      if (isTargetUser) {
+        var holidaysMap = cfg_getHolidaysMap_();
+        Object.keys(holidaysMap).forEach(function (dateStr) {
+          var y = Number(dateStr.substring(0, 4));
+          if (y === fy) {
+            holidaysCount++;
+          }
+        });
+      }
+      
+      var earned = _leaveUsedDays_(userId, 'work_offday', fy);
+      baseLimit = holidaysCount + earned;
+    }
+    
     var adjKey = 'quota_adj_' + userId + '_' + t + '_' + fy;
     var adj = Number(_settingsRaw_(adjKey) || 0);
     var limit = Math.max(0, baseLimit + adj);
@@ -1322,19 +1418,52 @@ async function Leaves_create(user, p) {
   var writtenAt = data.written_at ? cfg_dateOnly_(data.written_at) : cfg_dateOnly_(cfg_now_());
   var fy = cfg_fiscalYear_(new Date(startISO));
 
-  var stats = _leaveStats_(user.id, fy);
+  var isSalesSupervisor = user.role === 'supervisor' && user.department === 'ฝ่ายขาย';
+  var isAdmin = user.role === 'admin';
+  var reqUserId = user.id;
+  var targetStatus = data.draft ? STATUS.DRAFT : STATUS.PENDING;
+
+  if (data.requester_id && String(data.requester_id) !== String(user.id)) {
+    if (!isAdmin && !isSalesSupervisor) {
+      throw new Error('คุณไม่มีสิทธิ์สร้างใบลาแทนผู้อื่น');
+    }
+    var targetUser = DB_findById(SHEETS.USERS, data.requester_id);
+    if (!targetUser) throw new Error('ไม่พบข้อมูลพนักงาน');
+    if (isSalesSupervisor) {
+      var allowedBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+      if (allowedBranches.indexOf(targetUser.branch) < 0 || targetUser.department !== 'ฝ่ายขาย') {
+        throw new Error('คุณไม่มีสิทธิ์จัดการข้อมูลพนักงานนอกเหนือจากฝ่ายขายสาขาที่รับผิดชอบ');
+      }
+    }
+    reqUserId = String(data.requester_id);
+  }
+
+  if (data.status === STATUS.APPROVED && (isAdmin || isSalesSupervisor)) {
+    targetStatus = STATUS.APPROVED;
+  }
+
+  var stats = _leaveStats_(reqUserId, fy);
   var s = stats.items[data.leave_type];
   var afterUsed = s.used + days;
   var over = (s.limit > 0) && (afterUsed > s.limit);
 
-  var last = _findLastLeave_(user.id, startISO);
+  if (data.leave_type === 'compensatory') {
+    var lvDate = new Date(startISO);
+    var q = _getMonthlyCompensatoryQuota_(reqUserId, lvDate.getFullYear(), lvDate.getMonth() + 1);
+    if (days > q.remaining_quota) {
+      throw new Error('โควตาหยุดชดเชยไม่เพียงพอสำหรับเดือนนี้ (คงเหลือ ' + q.remaining_quota + ' วัน, ขอใช้ ' + days + ' วัน)');
+    }
+  }
 
+  var last = _findLastLeave_(reqUserId, startISO);
   var leaveNo = _genLeaveNo_();
-  var status = data.draft ? STATUS.DRAFT : STATUS.PENDING;
+
+  var targetUserObj = (reqUserId === user.id) ? user : DB_findById(SHEETS.USERS, reqUserId);
+  var contactPhone = String(data.contact_phone || (targetUserObj && targetUserObj.phone) || '').trim();
 
   var newLv = await DB_insert(SHEETS.LEAVES, {
     leave_no: leaveNo,
-    requester_id: user.id,
+    requester_id: reqUserId,
     leave_type: data.leave_type,
     reason: String(data.reason).trim(),
     start_date: startISO,
@@ -1345,21 +1474,21 @@ async function Leaves_create(user, p) {
     end_time: duration.end_time,
     hours: duration.hours,
     contact_address: String(data.contact_address || '').trim(),
-    contact_phone: String(data.contact_phone || user.phone || '').trim(),
+    contact_phone: contactPhone,
     last_leave_type: last ? last.leave_type : null,
     last_leave_start: last ? last.start_date : null,
     last_leave_end: last ? last.end_date : null,
     last_leave_days: last ? Number(last.days || 0) : null,
-    status: status,
+    status: targetStatus,
     written_at: writtenAt,
     written_place: String(data.written_place || '').trim(),
     fiscal_year: fy,
     attachment_url: String(data.attachment_url || '').trim()
   });
   await Audit_log_(user, 'leave.create', 'leave', newLv.id, {
-    leave_no: leaveNo, type: data.leave_type, days: days, status: status, over_limit: over
+    leave_no: leaveNo, type: data.leave_type, days: days, status: targetStatus, over_limit: over
   });
-  if (status === STATUS.PENDING) {
+  if (targetStatus === STATUS.PENDING) {
     Notify_onLeaveSubmit_(newLv, user);
   }
   return { leave: newLv, over_limit: over, after_used: afterUsed, limit: s.limit };
@@ -1512,9 +1641,36 @@ async function Leaves_approve(user, p) {
 }
 
 async function Leaves_delete(user, p) {
-  Auth_requireCap(user, 'leave.delete');
+  var isSalesSupervisor = user.role === 'supervisor' && user.department === 'ฝ่ายขาย';
+  var isAdmin = user.role === 'admin';
   var lv = DB_findById(SHEETS.LEAVES, p && p.id);
   if (!lv) throw new Error('ไม่พบใบลา');
+  
+  var allowed = false;
+  if (isAdmin) {
+    allowed = true;
+  } else if (isSalesSupervisor) {
+    var targetUser = DB_findById(SHEETS.USERS, lv.requester_id);
+    var allowedBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+    if (targetUser && 
+        targetUser.department === 'ฝ่ายขาย' && 
+        allowedBranches.indexOf(targetUser.branch) >= 0 && 
+        (lv.leave_type === 'work_offday' || lv.leave_type === 'compensatory')) {
+      allowed = true;
+    }
+  } else {
+    try {
+      Auth_requireCap(user, 'leave.delete');
+      allowed = true;
+    } catch (e) {
+      allowed = false;
+    }
+  }
+  
+  if (!allowed) {
+    throw new Error('คุณไม่มีสิทธิ์ลบใบลาใบนี้');
+  }
+  
   await DB_delete(SHEETS.LEAVES, lv.id);
   await Audit_log_(user, 'leave.delete', 'leave', lv.id, { leave_no: lv.leave_no });
   return { ok: true };
