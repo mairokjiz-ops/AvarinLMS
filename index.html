@@ -1085,13 +1085,18 @@ a:hover { text-decoration: underline; }
 
 /* leave-type radio cards */
 .lt-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;
 }
 .lt-card {
   padding: 14px; border: 2px solid var(--line); border-radius: 14px;
   text-align: center; cursor: pointer;
   transition: all .2s;
   background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 130px;
 }
 .lt-card:hover { border-color: var(--brand-1); transform: translateY(-2px); }
 .lt-card.is-selected {
@@ -1108,6 +1113,8 @@ a:hover { text-decoration: underline; }
 .lt-card[data-type="personal"] .lt-icon { background: linear-gradient(135deg, #f59e0b, #d97706); }
 .lt-card[data-type="maternity"] .lt-icon,
 .lt-card[data-type="annual"] .lt-icon { background: linear-gradient(135deg, #10b981, #059669); }
+.lt-card[data-type="compensatory"] .lt-icon { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+.lt-card[data-type="work_offday"] .lt-icon { background: linear-gradient(135deg, #0284c7, #0369a1); }
 .lt-card .lt-name { font-weight: 700; font-size: 13.5px; }
 .lt-card .lt-sub { font-size: 11px; color: var(--ink-muted); margin-top: 2px; }
 
@@ -1744,7 +1751,7 @@ a:hover { text-decoration: underline; }
   .nav-page-title { font-size: 14px; }
   .nav-page-sub { display: none; }
   .app-footer { display: none; }   /* footer ซ่อนบนมือถือ — bottom nav แทน */
-  .lt-grid { grid-template-columns: 1fr; }
+  .lt-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .row-2, .row-3 { grid-template-columns: 1fr; }
   .wiz-progress { padding: 18px 16px 8px; }
   .wiz-track { left: 36px; right: 36px; top: 38px; }
