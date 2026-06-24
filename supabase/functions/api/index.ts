@@ -79,7 +79,7 @@ const SHEETS = Object.freeze({
 
 // ── Schemas ─────────────────────────────────────────────────
 const SCHEMAS = Object.freeze({
-  Users: ['id','username','password_hash','salt','full_name','position','level','department','role','email','phone','avatar','is_active','created_at','updated_at','line_user_id','line_connect_code','branch'],
+  Users: ['id','username','password_hash','salt','full_name','position','level','department','role','email','phone','avatar','is_active','created_at','updated_at','line_user_id','line_connect_code','branch','off_day'],
   Leaves: ['id','leave_no','requester_id','leave_type','reason','start_date','end_date','days','contact_address','contact_phone','last_leave_type','last_leave_start','last_leave_end','last_leave_days','status','checker_id','checker_comment','checker_at','supervisor_id','supervisor_comment','supervisor_at','approver_id','approver_decision','approver_comment','approver_at','written_at','written_place','fiscal_year','attachment_url','created_at','updated_at','leave_unit','start_time','end_time','hours'],
   Sessions: ['token','user_id','created_at','expires_at','user_agent'],
   Settings: ['key','value','updated_at'],
@@ -524,7 +524,8 @@ function Auth_publicUser_(u) {
     is_active: u.is_active,
     line_user_id: u.line_user_id,
     line_connect_code: u.line_connect_code,
-    branch: u.branch
+    branch: u.branch,
+    off_day: u.off_day
   };
 }
 
@@ -731,6 +732,142 @@ function Users_branchDirectory(user, p) {
   return { items: list };
 }
 
+function Schedule_monthly(user, p) {
+  var year = Number(p && p.year) || new Date().getFullYear();
+  var month = Number(p && p.month) || (new Date().getMonth() + 1);
+
+  var allUsers = DB_readAll(SHEETS.USERS).filter(function (u) {
+    return String(u.is_active).toLowerCase() === 'yes';
+  });
+
+  var branches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+  var targetUsers = allUsers.filter(function (u) {
+    return branches.indexOf(u.branch) >= 0;
+  });
+
+  var leaves = DB_readAll(SHEETS.LEAVES).filter(function (lv) {
+    if (lv.status !== STATUS.APPROVED) return false;
+    var requesterId = String(lv.requester_id);
+    var isTargetUser = targetUsers.some(function (u) { return String(u.id) === requesterId; });
+    if (!isTargetUser) return false;
+    
+    var startOfMonth = new Date(year, month - 1, 1).getTime();
+    var endOfMonth = new Date(year, month, 0, 23, 59, 59, 999).getTime();
+    var lvStart = new Date(lv.start_date).getTime();
+    var lvEnd = new Date(lv.end_date || lv.start_date).getTime();
+    
+    return lvStart <= endOfMonth && lvEnd >= startOfMonth;
+  });
+
+  var lastDay = new Date(year, month, 0).getDate();
+  var dates = [];
+  
+  for (var d = 1; d <= lastDay; d++) {
+    var dateObj = new Date(year, month - 1, d);
+    var dateStr = Utilities.formatDate(dateObj, 'Asia/Bangkok', 'yyyy-MM-dd');
+    var dayOfWeek = dateObj.getDay();
+    
+    var branchEmployees = [];
+    var substitutePool = [];
+    
+    targetUsers.forEach(function (u) {
+      var leaveInfo = null;
+      var onLeave = leaves.some(function (lv) {
+        if (String(lv.requester_id) !== String(u.id)) return false;
+        var start = new Date(lv.start_date + 'T00:00:00+07:00').getTime();
+        var end = new Date((lv.end_date || lv.start_date) + 'T23:59:59+07:00').getTime();
+        var current = new Date(dateStr + 'T12:00:00+07:00').getTime();
+        if (current >= start && current <= end) {
+          leaveInfo = { leave_type: lv.leave_type, leave_no: lv.leave_no };
+          return true;
+        }
+        return false;
+      });
+      
+      var isOffDay = u.off_day !== null && u.off_day !== undefined && u.off_day !== '' && Number(u.off_day) === dayOfWeek;
+      
+      var status = 'working';
+      if (onLeave) status = 'leave';
+      else if (isOffDay) status = 'off';
+      
+      var empState = {
+        id: u.id,
+        full_name: u.full_name,
+        position: u.position,
+        department: u.department,
+        branch: u.branch,
+        off_day: u.off_day,
+        status: status,
+        leave_info: leaveInfo,
+        substitute_by: null
+      };
+      
+      if (u.branch === 'พนักงานแทน') {
+        substitutePool.push(empState);
+      } else {
+        branchEmployees.push(empState);
+      }
+    });
+
+    var needyEmployees = branchEmployees.filter(function (emp) {
+      return emp.status === 'off' || emp.status === 'leave';
+    });
+    
+    var availableSubstitutes = substitutePool.filter(function (sub) {
+      return sub.status === 'working';
+    });
+    
+    needyEmployees.forEach(function (emp) {
+      if (availableSubstitutes.length > 0) {
+        var sub = availableSubstitutes.shift();
+        emp.substitute_by = { id: sub.id, full_name: sub.full_name };
+        sub.status = 'substituting';
+        sub.substituting_for = { id: emp.id, full_name: emp.full_name, branch: emp.branch };
+      }
+    });
+
+    dates.push({
+      date: dateStr,
+      day_of_week: dayOfWeek,
+      branch_employees: branchEmployees,
+      substitutes: substitutePool
+    });
+  }
+
+  return {
+    year: year,
+    month: month,
+    dates: dates
+  };
+}
+
+async function Schedule_updateOffDay(user, p) {
+  var isSalesSupervisor = user.role === 'supervisor' && user.department === 'ฝ่ายขาย';
+  var isAdmin = user.role === 'admin';
+  if (!isAdmin && !isSalesSupervisor) {
+    throw new Error('คุณไม่มีสิทธิ์แก้ไขวันหยุดประจำของพนักงาน');
+  }
+
+  var targetUserId = String(p && p.user_id || '').trim();
+  var offDay = p.off_day !== undefined ? String(p.off_day || '').trim() : '';
+
+  if (!targetUserId) throw new Error('ไม่ระบุผู้ใช้');
+
+  var targetUser = DB_findById(SHEETS.USERS, targetUserId);
+  if (!targetUser) throw new Error('ไม่พบผู้ใช้');
+  
+  var targetBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+  if (targetBranches.indexOf(targetUser.branch) < 0) {
+    throw new Error('พนักงานท่านนี้ไม่ได้อยู่สาขาที่กำหนดตารางงานได้');
+  }
+
+  var patch = { off_day: offDay };
+  var updated = await DB_update(SHEETS.USERS, targetUserId, patch);
+  await Audit_log_(user, 'schedule.update_off_day', 'user', targetUserId, { off_day: offDay });
+
+  return { ok: true, user: Auth_publicUser_(updated) };
+}
+
 async function Users_upsert(user, p) {
   Auth_requireCap(user, 'user.manage');
   var data = p || {};
@@ -759,12 +896,15 @@ async function Users_upsert(user, p) {
       phone: String(data.phone || '').trim(),
       avatar: String(data.avatar || '').trim(),
       is_active: data.is_active === false ? 'no' : 'yes',
-      branch: String(data.branch || '').trim()
+      branch: String(data.branch || '').trim(),
+      off_day: data.off_day !== undefined ? String(data.off_day || '').trim() : undefined
     };
     if (data.password) {
       var salt = cfg_salt_();
       patch.salt = salt; patch.password_hash = await cfg_hash_(data.password, salt);
     }
+    // Remove undefined fields
+    Object.keys(patch).forEach(function (k) { if (patch[k] === undefined) delete patch[k]; });
     var updated = await DB_update(SHEETS.USERS, data.id, patch);
     await Audit_log_(user, 'user.update', 'user', data.id, { fields: Object.keys(patch) });
     return Auth_publicUser_(updated);
@@ -784,7 +924,8 @@ async function Users_upsert(user, p) {
       phone: String(data.phone || '').trim(),
       avatar: String(data.avatar || '').trim(),
       is_active: data.is_active === false ? 'no' : 'yes',
-      branch: String(data.branch || '').trim()
+      branch: String(data.branch || '').trim(),
+      off_day: String(data.off_day || '').trim()
     });
     await Audit_log_(user, 'user.create', 'user', newU.id, { username: newU.username, role: newU.role });
     return Auth_publicUser_(newU);
@@ -2738,6 +2879,8 @@ async function api(req) {
       case 'leave.user_stats':        return _ok(Leaves_user_stats(user, p));
       case 'leave.all_users_quotas':  return _ok(Leaves_all_users_quotas(user, p));
       case 'leave.adjust_quota':      return _ok(await Leaves_adjust_quota(user, p));
+      case 'schedule.monthly':        return _ok(Schedule_monthly(user, p));
+      case 'schedule.update_off_day': return _ok(await Schedule_updateOffDay(user, p));
 
       case 'calendar.month':          return _ok(Calendar_month(user, p));
       case 'mission.list':            return _ok(Mission_list(user, p));
