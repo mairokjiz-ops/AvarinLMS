@@ -2861,7 +2861,7 @@ async function _LINE_handleImageMessage_(event, replyToken, lineUserId) {
   }
 
   var state = await _LINE_getState_(lineUserId);
-  if (!state || state.step !== 'expense_enter_receipt') {
+  if (!state || (state.step !== 'expense_enter_receipt' && state.step !== 'expense_confirm')) {
     await LINE_replyTextMessage_(replyToken, '📷 รูปนี้ยังไม่อยู่ในขั้นตอนแนบใบเสร็จ กรุณาเริ่มเบิกค่าใช้จ่ายใหม่อีกครั้ง');
     return;
   }
@@ -2870,13 +2870,43 @@ async function _LINE_handleImageMessage_(event, replyToken, lineUserId) {
     var imageId = String(event.message && event.message.id || '').trim();
     if (!imageId) throw new Error('ไม่พบรหัสรูปภาพ');
     var uploaded = await _LINE_uploadReceiptImage_(imageId, lineUserId);
-    state.receipt_url = uploaded.url;
+    
+    var urls = [];
+    if (state.receipt_url) {
+      if (state.receipt_url.indexOf('[') === 0) {
+        try {
+          urls = JSON.parse(state.receipt_url);
+        } catch (e) {
+          urls = [state.receipt_url];
+        }
+      } else {
+        urls = [state.receipt_url];
+      }
+    }
+    
+    if (urls.length >= 4) {
+      await LINE_replyTextMessage_(replyToken, '⚠️ คุณแนบรูปภาพใบเสร็จครบ 4 รูปแล้วครับ ไม่สามารถแนบเพิ่มได้อีก\nโปรดกดปุ่มยืนยันการบันทึกเพื่อดำเนินการต่อ');
+      return;
+    }
+    
+    urls.push(uploaded.url);
+    state.receipt_url = JSON.stringify(urls);
     state.receipt_path = uploaded.path;
     state.step = 'expense_confirm';
     await _LINE_saveState_(lineUserId, state);
 
+    var textReply = '📷 แนบรูปหลักฐานสำเร็จแล้ว (' + urls.length + '/4 รูป)';
+    if (urls.length < 4) {
+      textReply += '\n\nหากมีรูปถัดไปสามารถส่งรูปในแชตเพิ่มได้ทันที หรือกดปุ่ม "ยืนยันบันทึก" บนการ์ดเพื่อส่งใบเบิก';
+    } else {
+      textReply += '\n\nแนบรูปครบ 4 รูปแล้ว! โปรดกดปุ่ม "ยืนยันบันทึก" บนการ์ดเพื่อส่งใบเบิก';
+    }
+
     var expenseConfirmFlex = LINE_buildExpenseConfirmFlex_(user, state);
-    await LINE_replyMessage_(replyToken, [expenseConfirmFlex]);
+    await LINE_replyMessage_(replyToken, [
+      { type: "text", text: textReply },
+      expenseConfirmFlex
+    ]);
   } catch (err) {
     console.error('Error in _LINE_handleImageMessage_: ' + err.stack);
     await LINE_replyTextMessage_(replyToken, '❌ อัปโหลดรูปใบเสร็จไม่สำเร็จ: ' + err.message);
@@ -3025,10 +3055,25 @@ async function _LINE_handlePostbackEvent_(event, replyToken, lineUserId) {
     await _LINE_startLeaveFlow_(replyToken, lineUserId);
   } else if (action === 'submit_select_type') {
     var type = params.type;
-    var state = { step: 'select_start_date', leave_type: type };
+    var state = { step: 'select_unit', leave_type: type };
     await _LINE_saveState_(lineUserId, state);
     
-    var startPickerFlex = LINE_buildDatePickerFlex_("ขั้นตอนที่ 2: เลือกวันเริ่มลา", "action=submit_select_start_date", "📅 เลือกวันเริ่มลา");
+    var unitFlex = LINE_buildLeaveUnitSelectFlex_();
+    await LINE_replyMessage_(replyToken, [unitFlex]);
+  } else if (action === 'submit_select_unit') {
+    var unit = params.unit;
+    var state = await _LINE_getState_(lineUserId);
+    if (!state || state.step !== 'select_unit') {
+      await LINE_replyTextMessage_(replyToken, "❌ เซสชันหมดอายุหรือผิดพลาด กรุณากดปุ่มยื่นใบลาใหม่อีกครั้งครับ");
+      await _LINE_clearState_(lineUserId);
+      return;
+    }
+    state.leave_unit = unit;
+    state.step = 'select_start_date';
+    await _LINE_saveState_(lineUserId, state);
+    
+    var title = unit === 'hour' ? "ขั้นตอนที่ 3: เลือกวันที่ต้องการลา" : "ขั้นตอนที่ 3: เลือกวันเริ่มลา";
+    var startPickerFlex = LINE_buildDatePickerFlex_(title, "action=submit_select_start_date", "📅 เลือกวันที่");
     await LINE_replyMessage_(replyToken, [startPickerFlex]);
   } else if (action === 'submit_select_start_date') {
     var selectedDate = event.postback.params && event.postback.params.date;
@@ -3039,12 +3084,21 @@ async function _LINE_handlePostbackEvent_(event, replyToken, lineUserId) {
       return;
     }
     
-    state.step = 'select_end_date';
     state.start_date = selectedDate;
-    await _LINE_saveState_(lineUserId, state);
-    
-    var endPickerFlex = LINE_buildDatePickerFlex_("ขั้นตอนที่ 3: เลือกวันสิ้นสุดการลา", "action=submit_select_end_date", "📅 เลือกวันสิ้นสุดการลา");
-    await LINE_replyMessage_(replyToken, [endPickerFlex]);
+    if (state.leave_unit === 'hour') {
+      state.end_date = selectedDate;
+      state.step = 'select_start_time';
+      await _LINE_saveState_(lineUserId, state);
+      
+      var timePickerFlex = LINE_buildTimePickerFlex_("ขั้นตอนที่ 4: เลือกเวลาเริ่มลา", "action=submit_select_start_time", "⏱️ เลือกเวลาเริ่มลา");
+      await LINE_replyMessage_(replyToken, [timePickerFlex]);
+    } else {
+      state.step = 'select_end_date';
+      await _LINE_saveState_(lineUserId, state);
+      
+      var endPickerFlex = LINE_buildDatePickerFlex_("ขั้นตอนที่ 4: เลือกวันสิ้นสุดการลา", "action=submit_select_end_date", "📅 เลือกวันสิ้นสุดการลา");
+      await LINE_replyMessage_(replyToken, [endPickerFlex]);
+    }
   } else if (action === 'submit_select_end_date') {
     var selectedDate = event.postback.params && event.postback.params.date;
     var state = await _LINE_getState_(lineUserId);
@@ -3066,6 +3120,42 @@ async function _LINE_handlePostbackEvent_(event, replyToken, lineUserId) {
     await _LINE_saveState_(lineUserId, state);
     
     await LINE_replyTextMessage_(replyToken, "✍️ ขั้นตอนสุดท้าย: โปรดพิมพ์เหตุผลในการลาส่งกลับมาในแชตนี้ได้เลยครับ (เช่น เป็นไข้สูงปวดศีรษะ, ไปทำธุระต่างจังหวัด)");
+  } else if (action === 'submit_select_start_time') {
+    var selectedTime = event.postback.params && event.postback.params.time;
+    var state = await _LINE_getState_(lineUserId);
+    if (!state || state.step !== 'select_start_time') {
+      await LINE_replyTextMessage_(replyToken, "❌ เซสชันหมดอายุหรือผิดพลาด กรุณากดปุ่มยื่นใบลาใหม่อีกครั้งครับ");
+      await _LINE_clearState_(lineUserId);
+      return;
+    }
+    state.start_time = selectedTime;
+    state.step = 'select_end_time';
+    await _LINE_saveState_(lineUserId, state);
+    
+    var timePickerFlex = LINE_buildTimePickerFlex_("ขั้นตอนที่ 5: เลือกเวลาสิ้นสุดการลา", "action=submit_select_end_time", "⏱️ เลือกเวลาสิ้นสุดการลา");
+    await LINE_replyMessage_(replyToken, [timePickerFlex]);
+  } else if (action === 'submit_select_end_time') {
+    var selectedTime = event.postback.params && event.postback.params.time;
+    var state = await _LINE_getState_(lineUserId);
+    if (!state || state.step !== 'select_end_time') {
+      await LINE_replyTextMessage_(replyToken, "❌ เซสชันหมดอายุหรือผิดพลาด กรุณากดปุ่มยื่นใบลาใหม่อีกครั้งครับ");
+      await _LINE_clearState_(lineUserId);
+      return;
+    }
+    
+    var sm = cfg_timeMinutes_(state.start_time);
+    var em = cfg_timeMinutes_(selectedTime);
+    if (sm == null || em == null || em <= sm) {
+      await LINE_replyTextMessage_(replyToken, "⚠️ เวลาสิ้นสุดต้องมากกว่าเวลาเริ่มลาครับ\n\nกรุณากดเลือกเวลาเริ่มลาและเวลาสิ้นสุดใหม่อีกครั้งครับ");
+      await _LINE_clearState_(lineUserId);
+      return;
+    }
+    
+    state.end_time = selectedTime;
+    state.step = 'enter_reason';
+    await _LINE_saveState_(lineUserId, state);
+    
+    await LINE_replyTextMessage_(replyToken, "✍️ ขั้นตอนสุดท้าย: โปรดพิมพ์เหตุผลในการลาส่งกลับมาในแชตนี้ได้เลยครับ (เช่น ทำธุระส่วนตัว, ไปพบแพทย์)");
   } else if (action === 'submit_confirm_yes') {
     var state = await _LINE_getState_(lineUserId);
     if (!state || state.step !== 'confirm') {
@@ -3080,7 +3170,9 @@ async function _LINE_handlePostbackEvent_(event, replyToken, lineUserId) {
         start_date: state.start_date,
         end_date: state.end_date,
         reason: state.reason,
-        leave_unit: 'day'
+        leave_unit: state.leave_unit || 'day',
+        start_time: state.start_time || '',
+        end_time: state.end_time || ''
       });
       await _LINE_clearState_(lineUserId);
       
@@ -3697,6 +3789,9 @@ function LINE_buildLeaveStatusFlex_(user, lv) {
   var startThai = toThaiDate(lv.start_date);
   var endThai   = toThaiDate(lv.end_date);
   var dateRange = (lv.start_date === lv.end_date) ? startThai : startThai + ' – ' + endThai;
+  if (String(lv.leave_unit || '') === 'hour' && lv.start_time && lv.end_time) {
+    dateRange += ' (' + lv.start_time + ' - ' + lv.end_time + ')';
+  }
   
   var durationText = (String(lv.leave_unit || '') === 'hour')
     ? (lv.hours || '-') + ' ชั่วโมง'
@@ -3827,7 +3922,7 @@ function LINE_buildLeaveStatusFlex_(user, lv) {
 function LINE_buildPendingLeavesFlex_(user, pendingLeaves) {
   var bubbles = pendingLeaves.map(function (lv) {
     var typeLabel = LEAVE_TYPE_LABEL[lv.leave_type] || lv.leave_type;
-    var durationText = lv.duration_label || (lv.days + " วัน");
+    var durationText = _leaveDurationLabel_(lv);
     var requesterName = lv.requester ? lv.requester.full_name : "พนักงาน";
     
     function toThaiDate(iso) {
@@ -3843,6 +3938,9 @@ function LINE_buildPendingLeavesFlex_(user, pendingLeaves) {
     var dateText = (lv.start_date === lv.end_date) 
       ? toThaiDate(lv.start_date)
       : toThaiDate(lv.start_date) + " - " + toThaiDate(lv.end_date);
+    if (String(lv.leave_unit || '') === 'hour' && lv.start_time && lv.end_time) {
+      dateText += " (" + lv.start_time + " - " + lv.end_time + ")";
+    }
 
     var webUrl = LINE_getWebhookUrl() + "#/leaves/" + lv.id;
 
@@ -4180,6 +4278,24 @@ function LINE_buildExpenseDatePickerFlex_(title, postbackData, btnLabel) {
 }
 
 function LINE_buildExpenseConfirmFlex_(user, state) {
+  var receiptCount = 0;
+  if (state.receipt_url) {
+    if (state.receipt_url.indexOf('[') === 0) {
+      try {
+        var urls = JSON.parse(state.receipt_url);
+        receiptCount = urls.length;
+      } catch (e) {
+        receiptCount = 1;
+      }
+    } else {
+      receiptCount = 1;
+    }
+  }
+  var receiptText = "ไม่แนบ";
+  if (receiptCount > 0) {
+    receiptText = "อัปโหลดแล้ว (" + receiptCount + "/4 รูป)";
+  }
+
   var bubble = {
     type: "bubble",
     size: "mega",
@@ -4203,7 +4319,7 @@ function LINE_buildExpenseConfirmFlex_(user, state) {
         { type: "text", text: "วันที่: " + _LINE_formatThaiDate_(state.expense_date), size: "xs", color: "#374151", wrap: true },
         { type: "text", text: "จำนวน: " + Number(state.amount || 0).toLocaleString('en-US') + " บาท", size: "xs", color: "#374151", wrap: true, weight: "bold" },
         { type: "text", text: "รายละเอียด: " + String(state.description || '-'), size: "xs", color: "#374151", wrap: true },
-        { type: "text", text: "ใบเสร็จ: " + (state.receipt_url ? "อัปโหลดแล้ว" : "ไม่แนบ"), size: "xs", color: "#374151", wrap: true },
+        { type: "text", text: "ใบเสร็จ: " + receiptText, size: "xs", color: "#374151", wrap: true },
         { type: "separator", margin: "md" },
         {
           type: "box",
@@ -4407,7 +4523,8 @@ function LINE_buildDatePickerFlex_(title, postbackData, btnLabel) {
 
 function LINE_buildLeaveConfirmFlex_(user, state) {
   var typeLabel = LEAVE_TYPE_LABEL[state.leave_type] || state.leave_type;
-  var days = cfg_daysBetween_(state.start_date, state.end_date);
+  var duration = cfg_leaveDuration_(state);
+  var durationText = duration.error ? "ไม่ระบุ" : (duration.unit === 'hour' ? duration.hours + " ชั่วโมง" : duration.days + " วัน");
   
   function toThaiDate(iso) {
     if (!iso) return '-';
@@ -4422,6 +4539,9 @@ function LINE_buildLeaveConfirmFlex_(user, state) {
   var dateText = (state.start_date === state.end_date)
     ? toThaiDate(state.start_date)
     : toThaiDate(state.start_date) + " - " + toThaiDate(state.end_date);
+  if (state.leave_unit === 'hour' && state.start_time && state.end_time) {
+    dateText += " (" + state.start_time + " - " + state.end_time + ")";
+  }
 
   var bubble = {
     type: "bubble",
@@ -4463,7 +4583,7 @@ function LINE_buildLeaveConfirmFlex_(user, state) {
           layout: "horizontal",
           contents: [
             { type: "text", text: "จำนวน", size: "xs", color: "#6b7280", flex: 3 },
-            { type: "text", text: days + " วัน", size: "xs", color: "#1f2937", flex: 5, weight: "bold" }
+            { type: "text", text: durationText, size: "xs", color: "#1f2937", flex: 5, weight: "bold" }
           ]
         },
         {
@@ -4524,6 +4644,10 @@ function LINE_buildSubmitSuccessFlex_(user, lv) {
   var dateText = (lv.start_date === lv.end_date)
     ? toThaiDate(lv.start_date)
     : toThaiDate(lv.start_date) + " - " + toThaiDate(lv.end_date);
+  if (String(lv.leave_unit || '') === 'hour' && lv.start_time && lv.end_time) {
+    dateText += " (" + lv.start_time + " - " + lv.end_time + ")";
+  }
+  var durationText = _leaveDurationLabel_(lv);
 
   var bubble = {
     type: "bubble",
@@ -4562,7 +4686,7 @@ function LINE_buildSubmitSuccessFlex_(user, lv) {
             { type: "text", text: "📝 เลขที่ใบลา: " + lv.leave_no, size: "xs", color: "#065f46", weight: "bold" },
             { type: "text", text: "🤒 ประเภท: " + typeLabel, size: "xs", color: "#047857", margin: "xs" },
             { type: "text", text: "📅 วันที่: " + dateText, size: "xs", color: "#047857", margin: "xs" },
-            { type: "text", text: "⏳ จำนวน: " + lv.days + " วัน", size: "xs", color: "#047857", margin: "xs" }
+            { type: "text", text: "⏳ จำนวน: " + durationText, size: "xs", color: "#047857", margin: "xs" }
           ]
         },
         {
