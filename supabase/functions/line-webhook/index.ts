@@ -4561,6 +4561,113 @@ async function _LINE_startLeaveFlow_(replyToken, lineUserId) {
   await LINE_replyMessage_(replyToken, [flex]);
 }
 
+function LINE_buildLeaveUnitSelectFlex_() {
+  return {
+    type: "flex",
+    altText: "ยื่นใบลา - เลือกรูปแบบวันลา",
+    contents: {
+      type: "bubble",
+      size: "mega",
+      header: {
+        type: "box",
+        layout: "vertical",
+        backgroundColor: "#4f46e5",
+        paddingAll: "20px",
+        contents: [
+          { type: "text", text: "NEW LEAVE REQUEST", color: "#c7d2fe", size: "xs", weight: "bold" },
+          { type: "text", text: "ขั้นตอนที่ 2: เลือกรูปแบบวันลา", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
+        ]
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "20px",
+        spacing: "sm",
+        contents: [
+          {
+            type: "button",
+            style: "primary",
+            color: "#4f46e5",
+            height: "sm",
+            action: {
+              type: "postback",
+              label: "📅 เต็มวัน / หลายวัน",
+              data: "action=submit_select_unit&unit=day"
+            }
+          },
+          {
+            type: "button",
+            style: "primary",
+            color: "#6366f1",
+            height: "sm",
+            action: {
+              type: "postback",
+              label: "⏱️ รายชั่วโมง",
+              data: "action=submit_select_unit&unit=hour"
+            }
+          },
+          { type: "separator", margin: "md" },
+          {
+            type: "button",
+            style: "secondary",
+            color: "#f3f4f6",
+            height: "sm",
+            action: { type: "postback", label: "❌ ยกเลิก", data: "action=submit_cancel" }
+          }
+        ]
+      }
+    }
+  };
+}
+
+function LINE_buildTimePickerFlex_(title, postbackData, btnLabel) {
+  return {
+    type: "flex",
+    altText: title,
+    contents: {
+      type: "bubble",
+      size: "mega",
+      header: {
+        type: "box",
+        layout: "vertical",
+        backgroundColor: "#4f46e5",
+        paddingAll: "20px",
+        contents: [
+          { type: "text", text: "LEAVE TIME SELECTION", color: "#c7d2fe", size: "xs", weight: "bold" },
+          { type: "text", text: title, color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
+        ]
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "20px",
+        spacing: "md",
+        contents: [
+          {
+            type: "button",
+            style: "primary",
+            color: "#4f46e5",
+            height: "sm",
+            action: {
+              type: "datetimepicker",
+              label: btnLabel,
+              data: postbackData,
+              mode: "time"
+            }
+          },
+          {
+            type: "button",
+            style: "secondary",
+            color: "#f3f4f6",
+            height: "sm",
+            action: { type: "postback", label: "❌ ยกเลิก", data: "action=submit_cancel" }
+          }
+        ]
+      }
+    }
+  };
+}
+
 function LINE_buildDatePickerFlex_(title, postbackData, btnLabel) {
   return {
     type: "flex",
