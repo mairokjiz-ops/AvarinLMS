@@ -1010,8 +1010,13 @@ function _leaveStats_(userId, fiscalYear) {
   var stats = {};
   ACTIVE_LEAVE_TYPES.forEach(function (t) {
     var used = _leaveUsedDays_(userId, t, fy);
-    var limit = _leaveLimit_(t);
+    var baseLimit = _leaveLimit_(t);
+    var adjKey = 'quota_adj_' + userId + '_' + t + '_' + fy;
+    var adj = Number(_settingsRaw_(adjKey) || 0);
+    var limit = Math.max(0, baseLimit + adj);
     stats[t] = {
+      base_limit: baseLimit,
+      adjustment: adj,
       used: used,
       limit: limit,
       remaining: Math.max(0, limit - used),
@@ -1060,6 +1065,51 @@ function Leaves_user_stats(user, p) {
   if (!uid || uid === String(user.id)) return _leaveStats_(user.id, p && p.fiscal_year);
   Auth_requireCap(user, 'leave.view_all');
   return _leaveStats_(uid, p && p.fiscal_year);
+}
+
+function Leaves_all_users_quotas(user, p) {
+  Auth_requireCap(user, 'setting.manage');
+  var fy = (p && p.fiscal_year) ? Number(p.fiscal_year) : cfg_fiscalYear_(cfg_now_());
+  var users = DB_readAll(SHEETS.USERS).filter(function (u) {
+    return String(u.is_active).toLowerCase() === 'yes';
+  });
+  var result = users.map(function (u) {
+    var stats = _leaveStats_(u.id, fy);
+    return {
+      id: u.id,
+      full_name: u.full_name,
+      department: u.department,
+      position: u.position,
+      quota_stats: stats
+    };
+  });
+  return { fiscal_year: fy, users: result };
+}
+
+async function Leaves_adjust_quota(user, p) {
+  Auth_requireCap(user, 'setting.manage');
+  var targetUserId = String(p.user_id || '').trim();
+  var leaveType = String(p.leave_type || '').trim();
+  var fy = Number(p.fiscal_year || cfg_fiscalYear_(cfg_now_()));
+  var adjustment = Number(p.adjustment || 0);
+  
+  if (!targetUserId) throw new Error('ไม่ระบุผู้ใช้');
+  if (ACTIVE_LEAVE_TYPES.indexOf(leaveType) < 0) throw new Error('ประเภทการลาไม่ถูกต้อง');
+  
+  var adjKey = 'quota_adj_' + targetUserId + '_' + leaveType + '_' + fy;
+  
+  var existing = DB_findOne(SHEETS.SETTINGS, function (r) {
+    return String(r.key) === adjKey;
+  });
+  
+  if (existing) {
+    await DB_update(SHEETS.SETTINGS, existing.key, { value: String(adjustment) });
+  } else {
+    await DB_insert(SHEETS.SETTINGS, { key: adjKey, value: String(adjustment) });
+  }
+  
+  await Audit_log_(user, 'leave.adjust_quota', 'user', targetUserId, { leave_type: leaveType, fiscal_year: fy, adjustment: adjustment });
+  return { ok: true, key: adjKey, adjustment: adjustment };
 }
 
 function Leaves_preview(user, p) {
@@ -2661,6 +2711,8 @@ async function api(req) {
       case 'leave.workflow_counts':   return _ok(Leaves_workflow_counts(user));
       case 'leave.my_stats':          return _ok(Leaves_my_stats(user, p));
       case 'leave.user_stats':        return _ok(Leaves_user_stats(user, p));
+      case 'leave.all_users_quotas':  return _ok(Leaves_all_users_quotas(user, p));
+      case 'leave.adjust_quota':      return _ok(await Leaves_adjust_quota(user, p));
 
       case 'calendar.month':          return _ok(Calendar_month(user, p));
       case 'mission.list':            return _ok(Mission_list(user, p));

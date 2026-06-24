@@ -3385,6 +3385,7 @@ async function api(req) {
     '#/reports':      { title: 'รายงานสถิติ',        sub: 'สถิติการลาในปีงบประมาณ',              icon: 'graph-up' },
     '#/users':        { title: 'จัดการผู้ใช้',        sub: 'ผู้ใช้ระบบ ครู บุคลากร',              icon: 'people-fill' },
     '#/pending-users': { title: 'คำขอสมัครสมาชิก', sub: 'รออนุมัติจากผู้ดูแลระบบ', icon: 'person-fill-exclamation' },
+    '#/quotas':       { title: 'จัดการสิทธิ์วันลา',  sub: 'เพิ่มลดและดูแลสิทธิ์คงเหลือของพนักงานทุกคน', icon: 'person-gear' },
     '#/settings':     { title: 'ตั้งค่าระบบ',        sub: 'กำหนดลิมิตการลา · ข้อมูลบริษัท',     icon: 'gear-fill' },
     '#/profile':      { title: 'โปรไฟล์ของฉัน',      sub: 'จัดการข้อมูลส่วนตัว',                  icon: 'person-circle' },
     '#/audit':        { title: 'บันทึกระบบ',         sub: 'ประวัติการใช้งาน',                    icon: 'shield-check' }
@@ -3427,7 +3428,8 @@ async function api(req) {
         title: 'ข้อมูลหลัก',
         items: [
           { hash: '#/users',         icon: 'people-fill',               label: 'จัดการผู้ใช้',       cap: 'user.manage' },
-          { hash: '#/pending-users', icon: 'person-fill-exclamation', label: 'คำขอสมัคร', cap: 'user.manage', badge: 'pending' }
+          { hash: '#/pending-users', icon: 'person-fill-exclamation', label: 'คำขอสมัคร', cap: 'user.manage', badge: 'pending' },
+          { hash: '#/quotas',        icon: 'person-gear',               label: 'จัดการสิทธิ์วันลา',  cap: 'setting.manage' }
         ]
       },
       {
@@ -5719,6 +5721,159 @@ async function api(req) {
       }).catch(function (er) { Spinner.hide(); alertError('ไม่สำเร็จ', er.message); });
     });
   };
+  Routes['#/quotas'] = function () {
+    renderQuotasManager();
+  };
+
+  function renderQuotasManager() {
+    if (!hasCap('setting.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
+    var st = { q: '', department: '', fiscal_year: new Date().getFullYear() };
+    
+    setPage('<div class="toolbar">'
+      + '<div class="search-box"><i class="bi bi-search"></i><input type="text" id="qt-q" placeholder="ค้นหาชื่อพนักงาน..."></div>'
+      + '<select class="select" id="qt-dept" style="max-width:200px"><option value="">ทุกแผนก</option>'
+      + DEPARTMENTS.map(function (d) { return '<option value="' + d + '">' + esc(d) + '</option>'; }).join('')
+      + '</select>'
+      + '<select class="select" id="qt-fy" style="max-width:180px">'
+      + [0, -1, -2].map(function (offset) {
+          var y = new Date().getFullYear() + offset;
+          var label = 'ปีงบประมาณ ' + (y + 543);
+          return '<option value="' + y + '"' + (offset === 0 ? ' selected' : '') + '>' + label + '</option>';
+        }).join('')
+      + '</select>'
+      + '</div>'
+      + '<div id="qt-list" class="table-responsive">' + skBlocks(4, 80) + '</div>');
+      
+    function load() {
+      Spinner.show('กำลังโหลดข้อมูลสิทธิ์การลา...');
+      call('leave.all_users_quotas', { fiscal_year: st.fiscal_year }).then(function (r) {
+        Spinner.hide();
+        var users = r.users || [];
+        // Filter locally
+        var filtered = users.filter(function (u) {
+          if (st.q && (u.full_name || '').toLowerCase().indexOf(st.q.toLowerCase()) < 0) return false;
+          if (st.department && u.department !== st.department) return false;
+          return true;
+        });
+        
+        var rows = filtered.map(function (u) {
+          var stats = u.quota_stats.items || {};
+          
+          function renderQuotaCell(type) {
+            var item = stats[type] || { limit: 0, used: 0, remaining: 0, adjustment: 0, base_limit: 0 };
+            var adjText = item.adjustment > 0 ? ' (+' + item.adjustment + ')' : (item.adjustment < 0 ? ' (' + item.adjustment + ')' : '');
+            var adjBadge = item.adjustment !== 0 ? ' <span style="font-size:11px;color:#6366f1;font-weight:700">' + adjText + '</span>' : '';
+            var typeLabel = (LMS.LEAVE_TYPE_LABEL || {})[type] || type;
+            return '<div style="margin-bottom:8px;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px dashed #f1f5f9;padding-bottom:4px">'
+              + '  <div>'
+              + '    <strong style="color:#475569">' + esc(typeLabel) + '</strong>: '
+              + '    <span style="font-weight:600;color:#0f172a">' + item.remaining + '</span> / ' + item.limit + ' วัน' + adjBadge
+              + '  </div>'
+              + '  <div>'
+              + '    <a href="#" class="adjust-link btn-text" data-uid="' + esc(u.id) + '" data-type="' + type + '" data-name="' + esc(u.full_name) + '" data-base="' + item.base_limit + '" data-adj="' + item.adjustment + '" style="font-size:12px;color:#4f46e5;text-decoration:none;font-weight:600"><i class="bi bi-pencil-square"></i> ปรับปรุงสิทธิ์</a>'
+              + '  </div>'
+              + '</div>';
+          }
+          
+          return '<tr data-id="' + esc(u.id) + '">'
+            + '<td>'
+            + '<div style="font-weight:600;font-size:14px;color:#1e293b">' + esc(u.full_name) + '</div>'
+            + '<div style="font-size:12px;color:#64748b;margin-top:2px">' + esc(u.position || '-') + ' / ' + esc(u.department || '-') + '</div>'
+            + '</td>'
+            + '<td style="padding:12px">'
+            + renderQuotaCell('sick')
+            + renderQuotaCell('personal')
+            + renderQuotaCell('annual')
+            + '</td>'
+            + '</tr>';
+        }).join('');
+        
+        var html = '<table class="data-table">'
+          + '<thead><tr><th>พนักงาน</th><th>สิทธิ์วันลาคงเหลือ / ทั้งหมด (ปรับปรุงพิเศษ)</th></tr></thead>'
+          + '<tbody>' + (rows || '<tr><td colspan="2" style="text-align:center;color:#94a3b8;padding:30px">ไม่พบข้อมูลพนักงาน</td></tr>') + '</tbody></table>';
+          
+        $('#qt-list').innerHTML = html;
+        
+        // Wire up adjust links
+        $$('.adjust-link').forEach(function (a) {
+          a.addEventListener('click', function (e) {
+            e.preventDefault();
+            var uid = a.getAttribute('data-uid');
+            var type = a.getAttribute('data-type');
+            var name = a.getAttribute('data-name');
+            var base = Number(a.getAttribute('data-base'));
+            var adj = Number(a.getAttribute('data-adj'));
+            openAdjustModal(uid, type, name, base, adj);
+          });
+        });
+      }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
+    }
+    
+    function openAdjustModal(uid, type, name, base, adj) {
+      var typeLabel = (LMS.LEAVE_TYPE_LABEL || {})[type] || type;
+      var html = '<div style="display:flex;flex-direction:column;gap:14px;padding:6px 0">'
+        + '<div><strong>พนักงาน:</strong> ' + esc(name) + '</div>'
+        + '<div><strong>ประเภทการลา:</strong> ' + esc(typeLabel) + '</div>'
+        + '<div><strong>สิทธิ์ตั้งต้นระบบ:</strong> ' + base + ' วัน</div>'
+        + '<div class="form-group" style="margin-top:10px">'
+        + '  <label class="label" style="font-weight:600">จำนวนวันที่จะปรับเพิ่ม/ลด (ปรับปรุงเป็นกรณีพิเศษ)</label>'
+        + '  <input type="number" id="adj-days" class="input" value="' + adj + '" placeholder="ระบุจำนวนวันที่จะปรับปรุง (เช่น +2 หรือ -3)">'
+        + '  <small style="color:#64748b;margin-top:6px;display:block;line-height:1.4">ระบุเป็นตัวเลขบวกเพื่อเพิ่มสิทธิ์ (เช่น 5) หรือตัวเลขลบเพื่อลดสิทธิ์ (เช่น -2) หรือระบุเป็น 0 เพื่อใช้สิทธิ์ตั้งต้นตามปกติ</small>'
+        + '</div>'
+        + '</div>';
+        
+      var footer = '<button class="btn btn-secondary" data-modal-close>ยกเลิก</button>'
+        + '<button class="btn btn-primary" id="adj-save" style="margin-left:8px">บันทึกข้อมูล</button>';
+        
+      Modal.open({
+        title: 'ปรับปรุงสิทธิ์วันลาสะสมเป็นกรณีพิเศษ',
+        html: html,
+        footer: footer,
+        onOpen: function () {
+          $('#adj-save').addEventListener('click', function () {
+            var inputVal = $('#adj-days').value.trim();
+            var days = Number(inputVal);
+            if (inputVal === '' || isNaN(days)) {
+              toast('กรุณาระบุตัวเลขที่ถูกต้อง', 'warning');
+              return;
+            }
+            Spinner.show('กำลังบันทึกข้อมูล...');
+            call('leave.adjust_quota', {
+              user_id: uid,
+              leave_type: type,
+              fiscal_year: st.fiscal_year,
+              adjustment: days
+            }).then(function () {
+              Spinner.hide();
+              Modal.close();
+              toast('ปรับปรุงสิทธิ์วันลาเรียบร้อยแล้ว', 'success');
+              load();
+            }).catch(function (err) {
+              Spinner.hide();
+              alertError('บันทึกไม่สำเร็จ', err.message);
+            });
+          });
+        }
+      });
+    }
+    
+    var t;
+    $('#qt-q').addEventListener('input', function () {
+      clearTimeout(t);
+      t = setTimeout(function () { st.q = $('#qt-q').value; load(); }, 300);
+    });
+    $('#qt-dept').addEventListener('change', function () {
+      st.department = $('#qt-dept').value;
+      load();
+    });
+    $('#qt-fy').addEventListener('change', function () {
+      st.fiscal_year = Number($('#qt-fy').value);
+      load();
+    });
+    
+    load();
+  }
+
   // ── Users (admin) ──────────────────────────────────
   Routes['#/users'] = function () {
     if (!hasCap('user.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
