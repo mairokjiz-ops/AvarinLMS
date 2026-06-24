@@ -2948,10 +2948,22 @@ async function _LINE_handlePostbackEvent_(event, replyToken, lineUserId) {
     await LINE_replyMessage_(replyToken, [pendingExpenseFlex]);
   } else if (action === 'expense_select_type') {
     var state = await _LINE_getState_(lineUserId) || {};
-    state.step = 'expense_select_date';
+    state.step = 'expense_select_company';
     state.expense_type = params.type || 'other';
     await _LINE_saveState_(lineUserId, state);
-    var startExpensePicker = LINE_buildExpenseDatePickerFlex_("ขั้นตอนที่ 2: เลือกวันที่จ่าย", "action=expense_select_date", "📅 เลือกวันที่จ่าย");
+    var selectCompanyFlex = LINE_buildExpenseCompanySelectFlex_();
+    await LINE_replyMessage_(replyToken, [selectCompanyFlex]);
+  } else if (action === 'expense_select_company') {
+    var state = await _LINE_getState_(lineUserId);
+    if (!state || state.step !== 'expense_select_company') {
+      await LINE_replyTextMessage_(replyToken, "❌ เซสชันหมดอายุหรือผิดพลาด กรุณากดเบิกค่าใช้จ่ายใหม่อีกครั้งครับ");
+      await _LINE_clearState_(lineUserId);
+      return;
+    }
+    state.step = 'expense_select_date';
+    state.company = params.company;
+    await _LINE_saveState_(lineUserId, state);
+    var startExpensePicker = LINE_buildExpenseDatePickerFlex_("ขั้นตอนที่ 3: เลือกวันที่จ่าย", "action=expense_select_date", "📅 เลือกวันที่จ่าย");
     await LINE_replyMessage_(replyToken, [startExpensePicker]);
   } else if (action === 'expense_select_date') {
     var selectedExpenseDate = event.postback.params && event.postback.params.date;
@@ -2965,6 +2977,9 @@ async function _LINE_handlePostbackEvent_(event, replyToken, lineUserId) {
     state.expense_date = selectedExpenseDate;
     await _LINE_saveState_(lineUserId, state);
     await LINE_replyTextMessage_(replyToken, "💵 พิมพ์จำนวนเงินที่จ่ายไป เช่น 350 หรือ 1250.50");
+  } else if (action === 'expense_cancel') {
+    await _LINE_clearState_(lineUserId);
+    await LINE_replyTextMessage_(replyToken, "❌ ยกเลิกการเบิกค่าใช้จ่ายเรียบร้อยแล้ว");
   } else if (action === 'expense_confirm_yes') {
     var state = await _LINE_getState_(lineUserId);
     if (!state || state.step !== 'expense_confirm') {
@@ -2973,11 +2988,15 @@ async function _LINE_handlePostbackEvent_(event, replyToken, lineUserId) {
       return;
     }
     try {
+      var desc = state.description;
+      if (state.company) {
+        desc = "[" + state.company + "] " + desc;
+      }
       var ex = await Expense_create(user, {
         expense_type: _LINE_getExpenseTypeLabel_(state.expense_type),
         expense_date: state.expense_date,
         amount: state.amount,
-        description: state.description,
+        description: desc,
         receipt_url: state.receipt_url || '',
         skip_notify: true
       });
@@ -4277,6 +4296,65 @@ function LINE_buildExpenseDatePickerFlex_(title, postbackData, btnLabel) {
   };
 }
 
+function LINE_buildExpenseCompanySelectFlex_() {
+  return {
+    type: "flex",
+    altText: "เบิกค่าใช้จ่าย - เลือกบริษัท",
+    contents: {
+      type: "bubble",
+      size: "mega",
+      header: {
+        type: "box",
+        layout: "vertical",
+        backgroundColor: "#0f766e",
+        paddingAll: "20px",
+        contents: [
+          { type: "text", text: "EXPENSE REQUEST", color: "#99f6e4", size: "xs", weight: "bold" },
+          { type: "text", text: "ขั้นตอนที่ 2: เบิกในนามบริษัท", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
+        ]
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "20px",
+        spacing: "sm",
+        contents: [
+          {
+            type: "button",
+            style: "primary",
+            color: "#0891b2",
+            height: "sm",
+            action: {
+              type: "postback",
+              label: "🏢 บจก. เอวริณทร์ อินเตอร์กรุ๊ป",
+              data: "action=expense_select_company&company=บริษัท เอวริณทร์ อินเตอร์กรุ๊ป จำกัด"
+            }
+          },
+          {
+            type: "button",
+            style: "primary",
+            color: "#14b8a6",
+            height: "sm",
+            action: {
+              type: "postback",
+              label: "🏢 บจก. สปอร์ต ไตรตัน",
+              data: "action=expense_select_company&company=บริษัท สปอร์ต ไตรตัน จำกัด"
+            }
+          },
+          { type: "separator", margin: "md" },
+          {
+            type: "button",
+            style: "secondary",
+            color: "#f3f4f6",
+            height: "sm",
+            action: { type: "postback", label: "❌ ยกเลิก", data: "action=expense_cancel" }
+          }
+        ]
+      }
+    }
+  };
+}
+
 function LINE_buildExpenseConfirmFlex_(user, state) {
   var receiptCount = 0;
   if (state.receipt_url) {
@@ -4316,6 +4394,7 @@ function LINE_buildExpenseConfirmFlex_(user, state) {
       spacing: "sm",
       contents: [
         { type: "text", text: "ประเภท: " + (_LINE_getExpenseTypeLabel_(state.expense_type)), size: "xs", color: "#374151", wrap: true },
+        { type: "text", text: "บริษัท: " + (state.company || '-'), size: "xs", color: "#374151", wrap: true },
         { type: "text", text: "วันที่: " + _LINE_formatThaiDate_(state.expense_date), size: "xs", color: "#374151", wrap: true },
         { type: "text", text: "จำนวน: " + Number(state.amount || 0).toLocaleString('en-US') + " บาท", size: "xs", color: "#374151", wrap: true, weight: "bold" },
         { type: "text", text: "รายละเอียด: " + String(state.description || '-'), size: "xs", color: "#374151", wrap: true },
@@ -4341,6 +4420,14 @@ function LINE_buildExpenseConfirmFlex_(user, state) {
 }
 
 function LINE_buildExpenseSuccessFlex_(user, ex) {
+  var company = '';
+  var cleanDesc = ex.description || '';
+  if (cleanDesc.indexOf('[') === 0 && cleanDesc.indexOf(']') > 0) {
+    var parts = cleanDesc.split(']');
+    company = parts[0].substring(1);
+    cleanDesc = parts.slice(1).join(']').trim();
+  }
+
   var bubble = {
     type: "bubble",
     size: "mega",
@@ -4361,6 +4448,7 @@ function LINE_buildExpenseSuccessFlex_(user, ex) {
       spacing: "sm",
       contents: [
         { type: "text", text: "เลขที่: " + ex.expense_no, size: "xs", color: "#374151", wrap: true },
+        { type: "text", text: "บริษัท: " + (company || '-'), size: "xs", color: "#374151", wrap: true },
         { type: "text", text: "ประเภท: " + (ex.expense_type || '-'), size: "xs", color: "#374151", wrap: true },
         { type: "text", text: "จำนวน: " + Number(ex.amount || 0).toLocaleString('en-US') + " บาท", size: "xs", color: "#374151", wrap: true, weight: "bold" },
         { type: "text", text: "สถานะ: " + (ex.status_label || ex.status || '-'), size: "xs", color: "#374151", wrap: true }
