@@ -4270,6 +4270,7 @@ async function api(req) {
     var seenLabels = {};
     return Object.keys(labels).filter(function (key) {
       if (key === 'maternity') return false;
+      if (key === 'compensatory' || key === 'work_offday') return false;
       var label = String(labels[key] || key);
       if (seenLabels[label]) return false;
       seenLabels[label] = true;
