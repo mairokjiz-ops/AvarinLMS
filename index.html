@@ -6535,6 +6535,9 @@ async function api(req) {
                 var subFor = dayState.substituting_for ? dayState.substituting_for.full_name : '';
                 var subBranch = dayState.substituting_for ? dayState.substituting_for.branch : '';
                 cellContent = 'แทน';
+                if (subBranch) {
+                  cellContent += '<br><span style="font-size: 9px; font-weight: normal; display: block; margin-top: 1px;">' + esc(subBranch) + '</span>';
+                }
                 cellTitle = 'ปฏิบัติงานแทน ' + subFor + ' (' + subBranch + ')';
               }
               
