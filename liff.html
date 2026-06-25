@@ -1137,15 +1137,13 @@
     };
 
     // ── Fallback configuration defaults ──
-    if (!AppState.webUrl) {
-      // Guess backend url based on current page url
+    if (!AppState.webUrl || (!AppState.webUrl.includes('localhost') && !AppState.webUrl.includes('127.0.0.1') && !AppState.webUrl.includes('supabase.co'))) {
       var currentUrl = window.location.href;
       if (currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1')) {
         AppState.webUrl = 'http://localhost:8000';
       } else {
-        // Parse from window location
-        var path = window.location.origin;
-        AppState.webUrl = path;
+        // Default to production Supabase project URL
+        AppState.webUrl = 'https://djcvqxjwakiorahdiwwk.supabase.co';
       }
       localStorage.setItem('liff_web_url', AppState.webUrl);
     }
