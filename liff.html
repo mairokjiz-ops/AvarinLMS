@@ -1123,7 +1123,7 @@
   <script>
     // ── Global App State ──
     const AppState = {
-      liffId: localStorage.getItem('liff_id') || '',
+      liffId: localStorage.getItem('liff_id') || '2010506774-q6zR6OoB',
       webUrl: localStorage.getItem('liff_web_url') || '',
       token: localStorage.getItem('liff_token') || '',
       user: null,
@@ -1137,6 +1137,10 @@
     };
 
     // ── Fallback configuration defaults ──
+    if (AppState.liffId !== '2010506774-q6zR6OoB') {
+      AppState.liffId = '2010506774-q6zR6OoB';
+      localStorage.setItem('liff_id', AppState.liffId);
+    }
     if (!AppState.webUrl || (!AppState.webUrl.includes('localhost') && !AppState.webUrl.includes('127.0.0.1') && !AppState.webUrl.includes('supabase.co'))) {
       var currentUrl = window.location.href;
       if (currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1')) {
