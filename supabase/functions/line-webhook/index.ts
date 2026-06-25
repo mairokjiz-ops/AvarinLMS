@@ -5225,7 +5225,8 @@ function LINE_buildScheduleFlex_(user) {
       
       if (emp) {
         if (emp.status === 'working') {
-          statusText = '🟢 ปฏิบัติงานปกติ';
+          var branchText = emp.branch === 'พนักงานแทน' ? 'พนักงานแทน' : ('สาขา ' + emp.branch);
+          statusText = '🟢 ปฏิบัติงานปกติ (' + branchText + ')';
           statusColor = '#10b981';
         } else if (emp.status === 'off') {
           statusText = '🔴 วันหยุดประจำสัปดาห์';
@@ -5241,10 +5242,12 @@ function LINE_buildScheduleFlex_(user) {
             noteText = 'คนแทน: ' + emp.substitute_by.full_name;
           }
         } else if (emp.status === 'substituting') {
-          statusText = '🔵 ปฏิบัติงานแทน';
+          var targetBranch = emp.substituting_for ? emp.substituting_for.branch : '';
+          var branchText = targetBranch ? ('สาขา ' + targetBranch) : 'พนักงานแทน';
+          statusText = '🔵 ปฏิบัติงานแทน (' + branchText + ')';
           statusColor = '#3b82f6';
           if (emp.substituting_for) {
-            noteText = 'แทน ' + emp.substituting_for.full_name + ' (สาขา ' + emp.substituting_for.branch + ')';
+            noteText = 'แทน ' + emp.substituting_for.full_name;
           }
         }
       }
