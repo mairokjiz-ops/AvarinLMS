@@ -2201,35 +2201,55 @@ async function Seed_ensureHolidays_() {
   var year = new Date().getFullYear();
   var defaults = [
     { date: year + '-01-01', name: 'วันขึ้นปีใหม่' },
-    { date: year + '-04-06', name: 'วันจักรี' },
+    { date: year + '-01-02', name: 'วันหยุดพิเศษ' },
+    { date: year + '-03-03', name: 'วันมาฆบูชา' },
     { date: year + '-04-13', name: 'วันสงกรานต์' },
     { date: year + '-04-14', name: 'วันสงกรานต์' },
     { date: year + '-04-15', name: 'วันสงกรานต์' },
     { date: year + '-05-01', name: 'วันแรงงานแห่งชาติ' },
-    { date: year + '-05-04', name: 'วันฉัตรมงคล' },
-    { date: year + '-06-03', name: 'วันเฉลิมพระชนมพรรษาสมเด็จพระนางเจ้าฯ พระบรมราชินี' },
-    { date: year + '-07-28', name: 'วันเฉลิมพระชนมพรรษาพระบาทสมเด็จพระเจ้าอยู่หัว' },
-    { date: year + '-08-12', name: 'วันแม่แห่งชาติ' },
-    { date: year + '-10-13', name: 'วันคล้ายวันสวรรคต ร.9' },
+    { date: year + '-06-01', name: 'วันหยุดชดเชยวันวิสาขบูชา' },
+    { date: year + '-06-03', name: 'วันเฉลิมพระชนมพรรษา สมเด็จพระนางเจ้าฯ พระบรมราชินี' },
+    { date: year + '-07-28', name: 'วันเฉลิมพระชนมพรรษา พระบาทสมเด็จพระเจ้าอยู่หัวรัชกาลที่ 10' },
+    { date: year + '-07-29', name: 'วันอาสาฬหบูชา' },
+    { date: year + '-08-12', name: 'วันเฉลิมพระชนมพรรษา สมเด็จพระนางเจ้าสิริกิติ์ฯ' },
+    { date: year + '-10-13', name: 'วันคล้ายวันสวรรคต รัชกาลที่ 9' },
     { date: year + '-10-23', name: 'วันปิยมหาราช' },
-    { date: year + '-12-05', name: 'วันพ่อแห่งชาติ' },
-    { date: year + '-12-10', name: 'วันรัฐธรรมนูญ' },
+    { date: year + '-12-07', name: 'วันหยุดชดเชย วันพ่อแห่งชาติ' },
     { date: year + '-12-31', name: 'วันสิ้นปี' }
   ];
   
-  var created = 0;
+  var currentHolidays = DB_readAll(SHEETS.HOLIDAYS);
+  var seedDates = defaults.map(function(h) { return h.date; });
+  
+  for (var i = 0; i < currentHolidays.length; i++) {
+    var ch = currentHolidays[i];
+    if (ch.holiday_date && ch.holiday_date.startsWith(year + '-')) {
+      var dateStr = String(ch.holiday_date).substring(0, 10);
+      if (seedDates.indexOf(dateStr) === -1) {
+        await DB_delete(SHEETS.HOLIDAYS, ch.id);
+      }
+    }
+  }
+  
+  var createdOrUpdated = 0;
   for (var i = 0; i < defaults.length; i++) {
     var h = defaults[i];
     var dateStr = h.date;
-    var exists = DB_findOne(SHEETS.HOLIDAYS, function (x) { return String(x.holiday_date) === dateStr; });
-    if (exists) continue;
-    await DB_insert(SHEETS.HOLIDAYS, {
-      holiday_date: dateStr,
-      name: h.name
-    });
-    created++;
+    var existing = DB_findOne(SHEETS.HOLIDAYS, function (x) { return String(x.holiday_date).substring(0, 10) === dateStr; });
+    if (existing) {
+      if (existing.name !== h.name) {
+        await DB_update(SHEETS.HOLIDAYS, existing.id, { name: h.name });
+        createdOrUpdated++;
+      }
+    } else {
+      await DB_insert(SHEETS.HOLIDAYS, {
+        holiday_date: dateStr,
+        name: h.name
+      });
+      createdOrUpdated++;
+    }
   }
-  return created;
+  return createdOrUpdated;
 }
 
 function _wf_monthKey_(v) {
@@ -3031,6 +3051,8 @@ async function api(req) {
       REQUEST_ORIGIN = wurl;
     }
     
+    await Seed_ensureHolidays_();
+
     var holidaysRows = DB_readAll('Holidays');
     GLOBAL_HOLIDAYS = {};
     holidaysRows.forEach(function(r) {
