@@ -6165,6 +6165,24 @@ async function api(req) {
     var curYear = now.getFullYear();
     var curMonth = now.getMonth() + 1; // 1-12
     
+    var viewMode = 'month'; // 'month' or 'week'
+    var curWeekIdx = 0;
+    var loadedData = null;
+    var branchGroups = {
+      'ราชพฤกษ์': [],
+      'ปอโต': [],
+      'วิรันด้า': [],
+      'พนักงานแทน': []
+    };
+    
+    // Check editing rights
+    var isSalesSupervisor = LMS.Store.user.role === 'supervisor' && LMS.Store.user.department === 'ฝ่ายขาย';
+    var isAdmin = LMS.Store.user.role === 'admin';
+    var canEdit = isAdmin || isSalesSupervisor;
+    
+    var daysNamesShort = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
+    var daysFullNames = ['วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'];
+
     var html = '<style>'
       + '  .schedule-container { display: flex; flex-direction: column; gap: 20px; }'
       + '  .sched-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }'
@@ -6179,11 +6197,9 @@ async function api(req) {
       + '  .stat-info { display: flex; flex-direction: column; }'
       + '  .stat-val { font-size: 16px; font-weight: 700; color: var(--ink); }'
       + '  .stat-lbl { font-size: 12px; color: var(--ink-muted); }'
-      
       + '  .sched-card { background: #fff; border-radius: 16px; border: 1px solid var(--line); box-shadow: var(--shadow-sm); overflow: hidden; }'
       + '  .sched-card-head { padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }'
       + '  .sched-card-title { font-size: 16px; font-weight: 700; color: var(--ink); margin: 0; display: flex; align-items: center; gap: 8px; }'
-      
       + '  .table-scroll-wrapper { width: 100%; overflow-x: auto; position: relative; }'
       + '  .schedule-table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: center; font-size: 11.5px; }'
       + '  .schedule-table th, .schedule-table td { border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; padding: 6px 2px; min-width: 26px; vertical-align: middle; }'
@@ -6191,10 +6207,8 @@ async function api(req) {
       + '  .schedule-table th.sticky-col, .schedule-table td.sticky-col { position: sticky; left: 0; z-index: 10; background: #fff; text-align: left; min-width: 130px; max-width: 160px; box-shadow: 2px 0 5px rgba(0,0,0,0.04); }'
       + '  .schedule-table th.sticky-col { z-index: 15; background: #f8fafc; }'
       + '  .schedule-table td.off-day-col { min-width: 80px; text-align: center; }'
-      
       + '  .schedule-table tr.branch-row td { background: #f1f5f9; font-weight: 700; color: #334155; text-align: left; padding: 10px 16px; border-bottom: 1px solid #cbd5e1; }'
       + '  .schedule-table tr.clickable-row:hover td { background-color: #f8fafc; }'
-      
       + '  .cell-working { color: #10b981; font-size: 12px; }'
       + '  .cell-off { background: #fff7ed !important; color: #c2410c; font-weight: 600; font-size: 11px; }'
       + '  .cell-leave { background: #fef2f2 !important; color: #b91c1c; font-weight: 600; font-size: 11px; }'
@@ -6203,17 +6217,18 @@ async function api(req) {
       + '  .cell-worked-offday { background: #ecfdf5 !important; color: #065f46; font-weight: 600; font-size: 10px; }'
       + '  .cell-clickable { cursor: pointer; transition: background 0.15s; }'
       + '  .cell-clickable:hover { filter: brightness(0.95); }'
-      
       + '  .badge-swap { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: rgba(99, 102, 241, 0.15); color: #4f46e5; font-size: 9px; margin-left: 2px; }'
       + '  .off-day-badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; background: #f1f5f9; color: #475569; }'
       + '  .off-day-badge.editable { cursor: pointer; transition: all 0.2s; }'
       + '  .off-day-badge.editable:hover { background: var(--brand-1); color: #fff; }'
-      
       + '  .legend-sec { background: #f8fafc; border-radius: 12px; padding: 16px; border: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }'
       + '  .legend-items { display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px; }'
       + '  .legend-item { display: flex; align-items: center; gap: 6px; }'
       + '  .legend-box { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #cbd5e1; }'
-      
+      + '  .view-toggle-group { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #f1f5f9; padding: 2px; gap: 2px; }'
+      + '  .btn-view-mode { padding: 5px 12px; font-size: 12px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; background: transparent; color: #64748b; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }'
+      + '  .btn-view-mode.active { background: #fff; color: #2563eb; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }'
+      + '  .btn-view-mode i { font-size: 13px; }'
       + '  @media print {'
       + '    body { background: #fff !important; color: #000 !important; }'
       + '    .sidebar, .navbar, .toolbar, .stats-grid, .legend-sec, .btn, .sched-controls, .sched-card-head { display: none !important; }'
@@ -6226,7 +6241,6 @@ async function api(req) {
       + '  }'
       + '</style>'
       + '<div class="schedule-container">'
-      
       + '  <div class="sched-header">'
       + '    <div class="sched-title-sec">'
       + '      <i class="bi bi-calendar-week-fill"></i>'
@@ -6236,28 +6250,30 @@ async function api(req) {
       + '      </div>'
       + '    </div>'
       + '    <div class="sched-controls">'
-      + '      <button class="btn btn-ghost" id="sched-prev"><i class="bi bi-chevron-left"></i> เดือนก่อนหน้า</button>'
+      + '      <div class="view-toggle-group" style="margin-right: 8px;">'
+      + '        <button class="btn-view-mode active" data-mode="month"><i class="bi bi-calendar3"></i> รายเดือน</button>'
+      + '        <button class="btn-view-mode" data-mode="week"><i class="bi bi-calendar-range"></i> รายสัปดาห์</button>'
+      + '      </div>'
+      + '      <select class="select" id="sched-week" style="width: 160px; display: none; margin-right: 8px;"></select>'
+      + '      <button class="btn btn-ghost" id="sched-prev"><i class="bi bi-chevron-left"></i> ย้อนกลับ</button>'
       + '      <select class="select" id="sched-month" style="width: 130px;"></select>'
       + '      <select class="select" id="sched-year" style="width: 100px;"></select>'
-      + '      <button class="btn btn-ghost" id="sched-next">เดือนถัดไป <i class="bi bi-chevron-right"></i></button>'
+      + '      <button class="btn btn-ghost" id="sched-next">ถัดไป <i class="bi bi-chevron-right"></i></button>'
       + '      <button class="btn btn-primary" id="sched-print"><i class="bi bi-printer"></i> พิมพ์ตาราง</button>'
       + '    </div>'
       + '  </div>'
-      
       + '  <div class="stats-grid" id="sched-stats">'
       + '    <!-- Stat cards loaded dynamically -->'
       + '  </div>'
-      
       + '  <div class="sched-card">'
       + '    <div class="sched-card-head">'
-      + '      <h3 class="sched-card-title"><i class="bi bi-table"></i> แผนตารางปฏิบัติงานประจำเดือน</h3>'
+      + '      <h3 class="sched-card-title"><i class="bi bi-table"></i> แผนตารางปฏิบัติงาน</h3>'
       + '      <span style="font-size: 12px; color: var(--ink-muted)">* สามารถกดช่องปฏิทินของพนักงานเพื่อสลับสถานะหรือจัดวันหยุดชดเชยได้</span>'
       + '    </div>'
       + '    <div class="table-scroll-wrapper" id="sched-table-wrapper">'
       + '      <!-- Table loaded dynamically -->'
       + '    </div>'
       + '  </div>'
-      
       + '  <div class="legend-sec">'
       + '    <strong style="color: var(--ink)">คำอธิบายสัญลักษณ์</strong>'
       + '    <div class="legend-items">'
@@ -6273,11 +6289,10 @@ async function api(req) {
       + '      <strong>การคำนวณคนแทนอัตโนมัติ:</strong> ระบบจะวิเคราะห์พนักงานจากกลุ่ม "พนักงานแทน" ที่พร้อมปฏิบัติหน้าที่ในวันนั้นๆ (ต้องไม่ตรงกับวันหยุดประจำของพวกเขา และไม่มีใบลาที่ได้รับการอนุมัติ) และมอบหมายให้เข้าปฏิบัติงานทดแทนพนักงานสาขาหลักที่มีการหยุดงานหรือลางานโดยอัตโนมัติ โดยเรียงลำดับการสลับแทนอย่างทั่วถึง'
       + '    </div>'
       + '  </div>'
-      
       + '</div>';
       
     setPage(html);
-    
+
     // Fill select controls
     var monthsTH = [
       'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
@@ -6286,16 +6301,17 @@ async function api(req) {
     
     var monthSelect = $('#sched-month');
     var yearSelect = $('#sched-year');
+    var weekSelect = $('#sched-week');
     
-    monthsTH.forEach(function (mName, idx) {
+    for (var m = 1; m <= 12; m++) {
       var opt = document.createElement('option');
-      opt.value = idx + 1;
-      opt.textContent = mName;
-      if (idx + 1 === curMonth) opt.selected = true;
+      opt.value = m;
+      opt.textContent = monthsTH[m - 1];
+      if (m === curMonth) opt.selected = true;
       monthSelect.appendChild(opt);
-    });
+    }
     
-    for (var y = curYear - 1; y <= curYear + 1; y++) {
+    for (var y = curYear - 2; y <= curYear + 2; y++) {
       var opt = document.createElement('option');
       opt.value = y;
       opt.textContent = y + 543; // BE format
@@ -6314,32 +6330,516 @@ async function api(req) {
     });
     
     $('#sched-prev').addEventListener('click', function () {
-      curMonth--;
-      if (curMonth < 1) {
-        curMonth = 12;
-        curYear--;
+      if (viewMode === 'week') {
+        curWeekIdx--;
+        if (curWeekIdx < 0) {
+          curMonth--;
+          if (curMonth < 1) {
+            curMonth = 12;
+            curYear--;
+          }
+          monthSelect.value = curMonth;
+          yearSelect.value = curYear;
+          load(true); // load previous month, selecting last week
+        } else {
+          weekSelect.value = curWeekIdx;
+          renderTable();
+        }
+      } else {
+        curMonth--;
+        if (curMonth < 1) {
+          curMonth = 12;
+          curYear--;
+        }
+        monthSelect.value = curMonth;
+        yearSelect.value = curYear;
+        load();
       }
-      monthSelect.value = curMonth;
-      yearSelect.value = curYear;
-      load();
     });
     
     $('#sched-next').addEventListener('click', function () {
-      curMonth++;
-      if (curMonth > 12) {
-        curMonth = 1;
-        curYear++;
+      if (viewMode === 'week') {
+        var dates = loadedData ? loadedData.dates : [];
+        var numWeeks = Math.ceil(dates.length / 7);
+        curWeekIdx++;
+        if (curWeekIdx >= numWeeks) {
+          curMonth++;
+          if (curMonth > 12) {
+            curMonth = 1;
+            curYear++;
+          }
+          monthSelect.value = curMonth;
+          yearSelect.value = curYear;
+          load(false); // load next month, selecting first week
+        } else {
+          weekSelect.value = curWeekIdx;
+          renderTable();
+        }
+      } else {
+        curMonth++;
+        if (curMonth > 12) {
+          curMonth = 1;
+          curYear++;
+        }
+        monthSelect.value = curMonth;
+        yearSelect.value = curYear;
+        load();
       }
-      monthSelect.value = curMonth;
-      yearSelect.value = curYear;
-      load();
     });
     
     $('#sched-print').addEventListener('click', function () {
       window.print();
     });
+
+    $$('.btn-view-mode').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var mode = btn.getAttribute('data-mode');
+        if (viewMode === mode) return;
+        viewMode = mode;
+        $$('.btn-view-mode').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        
+        updateWeekDropdown();
+        renderTable();
+      });
+    });
     
-    function load() {
+    if (weekSelect) {
+      weekSelect.addEventListener('change', function () {
+        curWeekIdx = Number(weekSelect.value);
+        renderTable();
+      });
+    }
+
+    // Attach delegated click listener for cell action once
+    var tableWrapper = $('#sched-table-wrapper');
+    if (tableWrapper) {
+      tableWrapper.addEventListener('click', function (e) {
+        var cell = e.target.closest('td[data-action="toggle-cell"]');
+        if (!cell) return;
+        
+        var uid = cell.getAttribute('data-uid');
+        var dateStr = cell.getAttribute('data-date');
+        var currentStatus = cell.getAttribute('data-status');
+        var leaveType = cell.getAttribute('data-leavetype');
+        var leaveId = cell.getAttribute('data-leaveid');
+        
+        var empName = '';
+        Object.keys(branchGroups).forEach(function (b) {
+          branchGroups[b].forEach(function (x) {
+            if (String(x.id) === String(uid)) empName = x.full_name;
+          });
+        });
+        
+        handleCellClick(uid, empName, dateStr, currentStatus, leaveType, leaveId);
+      });
+    }
+
+    function updateWeekDropdown() {
+      if (!weekSelect) return;
+      weekSelect.innerHTML = '';
+      if (!loadedData || !loadedData.dates || loadedData.dates.length === 0) return;
+      
+      var dates = loadedData.dates;
+      var numWeeks = Math.ceil(dates.length / 7);
+      
+      for (var w = 0; w < numWeeks; w++) {
+        var startDay = new Date(dates[w * 7].date).getDate();
+        var endIdx = Math.min((w + 1) * 7 - 1, dates.length - 1);
+        var endDay = new Date(dates[endIdx].date).getDate();
+        
+        var opt = document.createElement('option');
+        opt.value = w;
+        opt.textContent = 'สัปดาห์ที่ ' + (w + 1) + ' (' + startDay + ' - ' + endDay + ')';
+        if (w === curWeekIdx) opt.selected = true;
+        weekSelect.appendChild(opt);
+      }
+      
+      if (viewMode === 'week') {
+        weekSelect.style.display = 'inline-block';
+      } else {
+        weekSelect.style.display = 'none';
+      }
+    }
+
+    function renderStats() {
+      var statsWrapper = $('#sched-stats');
+      if (!statsWrapper || !loadedData) return;
+      
+      var totalEmployees = 0;
+      var totalSubs = branchGroups['พนักงานแทน'].length;
+      var substitutionDays = 0;
+      
+      Object.keys(branchGroups).forEach(function (bKey) {
+        if (bKey !== 'พนักงานแทน') totalEmployees += branchGroups[bKey].length;
+      });
+      
+      loadedData.dates.forEach(function (dObj) {
+        dObj.substitutes.forEach(function (sub) {
+          if (sub.status === 'substituting') {
+            substitutionDays++;
+          }
+        });
+      });
+      
+      statsWrapper.innerHTML = 
+        '  <div class="stat-card">'
+        + '    <div class="stat-icon" style="background: rgba(99, 102, 241, 0.1); color: var(--brand-1);"><i class="bi bi-people-fill"></i></div>'
+        + '    <div class="stat-info">'
+        + '      <span class="stat-val">' + totalEmployees + ' คน</span>'
+        + '      <span class="stat-lbl">พนักงานประจำ 3 สาขาหลัก</span>'
+        + '    </div>'
+        + '  </div>'
+        + '  <div class="stat-card">'
+        + '    <div class="stat-icon" style="background: rgba(139, 92, 246, 0.1); color: var(--brand-2);"><i class="bi bi-person-bounding-box"></i></div>'
+        + '    <div class="stat-info">'
+        + '      <span class="stat-val">' + totalSubs + ' คน</span>'
+        + '      <span class="stat-lbl">กลุ่มพนักงานแทน (Substitute)</span>'
+        + '    </div>'
+        + '  </div>'
+        + '  <div class="stat-card">'
+        + '    <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: var(--emerald);"><i class="bi bi-arrow-left-right"></i></div>'
+        + '    <div class="stat-info">'
+        + '      <span class="stat-val">' + substitutionDays + ' ครั้ง-วัน</span>'
+        + '      <span class="stat-lbl">การเข้าแทนงานในเดือนนี้</span>'
+        + '    </div>'
+        + '  </div>';
+    }
+
+    function renderTable() {
+      var tableWrapper = $('#sched-table-wrapper');
+      if (!tableWrapper || !loadedData) return;
+      
+      var dates = loadedData.dates;
+      if (viewMode === 'week') {
+        var startIdx = curWeekIdx * 7;
+        dates = dates.slice(startIdx, startIdx + 7);
+      }
+      
+      var dayStates = {};
+      dates.forEach(function (dObj) {
+        dayStates[dObj.date] = {};
+        dObj.branch_employees.forEach(function (emp) {
+          dayStates[dObj.date][emp.id] = emp;
+        });
+        dObj.substitutes.forEach(function (sub) {
+          dayStates[dObj.date][sub.id] = sub;
+        });
+      });
+      
+      var tbl = '<table class="schedule-table">';
+      tbl += '<thead>';
+      
+      // Row 1: Date Numbers
+      tbl += '<tr>';
+      tbl += '<th class="sticky-col" rowspan="2" style="border-bottom: 2px solid #cbd5e1;">รายชื่อพนักงาน</th>';
+      tbl += '<th class="off-day-col" rowspan="2" style="border-bottom: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1;">วันหยุดประจำ</th>';
+      dates.forEach(function (dObj) {
+        var dateNum = new Date(dObj.date).getDate();
+        var isWeekend = dObj.day_of_week === 0 || dObj.day_of_week === 6;
+        var weekendStyle = isWeekend ? 'background-color: #f8fafc;' : '';
+        tbl += '<th style="border-bottom: 1px solid #e2e8f0; ' + weekendStyle + '">' + dateNum + '</th>';
+      });
+      tbl += '</tr>';
+      
+      // Row 2: Days of week
+      tbl += '<tr>';
+      dates.forEach(function (dObj) {
+        var dayText = daysNamesShort[dObj.day_of_week];
+        var dayColor = '';
+        if (dObj.day_of_week === 0) dayColor = 'color: #ef4444; font-weight: bold;'; // Sunday Red
+        else if (dObj.day_of_week === 6) dayColor = 'color: #3b82f6; font-weight: bold;'; // Saturday Blue
+        var isWeekend = dObj.day_of_week === 0 || dObj.day_of_week === 6;
+        var weekendStyle = isWeekend ? 'background-color: #f8fafc;' : '';
+        tbl += '<th style="font-size: 11px; border-bottom: 2px solid #cbd5e1; ' + weekendStyle + dayColor + '">' + dayText + '</th>';
+      });
+      tbl += '</tr>';
+      tbl += '</thead>';
+      
+      tbl += '<tbody>';
+      
+      var branchesList = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+      
+      branchesList.forEach(function (bName) {
+        var emps = branchGroups[bName] || [];
+        if (emps.length === 0) return;
+        
+        tbl += '<tr class="branch-row">';
+        tbl += '<td colspan="' + (dates.length + 2) + '"><i class="bi bi-building"></i> ' + esc(bName) + ' (' + emps.length + ' คน)</td>';
+        tbl += '</tr>';
+        
+        emps.forEach(function (emp) {
+          tbl += '<tr class="clickable-row">';
+          
+          var q = loadedData.quotas && loadedData.quotas[emp.id];
+          var quotaText = '';
+          if (q) {
+            quotaText = '<div style="font-size: 10px; color: var(--brand-1); font-weight: 600; margin-top: 3px; line-height: 1.2;">'
+              + 'ชดเชยคงเหลือ: ' + q.remaining_quota + ' วัน (จาก ' + q.total_quota + ' วัน)'
+              + '</div>';
+          }
+          
+          tbl += '<td class="sticky-col">';
+          tbl += '<div style="font-weight: 600; color: var(--ink);">' + esc(emp.full_name) + '</div>';
+          tbl += '<div style="font-size: 11px; color: var(--ink-muted);">' + esc(emp.position || 'พนักงาน') + '</div>';
+          tbl += quotaText;
+          tbl += '</td>';
+          
+          var offDayVal = emp.off_day;
+          var idx = parseInt(offDayVal);
+          var offDayText = (!isNaN(idx) && idx >= 0 && idx <= 6) ? daysFullNames[idx] : 'ไม่มี';
+          var editClass = canEdit ? ' editable' : '';
+          var editTitle = canEdit ? ' title="คลิกเพื่อแก้ไขวันหยุดประจำ"' : '';
+          
+          tbl += '<td class="off-day-col" style="border-right: 2px solid #cbd5e1;">';
+          tbl += '<span class="off-day-badge' + editClass + '"' + editTitle + ' data-uid="' + esc(emp.id) + '" data-name="' + esc(emp.full_name) + '" data-offday="' + esc(offDayVal || '') + '">';
+          tbl += esc(offDayText);
+          if (canEdit) tbl += ' <i class="bi bi-pencil-fill" style="font-size: 9px; opacity: 0.6;"></i>';
+          tbl += '</span>';
+          tbl += '</td>';
+          
+          dates.forEach(function (dObj) {
+            var dayState = dayStates[dObj.date][emp.id] || { status: 'working', substitute_by: null, leave_info: null };
+            var cellClass = '';
+            var cellContent = '';
+            var cellTitle = '';
+            
+            if (dayState.status === 'working') {
+              if (dayState.leave_info && dayState.leave_info.leave_type === 'work_offday') {
+                cellClass = 'cell-worked-offday';
+                cellContent = 'ทำงาน';
+                cellTitle = 'มาทำงานในวันหยุดเพื่อรับสิทธิ์สะสมชดเชย';
+              } else {
+                cellClass = 'cell-working';
+                cellContent = '✔';
+                cellTitle = 'ทำงานปกติ';
+              }
+            } else if (dayState.status === 'off') {
+              cellClass = 'cell-off';
+              cellContent = 'หยุด';
+              cellTitle = 'วันหยุดประจำสัปดาห์';
+              if (dayState.substitute_by) {
+                cellContent += '<span class="badge-swap">🔄</span>';
+                cellTitle += ' (ทดแทนโดย: ' + dayState.substitute_by.full_name + ')';
+              }
+            } else if (dayState.status === 'leave') {
+              var leaveType = dayState.leave_info ? dayState.leave_info.leave_type : 'ลา';
+              if (leaveType === 'compensatory') {
+                cellClass = 'cell-compensatory';
+                cellContent = 'หยุดชดเชย';
+                cellTitle = 'วันหยุดชดเชย (หักสิทธิ์)';
+              } else {
+                cellClass = 'cell-leave';
+                cellContent = 'ลา';
+                cellTitle = 'ลา (' + ((LMS.LEAVE_TYPE_LABEL||{})[leaveType] || leaveType) + ')';
+              }
+              if (dayState.substitute_by) {
+                cellContent += '<span class="badge-swap">🔄</span>';
+                cellTitle += ' (ทดแทนโดย: ' + dayState.substitute_by.full_name + ')';
+              }
+            } else if (dayState.status === 'substituting') {
+              cellClass = 'cell-substituting';
+              var subFor = dayState.substituting_for ? dayState.substituting_for.full_name : '';
+              var subBranch = dayState.substituting_for ? dayState.substituting_for.branch : '';
+              cellContent = 'แทน';
+              if (subBranch) {
+                cellContent += '<br><span style="font-size: 9px; font-weight: normal; display: block; margin-top: 1px;">' + esc(subBranch) + '</span>';
+              }
+              cellTitle = 'ปฏิบัติงานแทน ' + subFor + ' (' + subBranch + ')';
+            }
+            
+            var isClickable = canEdit;
+            if (dayState.status === 'leave' && leaveType !== 'compensatory') {
+              isClickable = false;
+            }
+            if (dayState.status === 'substituting') {
+              isClickable = false;
+            }
+            var clickableClass = isClickable ? ' cell-clickable' : '';
+            
+            tbl += '<td class="' + cellClass + clickableClass + '" title="' + esc(cellTitle) + '"'
+              + (isClickable ? ' data-action="toggle-cell" data-uid="' + esc(emp.id) + '" data-date="' + esc(dObj.date) + '" data-status="' + esc(dayState.status) + '" data-leavetype="' + esc(dayState.leave_info ? dayState.leave_info.leave_type : '') + '" data-leaveid="' + esc(dayState.leave_info ? dayState.leave_info.id : '') + '"' : '')
+              + '>' + cellContent + '</td>';
+          });
+          
+          tbl += '</tr>';
+        });
+      });
+      
+      tbl += '</tbody>';
+      tbl += '</table>';
+      
+      tableWrapper.innerHTML = tbl;
+
+      // Re-bind click handlers for offday badges since they are re-rendered
+      if (canEdit) {
+        $$('.off-day-badge.editable').forEach(function (el) {
+          el.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var uid = el.getAttribute('data-uid');
+            var name = el.getAttribute('data-name');
+            var currentOff = el.getAttribute('data-offday');
+            
+            var daysOptions = {
+              "": "ไม่มีวันหยุดประจำ (ทำงานทุกวัน)",
+              "0": "วันอาทิตย์",
+              "1": "วันจันทร์",
+              "2": "วันอังคาร",
+              "3": "วันพุธ",
+              "4": "วันพฤหัสบดี",
+              "5": "วันศุกร์",
+              "6": "วันเสาร์"
+            };
+            
+            Swal.fire({
+              title: 'วันหยุดประจำสัปดาห์',
+              html: '<div style="text-align: left; margin-bottom: 8px;">ระบุวันหยุดประจำของ <strong>' + esc(name) + '</strong>:</div>',
+              input: 'select',
+              inputOptions: daysOptions,
+              inputValue: currentOff,
+              showCancelButton: true,
+              confirmButtonText: 'บันทึก',
+              cancelButtonText: 'ยกเลิก',
+              confirmButtonColor: '#4f46e5',
+              cancelButtonColor: '#64748b'
+            }).then(function (result) {
+              if (result.isConfirmed) {
+                Spinner.show('กำลังบันทึก...');
+                call('schedule.update_off_day', { user_id: uid, off_day: result.value }).then(function () {
+                  Spinner.hide();
+                  toast('บันทึกวันหยุดประจำสำเร็จ', 'success');
+                  load();
+                }).catch(function (e) {
+                  Spinner.hide();
+                  alertError('เกิดข้อผิดพลาด', e.message);
+                });
+              }
+            });
+          });
+        });
+      }
+    }
+
+    function handleCellClick(uid, empName, dateStr, currentStatus, leaveType, leaveId) {
+      if (currentStatus === 'off') {
+        Swal.fire({
+          title: 'จัดการตารางงาน',
+          html: 'ต้องการเปลี่ยนวันหยุดปกติของ <strong>' + esc(empName) + '</strong> ในวันที่ ' + dateStr + ' เป็น <strong>"ทำงาน (ชดเชย)"</strong> หรือไม่?<br><br><span style="color:#057a55;font-weight:600;">(พนักงานจะได้รับโควตาชดเชยสะสม +1 วัน)</span>',
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonText: 'ยืนยันมาทำงาน',
+          cancelButtonText: 'ยกเลิก',
+          confirmButtonColor: '#10b981',
+          cancelButtonColor: '#64748b'
+        }).then(function (res) {
+          if (res.isConfirmed) {
+            Spinner.show('กำลังบันทึก...');
+            call('leave.create', {
+              requester_id: uid,
+              leave_type: 'work_offday',
+              start_date: dateStr,
+              end_date: dateStr,
+              days: 1,
+              status: 'approved',
+              reason: 'มาทำงานในวันหยุดชดเชย'
+            }).then(function () {
+              Spinner.hide();
+              toast('เปลี่ยนเป็นวันทำงานชดเชยสำเร็จ', 'success');
+              load();
+            }).catch(function (err) {
+              Spinner.hide();
+              alertError('เกิดข้อผิดพลาด', err.message);
+            });
+          }
+        });
+      } else if (currentStatus === 'working' && leaveType === 'work_offday') {
+        Swal.fire({
+          title: 'ยกเลิกรายการทำงานวันหยุด',
+          html: 'ต้องการยกเลิกการมาทำงานวันหยุดของ <strong>' + esc(empName) + '</strong> ในวันที่ ' + dateStr + ' และคืนค่ากลับเป็นวันหยุดปกติหรือไม่?<br><br><span style="color:#b91c1c;font-weight:600;">(โควตาวันหยุดชดเชยสะสมจะลดลง -1 วัน)</span>',
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: 'ยืนยันยกเลิก',
+          cancelButtonText: 'ปิด',
+          confirmButtonColor: '#ef4444',
+          cancelButtonColor: '#64748b'
+        }).then(function (res) {
+          if (res.isConfirmed) {
+            Spinner.show('กำลังลบรายการ...');
+            call('leave.delete', { id: leaveId }).then(function () {
+              Spinner.hide();
+              toast('ยกเลิกรายการทำงานวันหยุดสำเร็จ', 'success');
+              load();
+            }).catch(function (err) {
+              Spinner.hide();
+              alertError('เกิดข้อผิดพลาด', err.message);
+            });
+          }
+        });
+      } else if (currentStatus === 'working' && !leaveType) {
+        var userQuota = loadedData && loadedData.quotas && loadedData.quotas[uid];
+        var remaining = userQuota ? userQuota.remaining_quota : 0;
+        if (remaining <= 0) {
+          Swal.fire('โควตาไม่เพียงพอ', 'ไม่สามารถจัดให้หยุดชดเชยได้เนื่องจากโควตาสะสมคงเหลือของพนักงานไม่เพียงพอ (คงเหลือ ' + remaining + ' วัน)', 'warning');
+          return;
+        }
+        
+        Swal.fire({
+          title: 'จัดวันหยุดชดเชย',
+          html: 'ต้องการให้ <strong>' + esc(empName) + '</strong> หยุดชดเชยในวันที่ ' + dateStr + ' หรือไม่?<br><br><span>โควตาคงเหลือของพนักงาน: ' + remaining + ' วัน (ใช้โควตา -1 วัน)</span>',
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonText: 'จัดให้หยุดชดเชย',
+          cancelButtonText: 'ยกเลิก',
+          confirmButtonColor: '#2563eb',
+          cancelButtonColor: '#64748b'
+        }).then(function (res) {
+          if (res.isConfirmed) {
+            Spinner.show('กำลังบันทึก...');
+            call('leave.create', {
+              requester_id: uid,
+              leave_type: 'compensatory',
+              start_date: dateStr,
+              end_date: dateStr,
+              days: 1,
+              status: 'approved',
+              reason: 'ใช้สิทธิ์วันหยุดชดเชย'
+            }).then(function () {
+              Spinner.hide();
+              toast('จัดวันหยุดชดเชยสำเร็จ', 'success');
+              load();
+            }).catch(function (err) {
+              Spinner.hide();
+              alertError('เกิดข้อผิดพลาด', err.message);
+            });
+          }
+        });
+      } else if (currentStatus === 'leave' && leaveType === 'compensatory') {
+        Swal.fire({
+          title: 'ยกเลิกวันหยุดชดเชย',
+          html: 'ต้องการยกเลิกสิทธิ์วันหยุดชดเชยของ <strong>' + esc(empName) + '</strong> ในวันที่ ' + dateStr + ' และคืนค่ากลับเป็นวันทำงานปกติหรือไม่?<br><br><span style="color:#057a55;font-weight:600;">(โควตาวันหยุดชดเชยจะได้รับคืน +1 วัน)</span>',
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: 'ยืนยันยกเลิก',
+          cancelButtonText: 'ปิด',
+          confirmButtonColor: '#ef4444',
+          confirmButtonColor: '#64748b'
+        }).then(function (res) {
+          if (res.isConfirmed) {
+            Spinner.show('กำลังลบรายการ...');
+            call('leave.delete', { id: leaveId }).then(function () {
+              Spinner.hide();
+              toast('ยกเลิกวันหยุดชดเชยสำเร็จ', 'success');
+              load();
+            }).catch(function (err) {
+              Spinner.hide();
+              alertError('เกิดข้อผิดพลาด', err.message);
+            });
+          }
+        });
+      }
+    }
+
+    function load(selectLastWeek) {
       var tableWrapper = $('#sched-table-wrapper');
       var statsWrapper = $('#sched-stats');
       if (!tableWrapper) return;
@@ -6348,23 +6848,44 @@ async function api(req) {
       statsWrapper.innerHTML = '';
       
       call('schedule.monthly', { year: curYear, month: curMonth }).then(function (res) {
-        var data = res || { dates: [], quotas: {} };
-        if (data.dates.length === 0) {
+        loadedData = res || { dates: [], quotas: {} };
+        if (loadedData.dates.length === 0) {
           tableWrapper.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--ink-muted);">ไม่พบข้อมูลสำหรับช่วงเวลาดังกล่าว</div>';
           return;
         }
         
-        // Extract users from the first date to construct rows
-        var firstDay = data.dates[0];
+        var dates = loadedData.dates;
+        var numWeeks = Math.ceil(dates.length / 7);
         
-        var branchGroups = {
+        if (selectLastWeek === true) {
+          curWeekIdx = numWeeks - 1;
+        } else if (selectLastWeek === false) {
+          curWeekIdx = 0;
+        } else {
+          var tD = new Date();
+          var todayDateStr = tD.getFullYear() + '-' + String(tD.getMonth()+1).padStart(2,'0') + '-' + String(tD.getDate()).padStart(2,'0');
+          var todayIdx = -1;
+          for (var i = 0; i < dates.length; i++) {
+            if (dates[i].date === todayDateStr) {
+              todayIdx = i;
+              break;
+            }
+          }
+          if (todayIdx !== -1) {
+            curWeekIdx = Math.floor(todayIdx / 7);
+          } else {
+            curWeekIdx = 0;
+          }
+        }
+        
+        // Re-construct branchGroups based on loadedData
+        var firstDay = loadedData.dates[0];
+        branchGroups = {
           'ราชพฤกษ์': [],
           'ปอโต': [],
           'วิรันด้า': [],
           'พนักงานแทน': []
         };
-        
-        // Gather unique users across both groups
         firstDay.branch_employees.forEach(function (emp) {
           if (branchGroups[emp.branch]) {
             branchGroups[emp.branch].push({
@@ -6372,11 +6893,11 @@ async function api(req) {
               full_name: emp.full_name,
               position: emp.position,
               branch: emp.branch,
-              off_day: emp.off_day
+              off_day: emp.off_day,
+              avatar: emp.avatar
             });
           }
         });
-        
         firstDay.substitutes.forEach(function (sub) {
           if (branchGroups[sub.branch]) {
             branchGroups[sub.branch].push({
@@ -6384,418 +6905,20 @@ async function api(req) {
               full_name: sub.full_name,
               position: sub.position,
               branch: sub.branch,
-              off_day: sub.off_day
+              off_day: sub.off_day,
+              avatar: sub.avatar
             });
           }
         });
-        
-        // Index state for O(1) day-by-day lookup
-        var dayStates = {};
-        data.dates.forEach(function (dObj) {
-          dayStates[dObj.date] = {};
-          dObj.branch_employees.forEach(function (emp) {
-            dayStates[dObj.date][emp.id] = emp;
-          });
-          dObj.substitutes.forEach(function (sub) {
-            dayStates[dObj.date][sub.id] = sub;
-          });
-        });
-        
-        // Check editing rights
-        var isSalesSupervisor = LMS.Store.user.role === 'supervisor' && LMS.Store.user.department === 'ฝ่ายขาย';
-        var isAdmin = LMS.Store.user.role === 'admin';
-        var canEdit = isAdmin || isSalesSupervisor;
-        
-        var daysNamesShort = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
-        var daysFullNames = ['วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'];
-        
-        // Generate Stats Summary
-        var totalEmployees = 0;
-        var totalSubs = branchGroups['พนักงานแทน'].length;
-        var substitutionDays = 0;
-        
-        Object.keys(branchGroups).forEach(function (bKey) {
-          if (bKey !== 'พนักงานแทน') totalEmployees += branchGroups[bKey].length;
-        });
-        
-        // Count total substitution events this month
-        data.dates.forEach(function (dObj) {
-          dObj.substitutes.forEach(function (sub) {
-            if (sub.status === 'substituting') {
-              substitutionDays++;
-            }
-          });
-        });
-        
-        statsWrapper.innerHTML = 
-          '  <div class="stat-card">'
-          + '    <div class="stat-icon" style="background: rgba(99, 102, 241, 0.1); color: var(--brand-1);"><i class="bi bi-people-fill"></i></div>'
-          + '    <div class="stat-info">'
-          + '      <span class="stat-val">' + totalEmployees + ' คน</span>'
-          + '      <span class="stat-lbl">พนักงานประจำ 3 สาขาหลัก</span>'
-          + '    </div>'
-          + '  </div>'
-          + '  <div class="stat-card">'
-          + '    <div class="stat-icon" style="background: rgba(139, 92, 246, 0.1); color: var(--brand-2);"><i class="bi bi-person-bounding-box"></i></div>'
-          + '    <div class="stat-info">'
-          + '      <span class="stat-val">' + totalSubs + ' คน</span>'
-          + '      <span class="stat-lbl">กลุ่มพนักงานแทน (Substitute)</span>'
-          + '    </div>'
-          + '  </div>'
-          + '  <div class="stat-card">'
-          + '    <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: var(--emerald);"><i class="bi bi-arrow-left-right"></i></div>'
-          + '    <div class="stat-info">'
-          + '      <span class="stat-val">' + substitutionDays + ' ครั้ง-วัน</span>'
-          + '      <span class="stat-lbl">การเข้าแทนงานในเดือนนี้</span>'
-          + '    </div>'
-          + '  </div>';
-          
-        // Build table html
-        var tbl = '<table class="schedule-table">';
-        
-        // Table headers (Row 1: Date numbers, Row 2: Days of week)
-        tbl += '<thead>';
-        
-        // Row 1: Date Numbers
-        tbl += '<tr>';
-        tbl += '<th class="sticky-col" rowspan="2" style="border-bottom: 2px solid #cbd5e1;">รายชื่อพนักงาน</th>';
-        tbl += '<th class="off-day-col" rowspan="2" style="border-bottom: 2px solid #cbd5e1; border-right: 2px solid #cbd5e1;">วันหยุดประจำ</th>';
-        data.dates.forEach(function (dObj) {
-          var dateNum = new Date(dObj.date).getDate();
-          var isWeekend = dObj.day_of_week === 0 || dObj.day_of_week === 6;
-          var weekendStyle = isWeekend ? 'background-color: #f8fafc;' : '';
-          tbl += '<th style="border-bottom: 1px solid #e2e8f0; ' + weekendStyle + '">' + dateNum + '</th>';
-        });
-        tbl += '</tr>';
-        
-        // Row 2: Days of week
-        tbl += '<tr>';
-        data.dates.forEach(function (dObj) {
-          var dayText = daysNamesShort[dObj.day_of_week];
-          var dayColor = '';
-          if (dObj.day_of_week === 0) dayColor = 'color: #ef4444; font-weight: bold;'; // Sunday Red
-          else if (dObj.day_of_week === 6) dayColor = 'color: #3b82f6; font-weight: bold;'; // Saturday Blue
-          var isWeekend = dObj.day_of_week === 0 || dObj.day_of_week === 6;
-          var weekendStyle = isWeekend ? 'background-color: #f8fafc;' : '';
-          tbl += '<th style="font-size: 11px; border-bottom: 2px solid #cbd5e1; ' + weekendStyle + dayColor + '">' + dayText + '</th>';
-        });
-        tbl += '</tr>';
-        tbl += '</thead>';
-        
-        tbl += '<tbody>';
-        
-        var branchesList = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
-        
-        branchesList.forEach(function (bName) {
-          var emps = branchGroups[bName] || [];
-          if (emps.length === 0) return;
-          
-          // Branch Group Header Row
-          tbl += '<tr class="branch-row">';
-          tbl += '<td colspan="' + (data.dates.length + 2) + '"><i class="bi bi-building"></i> ' + esc(bName) + ' (' + emps.length + ' คน)</td>';
-          tbl += '</tr>';
-          
-          emps.forEach(function (emp) {
-            tbl += '<tr class="clickable-row">';
-            
-            // Fetch quota details for employee
-            var q = data.quotas && data.quotas[emp.id];
-            var quotaText = '';
-            if (q) {
-              quotaText = '<div style="font-size: 10px; color: var(--brand-1); font-weight: 600; margin-top: 3px; line-height: 1.2;">'
-                + 'ชดเชยคงเหลือ: ' + q.remaining_quota + ' วัน (จาก ' + q.total_quota + ' วัน)'
-                + '</div>';
-            }
-            
-            // Col 1: Employee Name & Position
-            tbl += '<td class="sticky-col">';
-            tbl += '<div style="font-weight: 600; color: var(--ink);">' + esc(emp.full_name) + '</div>';
-            tbl += '<div style="font-size: 11px; color: var(--ink-muted);">' + esc(emp.position || 'พนักงาน') + '</div>';
-            tbl += quotaText;
-            tbl += '</td>';
-            
-            // Col 2: Fixed Off-Day (Editable if manager)
-            var offDayVal = emp.off_day;
-            var idx = parseInt(offDayVal);
-            var offDayText = (!isNaN(idx) && idx >= 0 && idx <= 6) ? daysFullNames[idx] : 'ไม่มี';
-            var editClass = canEdit ? ' editable' : '';
-            var editTitle = canEdit ? ' title="คลิกเพื่อแก้ไขวันหยุดประจำ"' : '';
-            
-            tbl += '<td class="off-day-col" style="border-right: 2px solid #cbd5e1;">';
-            tbl += '<span class="off-day-badge' + editClass + '"' + editTitle + ' data-uid="' + esc(emp.id) + '" data-name="' + esc(emp.full_name) + '" data-offday="' + esc(offDayVal || '') + '">';
-            tbl += esc(offDayText);
-            if (canEdit) tbl += ' <i class="bi bi-pencil-fill" style="font-size: 9px; opacity: 0.6;"></i>';
-            tbl += '</span>';
-            tbl += '</td>';
-            
-            // Col 3+: Days of the month
-            data.dates.forEach(function (dObj) {
-              var dayState = dayStates[dObj.date][emp.id] || { status: 'working', substitute_by: null, leave_info: null };
-              var cellClass = '';
-              var cellContent = '';
-              var cellTitle = '';
-              
-              if (dayState.status === 'working') {
-                if (dayState.leave_info && dayState.leave_info.leave_type === 'work_offday') {
-                  cellClass = 'cell-worked-offday';
-                  cellContent = 'ทำงาน (ชดเชย)';
-                  cellTitle = 'มาทำงานในวันหยุดเพื่อรับสิทธิ์สะสมชดเชย';
-                } else {
-                  cellClass = 'cell-working';
-                  cellContent = '✔';
-                  cellTitle = 'ทำงานปกติ';
-                }
-              } else if (dayState.status === 'off') {
-                cellClass = 'cell-off';
-                cellContent = 'หยุด';
-                cellTitle = 'วันหยุดประจำสัปดาห์';
-                if (dayState.substitute_by) {
-                  cellContent += '<span class="badge-swap">🔄</span>';
-                  cellTitle += ' (ทดแทนโดย: ' + dayState.substitute_by.full_name + ')';
-                }
-              } else if (dayState.status === 'leave') {
-                var leaveType = dayState.leave_info ? dayState.leave_info.leave_type : 'ลา';
-                if (leaveType === 'compensatory') {
-                  cellClass = 'cell-compensatory';
-                  cellContent = 'หยุดชดเชย';
-                  cellTitle = 'วันหยุดชดเชย (หักสิทธิ์)';
-                } else {
-                  cellClass = 'cell-leave';
-                  cellContent = 'ลา';
-                  cellTitle = 'ลา (' + ((LMS.LEAVE_TYPE_LABEL||{})[leaveType] || leaveType) + ')';
-                }
-                if (dayState.substitute_by) {
-                  cellContent += '<span class="badge-swap">🔄</span>';
-                  cellTitle += ' (ทดแทนโดย: ' + dayState.substitute_by.full_name + ')';
-                }
-              } else if (dayState.status === 'substituting') {
-                cellClass = 'cell-substituting';
-                var subFor = dayState.substituting_for ? dayState.substituting_for.full_name : '';
-                var subBranch = dayState.substituting_for ? dayState.substituting_for.branch : '';
-                cellContent = 'แทน';
-                if (subBranch) {
-                  cellContent += '<br><span style="font-size: 9px; font-weight: normal; display: block; margin-top: 1px;">' + esc(subBranch) + '</span>';
-                }
-                cellTitle = 'ปฏิบัติงานแทน ' + subFor + ' (' + subBranch + ')';
-              }
-              
-              var isClickable = canEdit;
-              if (dayState.status === 'leave' && leaveType !== 'compensatory') {
-                isClickable = false;
-              }
-              if (dayState.status === 'substituting') {
-                isClickable = false;
-              }
-              var clickableClass = isClickable ? ' cell-clickable' : '';
-              
-              tbl += '<td class="' + cellClass + clickableClass + '" title="' + esc(cellTitle) + '"'
-                + (isClickable ? ' data-action="toggle-cell" data-uid="' + esc(emp.id) + '" data-date="' + esc(dObj.date) + '" data-status="' + esc(dayState.status) + '" data-leavetype="' + esc(dayState.leave_info ? dayState.leave_info.leave_type : '') + '" data-leaveid="' + esc(dayState.leave_info ? dayState.leave_info.id : '') + '"' : '')
-                + '>' + cellContent + '</td>';
-            });
-            
-            tbl += '</tr>';
-          });
-        });
-        
-        tbl += '</tbody>';
-        tbl += '</table>';
-        
-        tableWrapper.innerHTML = tbl;
-        
-        // Add event listeners to editable badges
-        if (canEdit) {
-          $$('.off-day-badge.editable').forEach(function (el) {
-            el.addEventListener('click', function (e) {
-              e.stopPropagation();
-              var uid = el.getAttribute('data-uid');
-              var name = el.getAttribute('data-name');
-              var currentOff = el.getAttribute('data-offday');
-              
-              var daysOptions = {
-                "": "ไม่มีวันหยุดประจำ (ทำงานทุกวัน)",
-                "0": "วันอาทิตย์",
-                "1": "วันจันทร์",
-                "2": "วันอังคาร",
-                "3": "วันพุธ",
-                "4": "วันพฤหัสบดี",
-                "5": "วันศุกร์",
-                "6": "วันเสาร์"
-              };
-              
-              Swal.fire({
-                title: 'วันหยุดประจำสัปดาห์',
-                html: '<div style="text-align: left; margin-bottom: 8px;">ระบุวันหยุดประจำของ <strong>' + esc(name) + '</strong>:</div>',
-                input: 'select',
-                inputOptions: daysOptions,
-                inputValue: currentOff,
-                showCancelButton: true,
-                confirmButtonText: 'บันทึก',
-                cancelButtonText: 'ยกเลิก',
-                confirmButtonColor: '#4f46e5',
-                cancelButtonColor: '#64748b'
-              }).then(function (result) {
-                if (result.isConfirmed) {
-                  Spinner.show('กำลังบันทึก...');
-                  call('schedule.update_off_day', { user_id: uid, off_day: result.value }).then(function () {
-                    Spinner.hide();
-                    toast('บันทึกวันหยุดประจำสำเร็จ', 'success');
-                    load(); // Reload roster
-                  }).catch(function (e) {
-                    Spinner.hide();
-                    alertError('เกิดข้อผิดพลาด', e.message);
-                  });
-                }
-              });
-            });
-          });
-          
-          // Toggle cell listener
-          tableWrapper.addEventListener('click', function (e) {
-            var cell = e.target.closest('td[data-action="toggle-cell"]');
-            if (!cell) return;
-            
-            var uid = cell.getAttribute('data-uid');
-            var dateStr = cell.getAttribute('data-date');
-            var currentStatus = cell.getAttribute('data-status');
-            var leaveType = cell.getAttribute('data-leavetype');
-            var leaveId = cell.getAttribute('data-leaveid');
-            
-            // Let's get the employee name from branchGroups
-            var empName = '';
-            Object.keys(branchGroups).forEach(function (b) {
-              branchGroups[b].forEach(function (x) {
-                if (String(x.id) === String(uid)) empName = x.full_name;
-              });
-            });
-            
-            handleCellClick(uid, empName, dateStr, currentStatus, leaveType, leaveId);
-          });
-        }
-        
-        function handleCellClick(uid, empName, dateStr, currentStatus, leaveType, leaveId) {
-          if (currentStatus === 'off') {
-            Swal.fire({
-              title: 'จัดการตารางงาน',
-              html: 'ต้องการเปลี่ยนวันหยุดปกติของ <strong>' + esc(empName) + '</strong> ในวันที่ ' + dateStr + ' เป็น <strong>"ทำงาน (ชดเชย)"</strong> หรือไม่?<br><br><span style="color:#057a55;font-weight:600;">(พนักงานจะได้รับโควตาชดเชยสะสม +1 วัน)</span>',
-              icon: 'question',
-              showCancelButton: true,
-              confirmButtonText: 'ยืนยันมาทำงาน',
-              cancelButtonText: 'ยกเลิก',
-              confirmButtonColor: '#10b981',
-              cancelButtonColor: '#64748b'
-            }).then(function (res) {
-              if (res.isConfirmed) {
-                Spinner.show('กำลังบันทึก...');
-                call('leave.create', {
-                  requester_id: uid,
-                  leave_type: 'work_offday',
-                  start_date: dateStr,
-                  end_date: dateStr,
-                  days: 1,
-                  status: 'approved',
-                  reason: 'มาทำงานในวันหยุดชดเชย'
-                }).then(function () {
-                  Spinner.hide();
-                  toast('เปลี่ยนเป็นวันทำงานชดเชยสำเร็จ', 'success');
-                  load();
-                }).catch(function (err) {
-                  Spinner.hide();
-                  alertError('เกิดข้อผิดพลาด', err.message);
-                });
-              }
-            });
-          } else if (currentStatus === 'working' && leaveType === 'work_offday') {
-            Swal.fire({
-              title: 'ยกเลิกรายการทำงานวันหยุด',
-              html: 'ต้องการยกเลิกการมาทำงานวันหยุดของ <strong>' + esc(empName) + '</strong> ในวันที่ ' + dateStr + ' และคืนค่ากลับเป็นวันหยุดปกติหรือไม่?<br><br><span style="color:#b91c1c;font-weight:600;">(โควตาวันหยุดชดเชยสะสมจะลดลง -1 วัน)</span>',
-              icon: 'warning',
-              showCancelButton: true,
-              confirmButtonText: 'ยืนยันยกเลิก',
-              cancelButtonText: 'ปิด',
-              confirmButtonColor: '#ef4444',
-              cancelButtonColor: '#64748b'
-            }).then(function (res) {
-              if (res.isConfirmed) {
-                Spinner.show('กำลังลบรายการ...');
-                call('leave.delete', { id: leaveId }).then(function () {
-                  Spinner.hide();
-                  toast('ยกเลิกรายการทำงานวันหยุดสำเร็จ', 'success');
-                  load();
-                }).catch(function (err) {
-                  Spinner.hide();
-                  alertError('เกิดข้อผิดพลาด', err.message);
-                });
-              }
-            });
-          } else if (currentStatus === 'working' && !leaveType) {
-            var userQuota = data.quotas && data.quotas[uid];
-            var remaining = userQuota ? userQuota.remaining_quota : 0;
-            if (remaining <= 0) {
-              Swal.fire('โควตาไม่เพียงพอ', 'ไม่สามารถจัดให้หยุดชดเชยได้เนื่องจากโควตาสะสมคงเหลือของพนักงานไม่เพียงพอ (คงเหลือ ' + remaining + ' วัน)', 'warning');
-              return;
-            }
-            
-            Swal.fire({
-              title: 'จัดวันหยุดชดเชย',
-              html: 'ต้องการให้ <strong>' + esc(empName) + '</strong> หยุดชดเชยในวันที่ ' + dateStr + ' หรือไม่?<br><br><span>โควตาคงเหลือของพนักงาน: ' + remaining + ' วัน (ใช้โควตา -1 วัน)</span>',
-              icon: 'question',
-              showCancelButton: true,
-              confirmButtonText: 'จัดให้หยุดชดเชย',
-              cancelButtonText: 'ยกเลิก',
-              confirmButtonColor: '#2563eb',
-              cancelButtonColor: '#64748b'
-            }).then(function (res) {
-              if (res.isConfirmed) {
-                Spinner.show('กำลังบันทึก...');
-                call('leave.create', {
-                  requester_id: uid,
-                  leave_type: 'compensatory',
-                  start_date: dateStr,
-                  end_date: dateStr,
-                  days: 1,
-                  status: 'approved',
-                  reason: 'หยุดชดเชย'
-                }).then(function () {
-                  Spinner.hide();
-                  toast('จัดวันหยุดชดเชยสำเร็จ', 'success');
-                  load();
-                }).catch(function (err) {
-                  Spinner.hide();
-                  alertError('เกิดข้อผิดพลาด', err.message);
-                });
-              }
-            });
-          } else if (currentStatus === 'leave' && leaveType === 'compensatory') {
-            Swal.fire({
-              title: 'ยกเลิกวันหยุดชดเชย',
-              html: 'ต้องการยกเลิกวันหยุดชดเชยของ <strong>' + esc(empName) + '</strong> ในวันที่ ' + dateStr + ' และคืนค่ากลับเป็นวันทำงานปกติหรือไม่?<br><br><span style="color:#057a55;font-weight:600;">(คืนโควตาวันหยุดชดเชยสะสมให้พนักงาน +1 วัน)</span>',
-              icon: 'warning',
-              showCancelButton: true,
-              confirmButtonText: 'ยืนยันยกเลิกหยุดชดเชย',
-              cancelButtonText: 'ปิด',
-              confirmButtonColor: '#ef4444',
-              cancelButtonColor: '#64748b'
-            }).then(function (res) {
-              if (res.isConfirmed) {
-                Spinner.show('กำลังลบรายการ...');
-                call('leave.delete', { id: leaveId }).then(function () {
-                  Spinner.hide();
-                  toast('ยกเลิกวันหยุดชดเชยสำเร็จ', 'success');
-                  load();
-                }).catch(function (err) {
-                  Spinner.hide();
-                  alertError('เกิดข้อผิดพลาด', err.message);
-                });
-              }
-            });
-          }
-        }
-        
+
+        updateWeekDropdown();
+        renderStats();
+        renderTable();
       }).catch(function (e) {
         tableWrapper.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--rose);">เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + esc(e.message) + '</div>';
       });
     }
-    
+
     load();
   };
   // ── Pending Registrations (admin / approver) ────────────
@@ -8224,7 +8347,7 @@ async function api(req) {
           + '</tbody>'
           + '</table>'
           + '<div class="signature-box">'
-          + '  <div class="sig-line"><div></div><span>ผู้ขอเบิกเงิน / ผู้รับเงิน</span><br><span style="font-size:12px;">( ' + esc((ex.requester && ex.requester.full_name) || '.......................................') + ' )</span></div>'
+          + '  <div class="sig-line"><div></div><span>ผู้ขอเบิกเงิน / ผู้รับเงิน</span><br><span style="font-size:12px;">( ....................................... )</span></div>'
           + '  <div class="sig-line"><div></div><span>ผู้อนุมัติจ่าย</span><br><span style="font-size:12px;">( ....................................... )</span></div>'
           + '</div>'
           
