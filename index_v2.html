@@ -3095,23 +3095,31 @@ body {
   border-radius: 12px;
   color: rgba(255,255,255,.65);
   font-size: 13.5px;
-  transition: all .15s;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.sb-link i {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .sb-link:hover {
   background: rgba(255,255,255,.05);
   color: #fff;
   text-decoration: none;
 }
+.sb-link:hover i {
+  transform: scale(1.2);
+}
 .sb-link.is-active {
   color: #fff;
   background: rgba(255,255,255,0.08) !important;
   font-weight: 600;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15) !important;
 }
 .sb-link.is-active::before {
   display: none !important; /* Hide left line to match rounded capsule design */
 }
 .sb-link.is-active i {
   color: #38bdf8 !important; /* Bright sky blue icon */
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
 }
 .sb-footer {
   margin-top: auto;
@@ -3177,20 +3185,66 @@ body {
   display: none !important;
 }
 
+/* Floating Background Glow Orbs */
+.main-area {
+  position: relative;
+  overflow: hidden;
+}
+.glow-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.08;
+  pointer-events: none;
+  z-index: 0;
+  animation: floatOrb 20s infinite alternate ease-in-out;
+}
+.glow-orb-1 {
+  width: 350px; height: 350px;
+  background: #6366f1;
+  top: 10%; right: 5%;
+}
+.glow-orb-2 {
+  width: 400px; height: 400px;
+  background: #0ea5e9;
+  bottom: 10%; left: 5%;
+  animation-delay: -5s;
+  animation-duration: 25s;
+}
+.glow-orb-3 {
+  width: 300px; height: 300px;
+  background: #f59e0b;
+  top: 40%; left: 30%;
+  animation-delay: -10s;
+  animation-duration: 18s;
+}
+@keyframes floatOrb {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(45px, -65px) scale(1.15); }
+  100% { transform: translate(-35px, 45px) scale(0.9); }
+}
+
+/* Glassmorphism Panels */
+.card, .stat-card, .data-table, .toolbar {
+  position: relative;
+  z-index: 10;
+}
+
 /* Stat Cards */
 .stat-card {
-  background: #ffffff !important;
-  border: 1px solid rgba(255, 255, 255, 0.8) !important;
+  background: rgba(255, 255, 255, 0.75) !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
   border-radius: 20px !important;
   padding: 20px !important;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.03) !important;
-  transition: all .25s ease !important;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.02), inset 0 0 0 1px rgba(255,255,255,0.45) !important;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
   position: relative; overflow: hidden;
   display: flex; flex-direction: column; gap: 4px;
 }
 .stat-card:hover {
-  transform: translateY(-3px) !important;
-  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08) !important;
+  transform: translateY(-5px) scale(1.02) !important;
+  box-shadow: 0 25px 50px rgba(15, 23, 42, 0.07) !important;
+  border-color: rgba(255, 255, 255, 0.95) !important;
 }
 .stat-card::before {
   display: none !important; /* Hide left border bar */
@@ -3249,6 +3303,21 @@ body {
 .stat-card .stat-value { font-size: 38px; font-weight: 800; color: #0f172a; line-height: 1.1; margin: 8px 0; }
 .stat-card .stat-sub { font-size: 12px; color: #64748b; font-weight: 500; }
 
+/* Shimmer animation on progress bars */
+.progress-bar {
+  position: relative;
+  overflow: hidden;
+}
+.progress-bar::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+  transform: translateX(-100%);
+  animation: barShimmer 2.5s infinite linear;
+}
+@keyframes barShimmer {
+  100% { transform: translateX(100%); }
+}
+
 .card {
   border-radius: 20px !important;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.03) !important;
@@ -3262,14 +3331,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08) !important;
   position: relative;
   overflow: hidden;
-  transition: all 0.25s;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .summary-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+  transform: translateY(-6px) scale(1.02);
+  box-shadow: 0 25px 45px rgba(0, 0, 0, 0.16) !important;
 }
 .summary-card.bg-blue { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
 .summary-card.bg-orange { background: linear-gradient(135deg, #f59e0b, #b45309); }
@@ -3297,8 +3367,16 @@ body {
 }
 .summary-card .sc-icon {
   font-size: 36px;
-  opacity: 0.22;
+  opacity: 0.25;
   margin-left: 10px;
+}
+.summary-card .sc-icon i {
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: inline-block;
+}
+.summary-card:hover .sc-icon i {
+  transform: translateY(-4px) scale(1.15) rotate(5deg);
+  opacity: 0.45;
 }
   </style>
 </head>
@@ -4068,6 +4146,9 @@ async function api(req) {
       + '  </aside>'
       + '  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>'
       + '  <main class="main-area">'
+      + '    <div class="glow-orb glow-orb-1"></div>'
+      + '    <div class="glow-orb glow-orb-2"></div>'
+      + '    <div class="glow-orb glow-orb-3"></div>'
       + '    <header class="navbar">'
       + '      <button class="nav-burger" id="nav-burger" aria-label="เปิดเมนู"><i class="bi bi-list"></i></button>'
       + '      <div class="nav-page">'
@@ -4572,6 +4653,7 @@ async function api(req) {
     var warn = Number(d.warn_threshold || 80);
     var statHtml = '';
     Object.keys(stats).forEach(function (k) {
+      if (k !== 'sick' && k !== 'personal' && k !== 'annual') return;
       var s = stats[k];
       var pct = s.percent || 0;
       var tone = leaveTypeTone(k);
@@ -5746,6 +5828,7 @@ async function api(req) {
       var stats = d.stats.items;
       var statHtml = '';
       Object.keys(stats).forEach(function (k) {
+        if (k !== 'sick' && k !== 'personal' && k !== 'annual') return;
         var s = stats[k];
         statHtml += statBox(LMS.LEAVE_TYPE_LABEL[k] + ' (' + s.used + '/' + s.limit + ')',
                             s.remaining + ' วัน', 'calendar-check', leaveTypeTone(k));
@@ -6570,7 +6653,7 @@ async function api(req) {
       + '  <div class="sched-card">'
       + '    <div class="sched-card-head">'
       + '      <h3 class="sched-card-title"><i class="bi bi-table"></i> แผนตารางปฏิบัติงาน</h3>'
-      + '      <span style="font-size: 12px; color: var(--ink-muted)">* สามารถกดช่องปฏิทินของพนักงานเพื่อสลับสถานะหรือจัดวันหยุดชดเชยได้</span>'
+      + '      <span style="font-size: 12px; color: var(--ink-muted)">* สามารถกดหัวตารางพนักงานเพื่อตั้งค่าวันหยุดประจำสัปดาห์ได้</span>'
       + '    </div>'
       + '    <div class="table-scroll-wrapper" id="sched-table-wrapper">'
       + '      <!-- Table loaded dynamically -->'
@@ -6582,8 +6665,6 @@ async function api(req) {
       + '      <div class="legend-item"><span class="legend-box" style="background: #fff; display: flex; align-items: center; justify-content: center; color: #10b981">✔</span> ทำงานปกติ</div>'
       + '      <div class="legend-item"><span class="legend-box cell-off" style="display: inline-block;"></span> วันหยุดประจำสัปดาห์ (หยุด)</div>'
       + '      <div class="legend-item"><span class="legend-box cell-leave" style="display: inline-block;"></span> ลางาน (อนุมัติแล้ว)</div>'
-      + '      <div class="legend-item"><span class="legend-box cell-compensatory" style="display: inline-block;"></span> วันหยุดชดเชย (หักโควตา)</div>'
-      + '      <div class="legend-item"><span class="legend-box cell-worked-offday" style="display: inline-block;"></span> ทำงาน (ชดเชย)</div>'
       + '      <div class="legend-item"><span class="legend-box cell-substituting" style="display: inline-block;"></span> ปฏิบัติงานแทน</div>'
       + '      <div class="legend-item"><span class="badge-swap">🔄</span> มีคนทำงานแทนในวันหยุด/วันลา</div>'
       + '    </div>'
@@ -7023,6 +7104,8 @@ async function api(req) {
     }
 
     function handleCellClick(uid, empName, dateStr, currentStatus, leaveType, leaveId) {
+      // Deactivated compensatory leave and holiday work creation
+      return;
       if (currentStatus === 'off') {
         Swal.fire({
           title: 'จัดการตารางงาน',
