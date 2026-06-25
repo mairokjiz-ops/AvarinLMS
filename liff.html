@@ -1,0 +1,2315 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LMS · LINE Portal</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Kanit:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+  <!-- LINE LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+  <style>
+    /* ── Design Tokens & Base ───────────────────────────────── */
+    :root {
+      --primary: #10b981; /* Emerald green (often used for LINE apps/success) */
+      --primary-dark: #059669;
+      --secondary: #6366f1; /* Indigo */
+      --secondary-dark: #4f46e5;
+      --accent: #8b5cf6; /* Violet */
+      --danger: #ef4444; /* Rose */
+      --warning: #f59e0b; /* Amber */
+      --info: #0ea5e9; /* Sky */
+      --bg-dark: #0f172a; /* Sleek slate dark background */
+      --card-bg: rgba(30, 41, 59, 0.7); /* Translucent slate card */
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --glow-emerald: 0 0 20px rgba(16, 185, 129, 0.4);
+      --glow-indigo: 0 0 20px rgba(99, 102, 241, 0.4);
+      --glow-danger: 0 0 20px rgba(239, 68, 68, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Kanit', 'Sarabun', 'Outfit', sans-serif;
+      background: linear-gradient(135deg, #090d16 0%, #0f172a 100%);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      font-size: 14px;
+    }
+
+    input, textarea, select, button {
+      font-family: 'Sarabun', 'Kanit', sans-serif;
+    }
+
+    /* ── Scrollbars ─────────────────────────────────────────── */
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(0,0,0,0.1);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.1);
+      border-radius: 99px;
+    }
+
+    /* ── Layout & Wrapper ───────────────────────────────────── */
+    .app-container {
+      max-width: 480px;
+      margin: 0 auto;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      background: rgba(15, 23, 42, 0.6);
+      box-shadow: 0 0 60px rgba(0,0,0,0.5);
+      border-left: 1px solid rgba(255, 255, 255, 0.03);
+      border-right: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    /* ── Boot Loader ────────────────────────────────────────── */
+    .boot-loader {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: linear-gradient(135deg, #090d16 0%, #0f172a 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      transition: opacity 0.5s ease;
+    }
+    .boot-logo {
+      width: 80px;
+      height: 80px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 38px;
+      color: #fff;
+      box-shadow: var(--glow-emerald);
+      animation: pulse 2.5s infinite;
+      margin-bottom: 20px;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); box-shadow: var(--glow-emerald); }
+      50% { transform: scale(1.06); box-shadow: var(--glow-indigo); }
+    }
+    .boot-title {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      margin-bottom: 5px;
+    }
+    .boot-sub {
+      color: var(--text-muted);
+      font-size: 12px;
+      margin-bottom: 25px;
+    }
+    .boot-spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(255, 255, 255, 0.05);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Setup & Setup Screen ────────────────────────────────── */
+    .setup-screen {
+      padding: 30px 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      text-align: center;
+    }
+    .setup-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 30px 20px;
+      width: 100%;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    /* ── Login Screen ───────────────────────────────────────── */
+    .login-screen {
+      padding: 40px 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .login-header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .login-logo {
+      width: 64px;
+      height: 64px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      color: #fff;
+      margin-bottom: 15px;
+      box-shadow: 0 10px 25px rgba(16, 185, 129, 0.2);
+    }
+    .login-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 5px;
+    }
+    .login-desc {
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    /* ── Form Controls ──────────────────────────────────────── */
+    .form-group {
+      margin-bottom: 18px;
+      text-align: left;
+    }
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .form-control {
+      width: 100%;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 12px 16px;
+      color: #fff;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+    .form-control:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
+    }
+    select.form-control {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 16px center;
+      background-size: 16px;
+      padding-right: 40px;
+    }
+
+    /* ── Buttons ────────────────────────────────────────────── */
+    .btn {
+      width: 100%;
+      border: none;
+      border-radius: 14px;
+      padding: 14px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      box-shadow: 0 4px 15px rgba(16, 185, 129, 0.2);
+    }
+    .btn-primary:active {
+      transform: scale(0.98);
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
+    }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text);
+    }
+    .btn-secondary:active {
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .btn-danger {
+      background: linear-gradient(135deg, var(--danger) 0%, #dc2626 100%);
+    }
+
+    /* ── App Header ─────────────────────────────────────────── */
+    .app-header {
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--card-border);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .user-profile {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .user-avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 2px solid var(--primary);
+      object-fit: cover;
+      background: #1e293b;
+    }
+    .user-info {
+      display: flex;
+      flex-direction: column;
+    }
+    .user-name {
+      font-size: 14px;
+      font-weight: 600;
+      max-width: 180px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .user-role {
+      font-size: 11px;
+      color: var(--primary);
+      font-weight: 500;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .header-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255,255,255,0.06);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .header-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    /* ── Tab Switcher Layout ────────────────────────────────── */
+    .tab-content {
+      flex: 1;
+      padding: 20px;
+      padding-bottom: 100px;
+    }
+    .app-tab {
+      display: none;
+      animation: tabFadeIn 0.4s ease;
+    }
+    .app-tab.active {
+      display: block;
+    }
+    @keyframes tabFadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Bottom Nav Bar ─────────────────────────────────────── */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 480px;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-top: 1px solid var(--card-border);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      padding: 8px 0 16px;
+      z-index: 1000;
+      box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
+    }
+    /* Dynamic grid for 3 vs 4 tabs based on approvals visibility */
+    .bottom-nav.nav-3 {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      cursor: pointer;
+      gap: 4px;
+      transition: all 0.3s;
+    }
+    .nav-item i {
+      font-size: 20px;
+      transition: transform 0.3s;
+    }
+    .nav-item span {
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .nav-item.active {
+      color: var(--primary);
+    }
+    .nav-item.active i {
+      transform: translateY(-2px);
+    }
+
+    /* ── Card Styling ───────────────────────────────────────── */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 18px;
+      margin-bottom: 16px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title i {
+      color: var(--primary);
+    }
+
+    /* ── Tab 1: Check-in Module ─────────────────────────────── */
+    .clock-widget {
+      text-align: center;
+      padding: 20px 0;
+    }
+    .clock-time {
+      font-family: 'Outfit', sans-serif;
+      font-size: 48px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      background: linear-gradient(135deg, #fff 40%, var(--text-muted) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .clock-date {
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 15px;
+    }
+    .clock-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.04);
+      padding: 6px 14px;
+      border-radius: 99px;
+      font-size: 12px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-muted);
+    }
+    .status-dot.active {
+      background: var(--primary);
+      box-shadow: 0 0 10px var(--primary);
+    }
+    .status-dot.danger {
+      background: var(--danger);
+      box-shadow: 0 0 10px var(--danger);
+    }
+
+    .checkin-btn-container {
+      margin: 25px 0;
+      display: flex;
+      justify-content: center;
+    }
+    .checkin-btn {
+      width: 170px;
+      height: 170px;
+      border-radius: 50%;
+      border: 6px solid rgba(15, 23, 42, 0.8);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      position: relative;
+    }
+    .checkin-btn i {
+      font-size: 42px;
+    }
+    .checkin-btn span {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .checkin-btn-in {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      box-shadow: var(--glow-emerald);
+    }
+    .checkin-btn-in:active {
+      transform: scale(0.95);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+    }
+    .checkin-btn-out {
+      background: linear-gradient(135deg, var(--danger) 0%, #dc2626 100%);
+      box-shadow: var(--glow-danger);
+    }
+    .checkin-btn-out:active {
+      transform: scale(0.95);
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+    }
+    .checkin-btn-disabled {
+      background: #1e293b;
+      color: var(--text-muted);
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    /* ── Tab 2: Leave Module ────────────────────────────────── */
+    .quota-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .quota-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 14px 8px;
+      text-align: center;
+    }
+    .quota-val {
+      font-family: 'Outfit', sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+    }
+    .quota-lbl {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .quota-total {
+      font-size: 10px;
+      color: var(--text-muted);
+      opacity: 0.8;
+    }
+
+    /* ── List Items ─────────────────────────────────────────── */
+    .list-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .list-item {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 14px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: all 0.3s;
+    }
+    .list-item:hover {
+      background: rgba(255,255,255,0.04);
+    }
+    .item-main {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .item-title {
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .item-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .item-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+    .item-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 99px;
+      text-transform: uppercase;
+    }
+    .badge-pending   { background: rgba(245, 158, 11, 0.1); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.2); }
+    .badge-approved  { background: rgba(16, 185, 129, 0.1); color: var(--primary); border: 1px solid rgba(16, 185, 129, 0.2); }
+    .badge-rejected  { background: rgba(239, 68, 68, 0.1);   color: var(--danger);  border: 1px solid rgba(239, 68, 68, 0.2); }
+    .badge-checked   { background: rgba(14, 165, 233, 0.1);  color: var(--info);    border: 1px solid rgba(14, 165, 233, 0.2); }
+    .badge-reviewed  { background: rgba(139, 92, 246, 0.1);  color: var(--accent);  border: 1px solid rgba(139, 92, 246, 0.2); }
+    .badge-cancelled { background: rgba(148, 163, 184, 0.1); color: var(--text-muted); border: 1px solid rgba(148, 163, 184, 0.2); }
+
+    /* ── Slide Up Drawer ────────────────────────────────────── */
+    .drawer-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+      z-index: 1500;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    .drawer-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .drawer {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translate(-50%, 100%);
+      width: 100%;
+      max-width: 480px;
+      max-height: 85vh;
+      background: #0f172a;
+      border-top-left-radius: 28px;
+      border-top-right-radius: 28px;
+      border: 1px solid var(--card-border);
+      border-bottom: none;
+      z-index: 2000;
+      transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+      display: flex;
+      flex-direction: column;
+    }
+    .drawer.active {
+      transform: translate(-50%, 0);
+    }
+    .drawer-header {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .drawer-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .drawer-close {
+      font-size: 20px;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .drawer-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    /* ── Receipt Upload Preview ─────────────────────────────── */
+    .receipt-preview-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .receipt-thumb {
+      width: 72px;
+      height: 72px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid rgba(255,255,255,0.1);
+      position: relative;
+    }
+    .receipt-remove {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--danger);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    /* ── Empty State ────────────────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 30px 10px;
+      color: var(--text-muted);
+    }
+    .empty-state i {
+      font-size: 32px;
+      margin-bottom: 10px;
+      display: block;
+    }
+
+    /* ── Settings Panel ─────────────────────────────────────── */
+    .settings-drawer .form-group {
+      margin-bottom: 15px;
+    }
+
+    /* ── Approval Detail Drawer ─────────────────────────────── */
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-size: 13px;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      padding-bottom: 8px;
+    }
+    .detail-label {
+      color: var(--text-muted);
+    }
+    .detail-val {
+      font-weight: 500;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Boot Loader ── -->
+  <div id="bootLoader" class="boot-loader">
+    <div class="boot-logo">
+      <i class="bi bi-calendar2-check-fill"></i>
+    </div>
+    <div class="boot-title">AvarinLMS</div>
+    <div id="bootSub" class="boot-sub">กำลังเชื่อมต่อ LINE LIFF SDK...</div>
+    <div class="boot-spinner"></div>
+  </div>
+
+  <!-- ── Main App Container ── -->
+  <div class="app-container">
+
+    <!-- ── Screen 1: LIFF Setup Form (Required if no liffId is present) ── -->
+    <div id="setupScreen" class="setup-screen" style="display:none;">
+      <div class="setup-card">
+        <i class="bi bi-gear-fill" style="font-size:42px;color:var(--primary);margin-bottom:15px;display:block;"></i>
+        <h3 style="margin-bottom:8px;">LINE LIFF Setup</h3>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:20px;">
+          กรุณากรอก LIFF ID จาก LINE Developers Console เพื่อเริ่มต้นระบบ
+        </p>
+        <div class="form-group">
+          <label class="form-label">LINE LIFF ID</label>
+          <input type="text" id="setupLiffId" class="form-control" placeholder="เช่น 2004812345-abc123xy">
+        </div>
+        <button onclick="saveSetup()" class="btn btn-primary" style="margin-top:10px;">
+          <i class="bi bi-check-circle"></i> บันทึกและเริ่มต้นระบบ
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Screen 2: LMS Account Login Screen (When LINE is not linked) ── -->
+    <div id="loginScreen" class="login-screen" style="display:none;">
+      <div class="login-header">
+        <div class="login-logo">
+          <i class="bi bi-calendar2-check-fill"></i>
+        </div>
+        <h3 class="login-title">เชื่อมต่อบัญชี AvarinLMS</h3>
+        <p class="login-desc">กรอกชื่อผู้ใช้และรหัสผ่านเพื่อเข้าใช้งานและผูกบัญชีเข้ากับ LINE</p>
+      </div>
+      <div class="card" style="padding:22px;">
+        <div class="form-group">
+          <label class="form-label">ชื่อผู้ใช้ (Username)</label>
+          <input type="text" id="loginUsername" class="form-control" placeholder="Username หรืออีเมล">
+        </div>
+        <div class="form-group" style="margin-bottom:25px;">
+          <label class="form-label">รหัสผ่าน (Password)</label>
+          <input type="password" id="loginPassword" class="form-control" placeholder="รหัสผ่านเข้าสู่ระบบ">
+        </div>
+        <button onclick="handleLogin()" class="btn btn-primary">
+          <i class="bi bi-link-45deg"></i> เข้าสู่ระบบและเชื่อมต่อ LINE
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Screen 3: Main Dashboard Screen (Authenticated & Linked) ── -->
+    <div id="mainDashboard" style="display:none; flex:1; display:flex; flex-direction:column;">
+      
+      <!-- Top Sticky Header -->
+      <div class="app-header">
+        <div class="user-profile">
+          <img id="headerAvatar" class="user-avatar" src="https://img.icons8.com/color/96/user-male-circle--v1.png" alt="Avatar">
+          <div class="user-info">
+            <span id="headerName" class="user-name">กำลังโหลด...</span>
+            <span id="headerRole" class="user-role">...</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <div class="header-btn" onclick="openDrawer('settingsDrawer')" title="การตั้งค่า">
+            <i class="bi bi-gear"></i>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content Area -->
+      <div class="tab-content">
+
+        <!-- ── TAB 1: CHECK-IN ── -->
+        <div id="tab-checkin" class="app-tab">
+          <div class="card clock-widget">
+            <div class="clock-time" id="liveClock">00:00:00</div>
+            <div class="clock-date" id="liveDate">วันพฤหัสบดีที่ 25 มิถุนายน 2569</div>
+            <div class="clock-status">
+              <div id="clockDot" class="status-dot"></div>
+              <span id="clockStatusText">กำลังโหลดข้อมูลเวลา...</span>
+            </div>
+          </div>
+
+          <div class="checkin-btn-container">
+            <div id="checkinBtn" class="checkin-btn checkin-btn-disabled" onclick="handleClockAction()">
+              <i class="bi bi-fingerprint"></i>
+              <span id="checkinBtnText">เช็คอินเข้างาน</span>
+            </div>
+          </div>
+
+          <!-- Geolocation Coordinates Display -->
+          <div class="card" style="padding:15px 18px;">
+            <div class="card-title" style="font-size:13px;margin-bottom:8px;">
+              <i class="bi bi-geo-alt"></i> พิกัดตำแหน่งปัจจุบัน
+            </div>
+            <div id="gpsLocationText" style="font-size:12px;color:var(--text-muted);font-family:monospace;">
+              กำลังระบุตำแหน่งจาก GPS...
+            </div>
+            <div class="form-group" style="margin-top:12px;margin-bottom:0;">
+              <input type="text" id="clockNotes" class="form-control" style="font-size:12px;padding:8px 12px;" placeholder="ระบุสถานที่/หมายเหตุ (เช่น WFH, ไซต์งานลูกค้า)">
+            </div>
+          </div>
+        </div>
+
+        <!-- ── TAB 2: LEAVE REQUEST ── -->
+        <div id="tab-leave" class="app-tab">
+          <!-- Quota Info Grid -->
+          <div class="quota-grid">
+            <div class="quota-card">
+              <div id="quotaSickUsed" class="quota-val">0</div>
+              <div class="quota-lbl">ลาป่วย</div>
+              <div id="quotaSickLimit" class="quota-total">/ 30 วัน</div>
+            </div>
+            <div class="quota-card">
+              <div id="quotaPersonalUsed" class="quota-val">0</div>
+              <div class="quota-lbl">ลากิจ</div>
+              <div id="quotaPersonalLimit" class="quota-total">/ 6 วัน</div>
+            </div>
+            <div class="quota-card">
+              <div id="quotaAnnualUsed" class="quota-val">0</div>
+              <div class="quota-lbl">ลาพักร้อน</div>
+              <div id="quotaAnnualLimit" class="quota-total">/ 10 วัน</div>
+            </div>
+          </div>
+
+          <!-- Leave Actions -->
+          <button onclick="openDrawer('leaveRequestDrawer')" class="btn btn-primary" style="margin-bottom:20px;">
+            <i class="bi bi-plus-lg"></i> เขียนใบลาออนไลน์
+          </button>
+
+          <!-- Leave List -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title"><i class="bi bi-clock-history"></i> ประวัติการลาล่าสุด</div>
+            </div>
+            <div id="leaveList" class="list-container">
+              <!-- Dynamically populated -->
+              <div class="empty-state">
+                <i class="bi bi-calendar-x"></i>
+                ไม่มีประวัติการลา
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── TAB 3: EXPENSE CLAIM ── -->
+        <div id="tab-expense" class="app-tab">
+          <!-- Expense Actions -->
+          <button onclick="openDrawer('expenseRequestDrawer')" class="btn btn-primary" style="margin-bottom:20px;">
+            <i class="bi bi-plus-lg"></i> ส่งใบเบิกค่าใช้จ่าย
+          </button>
+
+          <!-- Expense List -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title"><i class="bi bi-receipt"></i> ประวัติการเบิกค่าใช้จ่าย</div>
+            </div>
+            <div id="expenseList" class="list-container">
+              <!-- Dynamically populated -->
+              <div class="empty-state">
+                <i class="bi bi-wallet2"></i>
+                ไม่มีประวัติการเบิกค่าใช้จ่าย
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── TAB 4: APPROVAL (SUPERVISOR / HR) ── -->
+        <div id="tab-approval" class="app-tab">
+          <!-- Segment Control for Approvals -->
+          <div class="card" style="padding:5px;display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:16px;">
+            <button id="btnApproveLeaveTab" onclick="switchApprovalSubTab('leave')" class="btn btn-primary" style="padding:8px;font-size:12px;border-radius:10px;">
+              อนุมัติการลา
+            </button>
+            <button id="btnApproveExpenseTab" onclick="switchApprovalSubTab('expense')" class="btn btn-secondary" style="padding:8px;font-size:12px;border-radius:10px;border:none;">
+              อนุมัติการเบิก
+            </button>
+          </div>
+
+          <!-- Pending Approvals list -->
+          <div id="approvalList" class="list-container">
+            <!-- Dynamically populated -->
+            <div class="empty-state">
+              <i class="bi bi-check-all"></i>
+              ไม่มีรายการรออนุมัติ
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom Navigation Bar -->
+      <div id="bottomNav" class="bottom-nav">
+        <div class="nav-item active" onclick="switchTab('checkin')">
+          <i class="bi bi-fingerprint"></i>
+          <span>เข้างาน</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('leave')">
+          <i class="bi bi-calendar-event"></i>
+          <span>ลางาน</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('expense')">
+          <i class="bi bi-wallet2"></i>
+          <span>เบิกค่าใช้จ่าย</span>
+        </div>
+        <div id="navApprovalItem" class="nav-item" onclick="switchTab('approval')" style="display:none;">
+          <i class="bi bi-check-circle"></i>
+          <span>อนุมัติ</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ── DRAWERS (SLIDE UP FORMS) ── -->
+
+  <!-- Drawer Overlay -->
+  <div id="drawerOverlay" class="drawer-overlay" onclick="closeAllDrawers()"></div>
+
+  <!-- Settings Drawer -->
+  <div id="settingsDrawer" class="drawer">
+    <div class="drawer-header">
+      <div class="drawer-title">การตั้งค่าระบบ</div>
+      <div class="drawer-close" onclick="closeDrawer('settingsDrawer')">&times;</div>
+    </div>
+    <div class="drawer-body">
+      <div class="form-group">
+        <label class="form-label">LINE LIFF ID</label>
+        <input type="text" id="settingsLiffId" class="form-control">
+      </div>
+      <div class="form-group">
+        <label class="form-label">AvarinLMS API Web URL</label>
+        <input type="text" id="settingsWebUrl" class="form-control" placeholder="http://localhost:8000">
+      </div>
+      <div style="display:flex;gap:12px;margin-top:25px;">
+        <button onclick="saveSettings()" class="btn btn-primary" style="flex:1;">
+          <i class="bi bi-save"></i> บันทึกข้อมูล
+        </button>
+        <button onclick="handleLogout()" class="btn btn-secondary" style="flex:1;border-color:var(--danger);color:var(--danger);">
+          <i class="bi bi-box-arrow-right"></i> ออกจากระบบ
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leave Request Drawer -->
+  <div id="leaveRequestDrawer" class="drawer">
+    <div class="drawer-header">
+      <div class="drawer-title">เขียนใบลาออนไลน์</div>
+      <div class="drawer-close" onclick="closeDrawer('leaveRequestDrawer')">&times;</div>
+    </div>
+    <div class="drawer-body">
+      <div class="form-group">
+        <label class="form-label">ประเภทการลา</label>
+        <select id="leaveType" class="form-control">
+          <option value="sick">ลาป่วย</option>
+          <option value="personal">ลากิจส่วนตัว</option>
+          <option value="annual">ลาพักร้อน</option>
+          <option value="compensatory">ลาหยุดชดเชย</option>
+        </select>
+      </div>
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label class="form-label">เริ่มวันที่</label>
+          <input type="date" id="leaveStartDate" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">ถึงวันที่</label>
+          <input type="date" id="leaveEndDate" class="form-control">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">รูปแบบเวลาการลา</label>
+        <select id="leaveUnit" class="form-control" onchange="toggleLeaveTimeFields()">
+          <option value="day">ลาเต็มวัน</option>
+          <option value="hour">ลาเป็นชั่วโมง</option>
+        </select>
+      </div>
+
+      <div id="leaveTimeFields" style="display:none;grid-template-columns:1fr 1fr;gap:12px;margin-top:-6px;margin-bottom:12px;">
+        <div class="form-group">
+          <label class="form-label">เวลาเริ่มลา</label>
+          <input type="time" id="leaveStartTime" class="form-control" value="08:30">
+        </div>
+        <div class="form-group">
+          <label class="form-label">เวลาสิ้นสุด</label>
+          <input type="time" id="leaveEndTime" class="form-control" value="17:30">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">รายละเอียด/เหตุผลการลา</label>
+        <textarea id="leaveReason" class="form-control" rows="3" placeholder="ระบุเหตุผลในการลางาน"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">เบอร์ติดต่อกรณีฉุกเฉิน</label>
+        <input type="tel" id="leavePhone" class="form-control" placeholder="เช่น 0891234567">
+      </div>
+
+      <button onclick="submitLeaveRequest()" class="btn btn-primary" style="margin-top:15px;">
+        <i class="bi bi-send"></i> ส่งใบลา
+      </button>
+    </div>
+  </div>
+
+  <!-- Expense Request Drawer -->
+  <div id="expenseRequestDrawer" class="drawer">
+    <div class="drawer-header">
+      <div class="drawer-title">ส่งคำขอเบิกค่าใช้จ่าย</div>
+      <div class="drawer-close" onclick="closeDrawer('expenseRequestDrawer')">&times;</div>
+    </div>
+    <div class="drawer-body">
+      <div class="form-group">
+        <label class="form-label">ประเภทค่าใช้จ่าย</label>
+        <select id="expenseType" class="form-control">
+          <option value="ค่าเดินทาง">ค่าเดินทาง / ค่าน้ำมัน</option>
+          <option value="ค่าเบี้ยเลี้ยง">ค่าเบี้ยเลี้ยง / ค่าอาหาร</option>
+          <option value="ค่าที่พัก">ค่าที่พัก / โรงแรม</option>
+          <option value="ค่าทางด่วน">ค่าทางด่วน / ค่าที่จอดรถ</option>
+          <option value="อื่นๆ">อื่นๆ</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">วันที่จ่ายเงิน</label>
+        <input type="date" id="expenseDate" class="form-control">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">จำนวนเงิน (บาท)</label>
+        <input type="number" id="expenseAmount" class="form-control" placeholder="0.00" step="0.01">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">รายละเอียด/หมายเหตุ</label>
+        <textarea id="expenseDescription" class="form-control" rows="3" placeholder="ระบุรายละเอียดค่าใช้จ่าย"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">รูปถ่ายใบเสร็จ / หลักฐานการจ่ายเงิน (สูงสุด 4 รูป)</label>
+        <button onclick="triggerFileSelect('expenseFiles')" class="btn btn-secondary" style="border-style:dashed;">
+          <i class="bi bi-camera"></i> ถ่ายรูปหรือเลือกภาพใบเสร็จ
+        </button>
+        <input type="file" id="expenseFiles" style="display:none;" accept="image/*" multiple onchange="handleReceiptFiles(event)">
+        <div id="receiptPreviewContainer" class="receipt-preview-grid"></div>
+      </div>
+
+      <button onclick="submitExpenseRequest()" class="btn btn-primary" style="margin-top:15px;">
+        <i class="bi bi-send"></i> ส่งใบเบิกค่าใช้จ่าย
+      </button>
+    </div>
+  </div>
+
+  <!-- Approval Detail Drawer -->
+  <div id="approvalDetailDrawer" class="drawer">
+    <div class="drawer-header">
+      <div id="approvalDetailTitle" class="drawer-title">คำร้องขอการอนุมัติ</div>
+      <div class="drawer-close" onclick="closeDrawer('approvalDetailDrawer')">&times;</div>
+    </div>
+    <div class="drawer-body">
+      <div id="approvalDetailContent" style="margin-bottom:20px;">
+        <!-- Dynamically populated detail rows -->
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">ความเห็นผู้อนุมัติ (ความคิดเห็นเพิ่มเติม)</label>
+        <textarea id="approvalComment" class="form-control" rows="2" placeholder="ใส่ความเห็นเพิ่มเติม (ไม่บังคับ)"></textarea>
+      </div>
+
+      <div style="display:flex;gap:12px;margin-top:20px;">
+        <button id="btnApprove" class="btn btn-primary" style="flex:1;">
+          <i class="bi bi-check-circle"></i> อนุมัติ
+        </button>
+        <button id="btnReject" class="btn btn-danger" style="flex:1;">
+          <i class="bi bi-x-circle"></i> ไม่อนุมัติ
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ── SCRIPTS CORE ── -->
+  <script>
+    // ── Global App State ──
+    const AppState = {
+      liffId: localStorage.getItem('liff_id') || '',
+      webUrl: localStorage.getItem('liff_web_url') || '',
+      token: localStorage.getItem('liff_token') || '',
+      user: null,
+      caps: [],
+      lineProfile: null,
+      currentGps: null,
+      currentTab: 'checkin',
+      todayCheckin: null,
+      approvalTab: 'leave', // leave or expense
+      chosenReceipts: [] // compressed base64 images
+    };
+
+    // ── Fallback configuration defaults ──
+    if (!AppState.webUrl) {
+      // Guess backend url based on current page url
+      var currentUrl = window.location.href;
+      if (currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1')) {
+        AppState.webUrl = 'http://localhost:8000';
+      } else {
+        // Parse from window location
+        var path = window.location.origin;
+        AppState.webUrl = path;
+      }
+      localStorage.setItem('liff_web_url', AppState.webUrl);
+    }
+
+    // ── Check if LIFF ID is in URL Query (liffId=xxx) ──
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryLiffId = urlParams.get('liffId');
+    if (queryLiffId) {
+      AppState.liffId = queryLiffId;
+      localStorage.setItem('liff_id', queryLiffId);
+    }
+
+    // ── API Router Call Wrapper ──
+    async function api(action, payload = {}) {
+      const url = AppState.webUrl + '/functions/v1/api';
+      const body = {
+        action: action,
+        token: AppState.token,
+        payload: payload
+      };
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqY3ZxeGp3YWtpb3JhaDRpd3drIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NDk4MjUsImV4cCI6MjA5NzQyNTgyNX0.efr2QuUfbk8WNK8I9A-ga4OKzJal7w_dNKoICXX1nPQ',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqY3ZxeGp3YWtpb3JhaDRpd3drIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NDk4MjUsImV4cCI6MjA5NzQyNTgyNX0.efr2QuUfbk8WNK8I9A-ga4OKzJal7w_dNKoICXX1nPQ'
+        },
+        body: JSON.stringify(body)
+      });
+
+      const res = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(res.error || `HTTP error! status: ${response.status}`);
+      }
+      if (!res.ok) {
+        throw new Error(res.error || 'การเชื่อมต่อผิดพลาด');
+      }
+      return res.data;
+    }
+
+    // ── Initialize App ──
+    window.addEventListener('DOMContentLoaded', async () => {
+      startLiveClock();
+      
+      // Update config inputs
+      document.getElementById('settingsLiffId').value = AppState.liffId;
+      document.getElementById('settingsWebUrl').value = AppState.webUrl;
+
+      if (!AppState.liffId) {
+        hideLoader();
+        showScreen('setupScreen');
+        return;
+      }
+
+      await initLiff();
+    });
+
+    // ── Initialize LIFF SDK ──
+    async function initLiff() {
+      setBootText('กำลังเริ่มต้น LINE LIFF SDK...');
+      try {
+        await liff.init({ liffId: AppState.liffId });
+        
+        if (!liff.isLoggedIn()) {
+          setBootText('กำลังนำทางไปหน้าเข้าสู่ระบบ LINE...');
+          liff.login();
+          return;
+        }
+
+        setBootText('ดึงข้อมูลโปรไฟล์ LINE...');
+        const profile = await liff.getProfile();
+        AppState.lineProfile = profile;
+        console.log('LINE Profile retrieved:', profile);
+
+        // Try direct login using LINE User ID
+        await attemptLineLogin(profile.userId);
+
+      } catch (err) {
+        console.error('LIFF initialization failed:', err);
+        
+        // Render fallback for development/testing outside LINE
+        Swal.fire({
+          icon: 'warning',
+          title: 'LIFF SDK Error',
+          html: `<p style="font-size:13px;text-align:left;">ระบบไม่สามารถเริ่มทำงานในโหมด LINE App ได้โดยตรง (อาจเนื่องมาจาก LIFF ID ไม่ถูกต้อง หรือกำลังรันในเบราว์เซอร์ปกติ)</p>
+                 <p style="font-size:13px;text-align:left;margin-top:10px;font-weight:600;color:var(--primary);">คุณสามารถข้ามขั้นตอนนี้เพื่อทดสอบผ่านหน้าเข้าสู่ระบบแทน</p>`,
+          confirmButtonText: 'เข้าสู่ระบบแบบปกติ',
+          confirmButtonColor: '#10b981'
+        }).then(() => {
+          hideLoader();
+          // Verify if session token exists
+          if (AppState.token) {
+            loadUserProfileAndDashboard();
+          } else {
+            showScreen('loginScreen');
+          }
+        });
+      }
+    }
+
+    // ── Attempt LINE Login ──
+    async function attemptLineLogin(lineUserId) {
+      setBootText('กำลังยืนยันตัวตนกับระบบ LMS...');
+      try {
+        const res = await api('auth.line_login', { line_user_id: lineUserId });
+        AppState.token = res.token;
+        AppState.user = res.user;
+        AppState.caps = res.caps;
+        localStorage.setItem('liff_token', res.token);
+        
+        await completeLoginFlow();
+
+      } catch (err) {
+        console.warn('LINE User ID not linked yet:', err.message);
+        hideLoader();
+        showScreen('loginScreen'); // Prompt username/pwd link
+      }
+    }
+
+    // ── Handle Manual Credentials Login & Link ──
+    async function handleLogin() {
+      const username = document.getElementById('loginUsername').value.trim();
+      const password = document.getElementById('loginPassword').value;
+
+      if (!username || !password) {
+        Swal.fire({ icon: 'error', title: 'ผิดพลาด', text: 'โปรดกรอกชื่อผู้ใช้และรหัสผ่าน', confirmButtonColor: '#ef4444' });
+        return;
+      }
+
+      Swal.showLoading();
+      try {
+        // 1. Authenticate with AvarinLMS
+        const loginRes = await api('auth.login', { username, password });
+        AppState.token = loginRes.token;
+        AppState.user = loginRes.user;
+        AppState.caps = loginRes.caps;
+        localStorage.setItem('liff_token', loginRes.token);
+
+        // 2. Link LINE account if available
+        if (AppState.lineProfile && AppState.lineProfile.userId) {
+          try {
+            await api('auth.link_line', { line_user_id: AppState.lineProfile.userId });
+            console.log('Linked LINE User ID successfully:', AppState.lineProfile.userId);
+          } catch (linkErr) {
+            console.error('Failed to auto-link LINE:', linkErr.message);
+            // Non-blocking, continue login
+          }
+        }
+
+        Swal.fire({
+          icon: 'success',
+          title: 'เข้าสู่ระบบสำเร็จ',
+          text: `ยินดีต้อนรับคุณ ${AppState.user.full_name}`,
+          timer: 1500,
+          showConfirmButton: false
+        });
+
+        await completeLoginFlow();
+
+      } catch (err) {
+        Swal.fire({ icon: 'error', title: 'เข้าสู่ระบบไม่สำเร็จ', text: err.message, confirmButtonColor: '#ef4444' });
+      }
+    }
+
+    // ── Setup completion and UI transition ──
+    async function completeLoginFlow() {
+      hideLoader();
+      showScreen('mainDashboard');
+      updateHeaderUI();
+      startGeolocating();
+      
+      // Update tab layout based on permissions (approvals tab)
+      const isApprover = AppState.caps.includes('leave.approve') || AppState.caps.includes('mission.approve') || AppState.caps.includes('expense.manage');
+      const nav = document.getElementById('bottomNav');
+      const navAppr = document.getElementById('navApprovalItem');
+      
+      if (isApprover) {
+        navAppr.style.display = 'flex';
+        nav.classList.remove('nav-3');
+      } else {
+        navAppr.style.display = 'none';
+        nav.classList.add('nav-3');
+      }
+
+      // Initial tab load
+      switchTab('checkin');
+    }
+
+    // ── Load User Profile & Dashboard Fallback ──
+    async function loadUserProfileAndDashboard() {
+      try {
+        const res = await api('auth.me');
+        AppState.user = res.user;
+        AppState.caps = res.caps;
+        await completeLoginFlow();
+      } catch (err) {
+        console.error('Session expired:', err);
+        localStorage.removeItem('liff_token');
+        AppState.token = '';
+        showScreen('loginScreen');
+      }
+    }
+
+    // ── Screen and UI Visibility Helpers ──
+    function showScreen(id) {
+      document.getElementById('setupScreen').style.display = 'none';
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('mainDashboard').style.display = 'none';
+      
+      document.getElementById(id).style.display = id === 'mainDashboard' ? 'flex' : 'block';
+    }
+
+    function setBootText(text) {
+      document.getElementById('bootSub').innerText = text;
+    }
+
+    function hideLoader() {
+      const loader = document.getElementById('bootLoader');
+      loader.style.opacity = '0';
+      setTimeout(() => loader.style.display = 'none', 500);
+    }
+
+    function updateHeaderUI() {
+      if (!AppState.user) return;
+      document.getElementById('headerName').innerText = AppState.user.full_name;
+      document.getElementById('headerRole').innerText = AppState.user.position || 'พนักงาน';
+      
+      // Load avatar
+      const avatarEl = document.getElementById('headerAvatar');
+      if (AppState.lineProfile && AppState.lineProfile.pictureUrl) {
+        avatarEl.src = AppState.lineProfile.pictureUrl;
+      } else if (AppState.user.avatar) {
+        avatarEl.src = AppState.user.avatar;
+      }
+    }
+
+    // ── Setup Configuration Screen Actions ──
+    function saveSetup() {
+      const liffId = document.getElementById('setupLiffId').value.trim();
+      if (!liffId) {
+        Swal.fire({ icon: 'error', title: 'ข้อมูลไม่ครบ', text: 'โปรดระบุ LINE LIFF ID', confirmButtonColor: '#ef4444' });
+        return;
+      }
+      localStorage.setItem('liff_id', liffId);
+      window.location.reload();
+    }
+
+    function saveSettings() {
+      const liffId = document.getElementById('settingsLiffId').value.trim();
+      const webUrl = document.getElementById('settingsWebUrl').value.trim();
+
+      if (!liffId || !webUrl) {
+        Swal.fire({ icon: 'error', title: 'ข้อมูลไม่ครบ', text: 'กรุณากรอกข้อมูลให้ครบถ้วน', confirmButtonColor: '#ef4444' });
+        return;
+      }
+
+      localStorage.setItem('liff_id', liffId);
+      localStorage.setItem('liff_web_url', webUrl);
+
+      Swal.fire({
+        icon: 'success',
+        title: 'บันทึกการตั้งค่าแล้ว',
+        text: 'ระบบกำลังเริ่มทำงานใหม่',
+        timer: 1200,
+        showConfirmButton: false
+      }).then(() => {
+        window.location.reload();
+      });
+    }
+
+    function handleLogout() {
+      Swal.fire({
+        title: 'ยืนยันการออกจากระบบ?',
+        text: 'บัญชีของคุณจะถูกยกเลิกการเชื่อมโยงกับอุปกรณ์เครื่องนี้',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'ใช่, ออกจากระบบ',
+        cancelButtonText: 'ยกเลิก'
+      }).then(async (result) => {
+        if (result.isConfirmed) {
+          try {
+            await api('auth.logout');
+          } catch(e){}
+          localStorage.removeItem('liff_token');
+          AppState.token = '';
+          AppState.user = null;
+          showScreen('loginScreen');
+          closeAllDrawers();
+        }
+      });
+    }
+
+    // ── Tab Management ──
+    function switchTab(tabId) {
+      AppState.currentTab = tabId;
+      
+      // Update Tab CSS
+      document.querySelectorAll('.app-tab').forEach(el => el.classList.remove('active'));
+      document.getElementById(`tab-${tabId}`).classList.add('active');
+
+      // Update Nav CSS
+      document.querySelectorAll('.nav-item').forEach((el, index) => {
+        const tabs = ['checkin', 'leave', 'expense', 'approval'];
+        if (tabs[index] === tabId) {
+          el.classList.add('active');
+        } else {
+          el.classList.remove('active');
+        }
+      });
+
+      // Load Tab-specific data
+      if (tabId === 'checkin') {
+        loadTodayCheckin();
+      } else if (tabId === 'leave') {
+        loadLeaveDashboard();
+      } else if (tabId === 'expense') {
+        loadExpenseDashboard();
+      } else if (tabId === 'approval') {
+        loadApprovalDashboard();
+      }
+    }
+
+    // ── Live Clock & Date Widget ──
+    function startLiveClock() {
+      const liveClock = document.getElementById('liveClock');
+      const liveDate = document.getElementById('liveDate');
+      
+      const thaiMonths = [
+        'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+        'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+      ];
+      const thaiDays = [
+        'วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'
+      ];
+
+      setInterval(() => {
+        const now = new Date();
+        
+        // Clock Time (hh:mm:ss)
+        const hr = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        const sec = String(now.getSeconds()).padStart(2, '0');
+        liveClock.innerText = `${hr}:${min}:${sec}`;
+
+        // Date String (Day D Month YYYY)
+        const dayName = thaiDays[now.getDay()];
+        const date = now.getDate();
+        const month = thaiMonths[now.getMonth()];
+        const yearBE = now.getFullYear() + 543;
+        liveDate.innerText = `${dayName}ที่ ${date} ${month} พ.ศ. ${yearBE}`;
+      }, 1000);
+    }
+
+    // ── Tab 1: Check-in logic ──
+    async function loadTodayCheckin() {
+      try {
+        const res = await api('checkin.get_today');
+        AppState.todayCheckin = res;
+        
+        const dot = document.getElementById('clockDot');
+        const txt = document.getElementById('clockStatusText');
+        const btn = document.getElementById('checkinBtn');
+        const btnText = document.getElementById('checkinBtnText');
+
+        btn.className = 'checkin-btn'; // reset
+
+        if (!res) {
+          // Not Clocked-in yet
+          dot.className = 'status-dot';
+          txt.innerText = 'วันนี้คุณยังไม่ได้เช็คอินเข้างาน';
+          btn.classList.add('checkin-btn-in');
+          btnText.innerText = 'เช็คอินเข้างาน';
+        } else if (res && !res.check_out_at) {
+          // Clocked-in, but not clocked-out
+          dot.className = 'status-dot active';
+          const t = new Date(res.check_in_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+          txt.innerText = `เช็คอินแล้ววันนี้เมื่อเวลา ${t} น.`;
+          btn.classList.add('checkin-btn-out');
+          btnText.innerText = 'เช็คเอาท์ออกงาน';
+        } else {
+          // Both Clocked-in and Clocked-out
+          dot.className = 'status-dot danger';
+          const inT = new Date(res.check_in_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+          const outT = new Date(res.check_out_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+          txt.innerText = `เช็คอินเข้างาน: ${inT} น. · เช็คเอาท์ออกงาน: ${outT} น.`;
+          btn.classList.add('checkin-btn-disabled');
+          btnText.innerText = 'เช็คอินสมบูรณ์แล้ว';
+        }
+      } catch (err) {
+        console.error('Failed to get check-in status:', err);
+      }
+    }
+
+    function startGeolocating() {
+      const gpsEl = document.getElementById('gpsLocationText');
+      if (!navigator.geolocation) {
+        gpsEl.innerHTML = '<span style="color:var(--danger)"><i class="bi bi-x-circle"></i> เบราว์เซอร์ไม่รองรับ GPS</span>';
+        return;
+      }
+
+      gpsEl.innerText = 'กำลังอัปเดตตำแหน่ง GPS...';
+      navigator.geolocation.watchPosition(
+        (pos) => {
+          AppState.currentGps = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude
+          };
+          gpsEl.innerHTML = `ละติจูด: ${pos.coords.latitude.toFixed(6)}<br>ลองจิจูด: ${pos.coords.longitude.toFixed(6)}<br><span style="color:var(--primary);"><i class="bi bi-check-circle-fill"></i> สัญญาณ GPS มีความแม่นยำประมาณ ${pos.coords.accuracy.toFixed(1)} ม.</span>`;
+        },
+        (err) => {
+          console.error('GPS Error:', err);
+          gpsEl.innerHTML = `<span style="color:var(--danger)"><i class="bi bi-exclamation-triangle"></i> ไม่สามารถเข้าถึงตำแหน่งจีพีเอสได้ (โปรดอนุญาตสิทธิ์ตำแหน่ง)</span>`;
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+
+    async function handleClockAction() {
+      if (!AppState.currentGps) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'ไม่พิกัดตำแหน่ง',
+          text: 'ระบบกำลังดึงค่าพิกัด GPS โปรดแน่ใจว่าอุปกรณ์เปิดระบบระบุตำแหน่งและรอสักครู่',
+          confirmButtonColor: '#f59e0b'
+        });
+        return;
+      }
+
+      const notes = document.getElementById('clockNotes').value.trim();
+      const isClockIn = !AppState.todayCheckin;
+      const isClockOut = AppState.todayCheckin && !AppState.todayCheckin.check_out_at;
+
+      if (!isClockIn && !isClockOut) {
+        // Disabled state
+        return;
+      }
+
+      Swal.showLoading();
+      try {
+        const action = isClockIn ? 'checkin.clock_in' : 'checkin.clock_out';
+        await api(action, {
+          latitude: AppState.currentGps.latitude,
+          longitude: AppState.currentGps.longitude,
+          location: notes || 'พิกัด GPS'
+        });
+
+        Swal.fire({
+          icon: 'success',
+          title: isClockIn ? 'เช็คอินเข้างานสำเร็จ' : 'เช็คเอาท์ออกงานสำเร็จ',
+          text: isClockIn ? 'ขอให้มีความสุขกับการทำงานในวันนี้!' : 'พักผ่อนให้สบายและเดินทางปลอดภัยนะ!',
+          timer: 2000,
+          showConfirmButton: false
+        });
+
+        document.getElementById('clockNotes').value = '';
+        await loadTodayCheckin();
+      } catch (err) {
+        Swal.fire({ icon: 'error', title: 'เช็คอินไม่สำเร็จ', text: err.message, confirmButtonColor: '#ef4444' });
+      }
+    }
+
+    // ── Tab 2: Leave Module logic ──
+    async function loadLeaveDashboard() {
+      try {
+        // 1. Quotas (Normally loaded from app bootstrap / config settings)
+        // Hardcoded or calculated on backend. Let's calculate quotas from user statistics.
+        const stats = await api('leave.my_stats', { year: new Date().getFullYear() });
+        if (stats) {
+          // Sick
+          document.getElementById('quotaSickUsed').innerText = stats.sick ? stats.sick.used : 0;
+          document.getElementById('quotaSickLimit').innerText = `/ ${stats.sick ? stats.sick.limit : 30} วัน`;
+          // Personal
+          document.getElementById('quotaPersonalUsed').innerText = stats.personal ? stats.personal.used : 0;
+          document.getElementById('quotaPersonalLimit').innerText = `/ ${stats.personal ? stats.personal.limit : 6} วัน`;
+          // Annual
+          document.getElementById('quotaAnnualUsed').innerText = stats.annual ? stats.annual.used : 0;
+          document.getElementById('quotaAnnualLimit').innerText = `/ ${stats.annual ? stats.annual.limit : 10} วัน`;
+        }
+
+        // 2. Leave list
+        const leavesData = await api('leave.list', { per_page: 15 });
+        const listEl = document.getElementById('leaveList');
+        
+        if (leavesData.items && leavesData.items.length > 0) {
+          let html = '';
+          leavesData.items.forEach(x => {
+            const dateStr = x.leave_unit === 'hour' 
+              ? `${formatThaiDate(x.start_date)} (${x.start_time} - ${x.end_time})`
+              : `${formatThaiDate(x.start_date)} - ${formatThaiDate(x.end_date)}`;
+            
+            const badgeClass = `badge-${x.status.toLowerCase()}`;
+            const statusText = getStatusLabel(x.status);
+            const daysText = x.leave_unit === 'hour' ? `${x.hours} ชม.` : `${x.days} วัน`;
+
+            html += `
+              <div class="list-item" onclick="viewLeaveDetail('${x.id}')">
+                <div class="item-main">
+                  <span class="item-title">${getLeaveTypeLabel(x.leave_type)} (${daysText})</span>
+                  <span class="item-desc">${dateStr}</span>
+                </div>
+                <div class="item-meta">
+                  <span class="item-badge ${badgeClass}">${statusText}</span>
+                  <span style="font-size:10px;color:var(--text-muted)">${x.leave_no}</span>
+                </div>
+              </div>
+            `;
+          });
+          listEl.innerHTML = html;
+        } else {
+          listEl.innerHTML = `
+            <div class="empty-state">
+              <i class="bi bi-calendar-x"></i>
+              ไม่มีประวัติการลา
+            </div>
+          `;
+        }
+      } catch (err) {
+        console.error('Failed to load leave dashboard:', err);
+      }
+    }
+
+    function toggleLeaveTimeFields() {
+      const unit = document.getElementById('leaveUnit').value;
+      document.getElementById('leaveTimeFields').style.display = unit === 'hour' ? 'grid' : 'none';
+    }
+
+    async function submitLeaveRequest() {
+      const leave_type = document.getElementById('leaveType').value;
+      const start_date = document.getElementById('leaveStartDate').value;
+      const end_date = document.getElementById('leaveEndDate').value;
+      const leave_unit = document.getElementById('leaveUnit').value;
+      const start_time = document.getElementById('leaveStartTime').value;
+      const end_time = document.getElementById('leaveEndTime').value;
+      const reason = document.getElementById('leaveReason').value.trim();
+      const phone = document.getElementById('leavePhone').value.trim();
+
+      if (!start_date || !end_date || !reason || !phone) {
+        Swal.fire({ icon: 'error', title: 'ข้อมูลไม่ครบ', text: 'กรุณากรอกข้อมูลใบลาให้ครบถ้วน', confirmButtonColor: '#ef4444' });
+        return;
+      }
+
+      Swal.showLoading();
+      try {
+        const payload = {
+          leave_type,
+          start_date,
+          end_date,
+          leave_unit,
+          start_time: leave_unit === 'hour' ? start_time : '',
+          end_time: leave_unit === 'hour' ? end_time : '',
+          reason,
+          contact_phone: phone,
+          draft: false
+        };
+
+        const res = await api('leave.create', payload);
+        
+        // Auto submit leave if it's created successfully
+        await api('leave.submit', { id: res.id });
+
+        Swal.fire({
+          icon: 'success',
+          title: 'ยื่นใบลาสำเร็จ',
+          text: 'ใบลาของคุณถูกส่งไปยังหัวหน้างานตรวจสอบแล้ว',
+          timer: 2000,
+          showConfirmButton: false
+        });
+
+        closeDrawer('leaveRequestDrawer');
+        // Clear fields
+        document.getElementById('leaveStartDate').value = '';
+        document.getElementById('leaveEndDate').value = '';
+        document.getElementById('leaveReason').value = '';
+        document.getElementById('leavePhone').value = '';
+        
+        await loadLeaveDashboard();
+
+      } catch (err) {
+        Swal.fire({ icon: 'error', title: 'ส่งใบลาไม่สำเร็จ', text: err.message, confirmButtonColor: '#ef4444' });
+      }
+    }
+
+    async function viewLeaveDetail(id) {
+      Swal.showLoading();
+      try {
+        const res = await api('leave.get', { id: id });
+        const x = res.leave;
+        const u = res.requester || {};
+
+        let detailHtml = `
+          <div class="detail-row"><span class="detail-label">เลขที่ใบลา</span><span class="detail-val">${x.leave_no}</span></div>
+          <div class="detail-row"><span class="detail-label">ผู้ขอลา</span><span class="detail-val">${u.full_name}</span></div>
+          <div class="detail-row"><span class="detail-label">ประเภทการลา</span><span class="detail-val">${getLeaveTypeLabel(x.leave_type)}</span></div>
+          <div class="detail-row"><span class="detail-label">จำนวนวันลา</span><span class="detail-val">${x.leave_unit === 'hour' ? `${x.hours} ชั่วโมง` : `${x.days} วัน`}</span></div>
+          <div class="detail-row"><span class="detail-label">ช่วงวันที่ลา</span><span class="detail-val">${formatThaiDate(x.start_date)} ถึง ${formatThaiDate(x.end_date)}</span></div>
+          ${x.leave_unit === 'hour' ? `<div class="detail-row"><span class="detail-label">เวลาที่ลา</span><span class="detail-val">${x.start_time} - ${x.end_time} น.</span></div>` : ''}
+          <div class="detail-row"><span class="detail-label">เหตุผลการลา</span><span class="detail-val">${x.reason || '-'}</span></div>
+          <div class="detail-row"><span class="detail-label">เบอร์ติดต่อ</span><span class="detail-val">${x.contact_phone || '-'}</span></div>
+          <div class="detail-row"><span class="detail-label">สถานะ</span><span class="detail-val" style="font-weight:600;">${getStatusLabel(x.status)}</span></div>
+        `;
+
+        if (x.checker_comment) {
+          detailHtml += `<div class="detail-row"><span class="detail-label">ความเห็นหัวหน้างาน</span><span class="detail-val" style="color:var(--primary)">${x.checker_comment}</span></div>`;
+        }
+        if (x.approver_comment) {
+          detailHtml += `<div class="detail-row"><span class="detail-label">ความเห็นฝ่ายบุคคล</span><span class="detail-val" style="color:var(--primary)">${x.approver_comment}</span></div>`;
+        }
+
+        Swal.fire({
+          title: 'รายละเอียดใบลา',
+          html: `<div style="text-align:left;margin-top:10px;">${detailHtml}</div>`,
+          confirmButtonText: 'ตกลง',
+          confirmButtonColor: '#10b981'
+        });
+
+      } catch (err) {
+        Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message, confirmButtonColor: '#ef4444' });
+      }
+    }
+
+    // ── Tab 3: Expense Module logic ──
+    async function loadExpenseDashboard() {
+      try {
+        const data = await api('expense.list', { per_page: 20 });
+        const listEl = document.getElementById('expenseList');
+
+        if (data.items && data.items.length > 0) {
+          let html = '';
+          data.items.forEach(x => {
+            const badgeClass = `badge-${x.status.toLowerCase()}`;
+            const statusText = getStatusLabel(x.status);
+            
+            html += `
+              <div class="list-item" onclick="viewExpenseDetail('${x.id}')">
+                <div class="item-main">
+                  <span class="item-title">${x.expense_type} · ${x.amount.toLocaleString()} บาท</span>
+                  <span class="item-desc">${x.description || 'ไม่มีรายละเอียด'}</span>
+                </div>
+                <div class="item-meta">
+                  <span class="item-badge ${badgeClass}">${statusText}</span>
+                  <span style="font-size:10px;color:var(--text-muted)">${formatThaiDate(x.expense_date)}</span>
+                </div>
+              </div>
+            `;
+          });
+          listEl.innerHTML = html;
+        } else {
+          listEl.innerHTML = `
+            <div class="empty-state">
+              <i class="bi bi-wallet2"></i>
+              ไม่มีประวัติการเบิกค่าใช้จ่าย
+            </div>
+          `;
+        }
+      } catch (err) {
+        console.error('Failed to load expense dashboard:', err);
+      }
+    }
+
+    function triggerFileSelect(id) {
+      document.getElementById(id).click();
+    }
+
+    // Canvas image compression (Max 48KB, matches main application design)
+    function handleReceiptFiles(e) {
+      const files = e.target.files;
+      if (!files.length) return;
+
+      const previewContainer = document.getElementById('receiptPreviewContainer');
+      const max_size = 800; // max width/height
+
+      for (let i = 0; i < files.length; i++) {
+        if (AppState.chosenReceipts.length >= 4) {
+          Swal.fire({ icon: 'warning', title: 'จำกัดจำนวนรูป', text: 'แนบหลักฐานการจ่ายเงินได้สูงสุด 4 รูปภาพเท่านั้น', confirmButtonColor: '#f59e0b' });
+          break;
+        }
+
+        const file = files[i];
+        const reader = new FileReader();
+        
+        reader.onload = function(evt) {
+          const img = new Image();
+          img.onload = function() {
+            let width = img.width;
+            let height = img.height;
+            
+            // Resize logic
+            if (width > height) {
+              if (width > max_size) {
+                height *= max_size / width;
+                width = max_size;
+              }
+            } else {
+              if (height > max_size) {
+                width *= max_size / height;
+                height = max_size;
+              }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // Compress to fit 48KB
+            let quality = 0.6;
+            let dataUrl = '';
+            for (let attempt = 0; attempt < 5; attempt++) {
+              dataUrl = canvas.toDataURL('image/jpeg', quality);
+              if (dataUrl.length <= 48000) break;
+              quality -= 0.1;
+            }
+
+            AppState.chosenReceipts.push(dataUrl);
+            renderReceiptPreviews();
+          };
+          img.src = evt.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+      e.target.value = ''; // Reset file input
+    }
+
+    function renderReceiptPreviews() {
+      const container = document.getElementById('receiptPreviewContainer');
+      container.innerHTML = '';
+      
+      AppState.chosenReceipts.forEach((src, idx) => {
+        const wrapper = document.createElement('div');
+        wrapper.style.position = 'relative';
+        wrapper.innerHTML = `
+          <img class="receipt-thumb" src="${src}">
+          <div class="receipt-remove" onclick="removeReceipt(${idx})">&times;</div>
+        `;
+        container.appendChild(wrapper);
+      });
+    }
+
+    function removeReceipt(idx) {
+      AppState.chosenReceipts.splice(idx, 1);
+      renderReceiptPreviews();
+    }
+
+    async function submitExpenseRequest() {
+      const expense_type = document.getElementById('expenseType').value;
+      const expense_date = document.getElementById('expenseDate').value;
+      const amount = parseFloat(document.getElementById('expenseAmount').value);
+      const description = document.getElementById('expenseDescription').value.trim();
+
+      if (!expense_date || isNaN(amount) || amount <= 0 || !description) {
+        Swal.fire({ icon: 'error', title: 'ข้อมูลไม่ครบ', text: 'กรุณากรอกข้อมูลค่าใช้จ่ายให้ถูกต้องครบถ้วน', confirmButtonColor: '#ef4444' });
+        return;
+      }
+
+      Swal.showLoading();
+      try {
+        const receipt_url = AppState.chosenReceipts.length > 0 ? JSON.stringify(AppState.chosenReceipts) : '';
+
+        // 1. Create expense
+        const res = await api('expense.create', {
+          expense_type,
+          expense_date,
+          amount,
+          description,
+          receipt_url,
+          draft: false
+        });
+
+        // 2. Submit expense
+        await api('expense.submit', { id: res.id });
+
+        Swal.fire({
+          icon: 'success',
+          title: 'ส่งใบเบิกสำเร็จ',
+          text: 'ระบบได้ส่งใบเบิกเงินรออนุมัติแล้ว',
+          timer: 2000,
+          showConfirmButton: false
+        });
+
+        closeDrawer('expenseRequestDrawer');
+        // Clear inputs
+        document.getElementById('expenseAmount').value = '';
+        document.getElementById('expenseDescription').value = '';
+        AppState.chosenReceipts = [];
+        renderReceiptPreviews();
+
+        await loadExpenseDashboard();
+
+      } catch (err) {
+        Swal.fire({ icon: 'error', title: 'ส่งใบเบิกไม่สำเร็จ', text: err.message, confirmButtonColor: '#ef4444' });
+      }
+    }
+
+    async function viewExpenseDetail(id) {
+      Swal.showLoading();
+      try {
+        const x = await api('expense.get', { id: id });
+        
+        let detailHtml = `
+          <div class="detail-row"><span class="detail-label">เลขที่ใบเบิก</span><span class="detail-val">${x.expense_no}</span></div>
+          <div class="detail-row"><span class="detail-label">ประเภท</span><span class="detail-val">${x.expense_type}</span></div>
+          <div class="detail-row"><span class="detail-label">วันที่จ่ายเงิน</span><span class="detail-val">${formatThaiDate(x.expense_date)}</span></div>
+          <div class="detail-row"><span class="detail-label">จำนวนเงิน</span><span class="detail-val">${x.amount.toLocaleString()} บาท</span></div>
+          <div class="detail-row"><span class="detail-label">รายละเอียด</span><span class="detail-val">${x.description || '-'}</span></div>
+          <div class="detail-row"><span class="detail-label">สถานะ</span><span class="detail-val" style="font-weight:600;">${getStatusLabel(x.status)}</span></div>
+        `;
+
+        if (x.receipt_url) {
+          let urls = [];
+          try {
+            if (x.receipt_url.startsWith('[')) {
+              urls = JSON.parse(x.receipt_url);
+            } else {
+              urls = [x.receipt_url];
+            }
+          } catch(e) {
+            urls = [x.receipt_url];
+          }
+
+          if (urls.length > 0) {
+            detailHtml += `<div style="margin-top:12px;font-size:12px;color:var(--text-muted);font-weight:500;">รูปภาพหลักฐานการจ่ายเงิน</div>`;
+            detailHtml += `<div class="receipt-preview-grid">`;
+            urls.forEach(src => {
+              detailHtml += `<img src="${src}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid rgba(255,255,255,0.1);" onclick="previewImage('${src}')">`;
+            });
+            detailHtml += `</div>`;
+          }
+        }
+
+        Swal.fire({
+          title: 'รายละเอียดการเบิก',
+          html: `<div style="text-align:left;margin-top:10px;">${detailHtml}</div>`,
+          confirmButtonText: 'ตกลง',
+          confirmButtonColor: '#10b981'
+        });
+
+      } catch (err) {
+        Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message, confirmButtonColor: '#ef4444' });
+      }
+    }
+
+    function previewImage(src) {
+      Swal.fire({
+        imageUrl: src,
+        imageAlt: 'Receipt Image',
+        showConfirmButton: false,
+        background: '#0f172a',
+        width: 'auto'
+      });
+    }
+
+    // ── Tab 4: Approvals Module logic ──
+    async function loadApprovalDashboard() {
+      const listEl = document.getElementById('approvalList');
+      listEl.innerHTML = '<div style="text-align:center;padding:20px;"><div class="boot-spinner" style="margin:0 auto;"></div></div>';
+      
+      try {
+        if (AppState.approvalTab === 'leave') {
+          // Leaves waiting for supervisor comment/check or HR approval
+          const pending = await api('user.list_pending'); // wait, list_pending in users?
+          // Actually, let's load all leaves and filter those waiting for check/comment/approval
+          const leavesData = await api('leave.list', { status: 'pending,checked,reviewed', per_page: 50 });
+          
+          // Filter leaves where user can act
+          let filtered = [];
+          if (leavesData.items) {
+            filtered = leavesData.items.filter(x => {
+              if (AppState.caps.includes('leave.approve') && x.status === 'reviewed') return true;
+              if (AppState.caps.includes('leave.comment') && x.status === 'checked') return true;
+              if (AppState.caps.includes('leave.check') && x.status === 'pending') return true;
+              // Admin can approve anything pending
+              if (AppState.user.role === 'admin' && ['pending', 'checked', 'reviewed'].includes(x.status)) return true;
+              return false;
+            });
+          }
+
+          if (filtered.length > 0) {
+            let html = '';
+            filtered.forEach(x => {
+              html += `
+                <div class="list-item" onclick="openApprovalDetail('leave', '${x.id}')">
+                  <div class="item-main">
+                    <span class="item-title">${x.full_name || 'ไม่ระบุชื่อ'}</span>
+                    <span class="item-desc">${getLeaveTypeLabel(x.leave_type)} · ${x.leave_unit === 'hour' ? `${x.hours} ชม.` : `${x.days} วัน`}</span>
+                  </div>
+                  <div class="item-meta">
+                    <span class="item-badge badge-pending">${getStatusLabel(x.status)}</span>
+                    <span style="font-size:10px;color:var(--text-muted)">${formatThaiDate(x.start_date)}</span>
+                  </div>
+                </div>
+              `;
+            });
+            listEl.innerHTML = html;
+          } else {
+            listEl.innerHTML = `
+              <div class="empty-state">
+                <i class="bi bi-check-all"></i>
+                ไม่มีใบลาที่รอคุณตรวจสอบหรืออนุมัติ
+              </div>
+            `;
+          }
+
+        } else {
+          // Expenses waiting for manager approval
+          const expData = await api('expense.list', { status: 'pending', per_page: 50 });
+          let filtered = [];
+          if (expData.items) {
+            filtered = expData.items.filter(x => {
+              // Supervisors/Admins can approve expense claims
+              return AppState.caps.includes('expense.manage') || AppState.user.role === 'admin';
+            });
+          }
+
+          if (filtered.length > 0) {
+            let html = '';
+            filtered.forEach(x => {
+              html += `
+                <div class="list-item" onclick="openApprovalDetail('expense', '${x.id}')">
+                  <div class="item-main">
+                    <span class="item-title">${x.full_name || 'ไม่ระบุชื่อ'} · ${x.amount.toLocaleString()} บาท</span>
+                    <span class="item-desc">${x.expense_type} · ${x.description || '-'}</span>
+                  </div>
+                  <div class="item-meta">
+                    <span class="item-badge badge-pending">รออนุมัติ</span>
+                    <span style="font-size:10px;color:var(--text-muted)">${formatThaiDate(x.expense_date)}</span>
+                  </div>
+                </div>
+              `;
+            });
+            listEl.innerHTML = html;
+          } else {
+            listEl.innerHTML = `
+              <div class="empty-state">
+                <i class="bi bi-check-all"></i>
+                ไม่มีใบเบิกค่าใช้จ่ายรอการอนุมัติ
+              </div>
+            `;
+          }
+        }
+      } catch (err) {
+        listEl.innerHTML = `<div class="empty-state" style="color:var(--danger)"><i class="bi bi-x-circle"></i> เกิดข้อผิดพลาด: ${err.message}</div>`;
+      }
+    }
+
+    function switchApprovalSubTab(tab) {
+      AppState.approvalTab = tab;
+      
+      const btnLeave = document.getElementById('btnApproveLeaveTab');
+      const btnExp = document.getElementById('btnApproveExpenseTab');
+
+      if (tab === 'leave') {
+        btnLeave.className = 'btn btn-primary';
+        btnExp.className = 'btn btn-secondary';
+      } else {
+        btnLeave.className = 'btn btn-secondary';
+        btnExp.className = 'btn btn-primary';
+      }
+      // remove border style from secondary
+      btnLeave.style.border = tab === 'leave' ? '' : 'none';
+      btnExp.style.border = tab === 'expense' ? '' : 'none';
+
+      loadApprovalDashboard();
+    }
+
+    async function openApprovalDetail(type, id) {
+      Swal.showLoading();
+      try {
+        const bodyEl = document.getElementById('approvalDetailContent');
+        document.getElementById('approvalComment').value = ''; // clear
+
+        if (type === 'leave') {
+          const res = await api('leave.get', { id: id });
+          const x = res.leave;
+          const u = res.requester || {};
+
+          document.getElementById('approvalDetailTitle').innerText = 'ตรวจสอบ/อนุมัติใบลา';
+          bodyEl.innerHTML = `
+            <div class="detail-row"><span class="detail-row-label">ผู้ส่งคำขอ: </span><span class="detail-val" style="font-weight:600;">${u.full_name} (${u.department})</span></div>
+            <div class="detail-row"><span class="detail-label">ประเภทการลา</span><span class="detail-val">${getLeaveTypeLabel(x.leave_type)}</span></div>
+            <div class="detail-row"><span class="detail-label">วันที่ลา</span><span class="detail-val">${formatThaiDate(x.start_date)} - ${formatThaiDate(x.end_date)}</span></div>
+            ${x.leave_unit === 'hour' ? `<div class="detail-row"><span class="detail-label">เวลาที่ลา</span><span class="detail-val">${x.start_time} - ${x.end_time} น. (${x.hours} ชม.)</span></div>` : `<div class="detail-row"><span class="detail-label">จำนวนวันลา</span><span class="detail-val">${x.days} วัน</span></div>`}
+            <div class="detail-row"><span class="detail-label">เหตุผลการลา</span><span class="detail-val">${x.reason || '-'}</span></div>
+            <div class="detail-row"><span class="detail-label">สถานะปัจจุบัน</span><span class="detail-val" style="color:var(--warning);font-weight:600;">${getStatusLabel(x.status)}</span></div>
+          `;
+
+          // Setup buttons actions for Leave Workflow
+          // Depending on status, the actions will call check/comment/approve
+          let actionName = 'leave.approve'; // default fallback
+          let approveText = 'อนุมัติการลา';
+          let rejectText = 'ไม่อนุมัติ';
+
+          if (x.status === 'pending') {
+            actionName = 'leave.check';
+            approveText = 'ผ่านการตรวจสอบ';
+            rejectText = 'ปฏิเสธ';
+          } else if (x.status === 'checked') {
+            actionName = 'leave.comment';
+            approveText = 'ให้ความเห็นชอบ';
+            rejectText = 'ไม่เห็นชอบ';
+          }
+
+          document.getElementById('btnApprove').innerHTML = `<i class="bi bi-check-circle"></i> ${approveText}`;
+          document.getElementById('btnReject').innerHTML = `<i class="bi bi-x-circle"></i> ${rejectText}`;
+
+          document.getElementById('btnApprove').onclick = () => submitApproval('leave', actionName, id, 'approve');
+          document.getElementById('btnReject').onclick = () => submitApproval('leave', actionName, id, 'reject');
+
+        } else {
+          const x = await api('expense.get', { id: id });
+          document.getElementById('approvalDetailTitle').innerText = 'อนุมัติใบเบิกค่าใช้จ่าย';
+
+          let imageHtml = '';
+          if (x.receipt_url) {
+            let urls = [];
+            try {
+              urls = x.receipt_url.startsWith('[') ? JSON.parse(x.receipt_url) : [x.receipt_url];
+            } catch(e){ urls = [x.receipt_url]; }
+            
+            if (urls.length > 0) {
+              imageHtml = `<div style="margin-top:12px;font-size:12px;color:var(--text-muted);">หลักฐานใบเสร็จ (คลิกเพื่อขยาย):</div>`;
+              imageHtml += `<div class="receipt-preview-grid">`;
+              urls.forEach(src => {
+                imageHtml += `<img src="${src}" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid rgba(255,255,255,0.1);" onclick="previewImage('${src}')">`;
+              });
+              imageHtml += `</div>`;
+            }
+          }
+
+          bodyEl.innerHTML = `
+            <div class="detail-row"><span class="detail-label">ผู้ส่งใบเบิก</span><span class="detail-val" style="font-weight:600;">${x.full_name} (${x.department || 'ไม่ระบุแผนก'})</span></div>
+            <div class="detail-row"><span class="detail-label">ประเภทค่าเบิก</span><span class="detail-val">${x.expense_type}</span></div>
+            <div class="detail-row"><span class="detail-label">วันที่จ่ายเงิน</span><span class="detail-val">${formatThaiDate(x.expense_date)}</span></div>
+            <div class="detail-row"><span class="detail-label">จำนวนเงินที่ขอเบิก</span><span class="detail-val" style="font-size:15px;color:var(--primary);font-weight:700;">${x.amount.toLocaleString()} บาท</span></div>
+            <div class="detail-row"><span class="detail-label">รายละเอียด</span><span class="detail-val">${x.description || '-'}</span></div>
+            ${imageHtml}
+          `;
+
+          document.getElementById('btnApprove').innerHTML = '<i class="bi bi-check-circle"></i> อนุมัติใบเบิก';
+          document.getElementById('btnReject').innerHTML = '<i class="bi bi-x-circle"></i> ปฏิเสธ';
+
+          document.getElementById('btnApprove').onclick = () => submitApproval('expense', 'expense.approve', id, 'approve');
+          document.getElementById('btnReject').onclick = () => submitApproval('expense', 'expense.approve', id, 'reject');
+        }
+
+        Swal.close();
+        openDrawer('approvalDetailDrawer');
+
+      } catch (err) {
+        Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message, confirmButtonColor: '#ef4444' });
+      }
+    }
+
+    async function submitApproval(type, action, id, decision) {
+      const comment = document.getElementById('approvalComment').value.trim();
+
+      let confirmText = decision === 'approve' ? 'อนุมัติรายการนี้ใช่หรือไม่?' : 'ปฏิเสธรายการนี้ใช่หรือไม่?';
+      
+      Swal.fire({
+        title: 'ยืนยันการทำรายการ',
+        text: confirmText,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: decision === 'approve' ? '#10b981' : '#ef4444',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'ยืนยัน',
+        cancelButtonText: 'ยกเลิก'
+      }).then(async (result) => {
+        if (result.isConfirmed) {
+          Swal.showLoading();
+          try {
+            const payload = { id: id };
+            
+            if (type === 'leave') {
+              if (action === 'leave.check') {
+                payload.checked = decision === 'approve';
+                payload.comment = comment;
+              } else if (action === 'leave.comment') {
+                payload.comment = comment;
+                // comment action is approval in step 2 (normally yes)
+              } else {
+                payload.approved = decision === 'approve';
+                payload.comment = comment;
+              }
+            } else {
+              // expense.approve
+              payload.approved = decision === 'approve';
+              payload.comment = comment;
+            }
+
+            await api(action, payload);
+
+            Swal.fire({
+              icon: 'success',
+              title: 'ทำรายการเสร็จสิ้น',
+              timer: 1500,
+              showConfirmButton: false
+            });
+
+            closeDrawer('approvalDetailDrawer');
+            await loadApprovalDashboard();
+
+          } catch (err) {
+            Swal.fire({ icon: 'error', title: 'การทำรายการล้มเหลว', text: err.message, confirmButtonColor: '#ef4444' });
+          }
+        }
+      });
+    }
+
+    // ── Helper Utilities ──
+    function getLeaveTypeLabel(type) {
+      const m = { sick: 'ลาป่วย', personal: 'ลากิจส่วนตัว', annual: 'ลาพักร้อน', compensatory: 'ลาหยุดชดเชย' };
+      return m[type.toLowerCase()] || type;
+    }
+
+    function getStatusLabel(status) {
+      const m = {
+        draft: 'ฉบับร่าง',
+        pending: 'รอตรวจสอบ',
+        checked: 'รอความเห็นหัวหน้างาน',
+        reviewed: 'รอฝ่ายบุคคลอนุมัติ',
+        approved: 'อนุมัติแล้ว',
+        rejected: 'ไม่อนุมัติ',
+        cancelled: 'ยกเลิก'
+      };
+      return m[status.toLowerCase()] || status;
+    }
+
+    function formatThaiDate(dateStr) {
+      if (!dateStr) return '';
+      try {
+        const d = new Date(dateStr);
+        const day = d.getDate();
+        const shortMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+        const m = shortMonths[d.getMonth()];
+        const y = d.getFullYear() + 543;
+        return `${day} ${m} ${y}`;
+      } catch(e) {
+        return dateStr;
+      }
+    }
+
+    // ── Drawer UI Controls ──
+    function openDrawer(id) {
+      document.getElementById('drawerOverlay').classList.add('active');
+      document.getElementById(id).classList.add('active');
+    }
+
+    function closeDrawer(id) {
+      document.getElementById(id).classList.remove('active');
+      // Check if any other drawer is active
+      const activeDrawers = document.querySelectorAll('.drawer.active');
+      if (activeDrawers.length === 0) {
+        document.getElementById('drawerOverlay').classList.remove('active');
+      }
+    }
+
+    function closeAllDrawers() {
+      document.querySelectorAll('.drawer').forEach(el => el.classList.remove('active'));
+      document.getElementById('drawerOverlay').classList.remove('active');
+    }
+  </script>
+</body>
+</html>

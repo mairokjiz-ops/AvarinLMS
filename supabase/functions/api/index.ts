@@ -74,7 +74,8 @@ const SHEETS = Object.freeze({
   AUDIT:    'AuditLog',
   MISSIONS:  'Missions',
   EXPENSES:  'Expenses',
-  HOLIDAYS:  'Holidays'
+  HOLIDAYS:  'Holidays',
+  CHECKINS:  'Checkins'
 });
 
 // ── Schemas ─────────────────────────────────────────────────
@@ -86,7 +87,8 @@ const SCHEMAS = Object.freeze({
   AuditLog: ['id','user_id','action','entity','entity_id','meta','created_at'],
   Missions: ['id','mission_no','requester_id','title','purpose','destination','start_date','end_date','transport_type','requested_amount','status','approver_id','approver_comment','approver_at','approved_amount','created_at','updated_at'],
   Expenses: ['id','expense_no','mission_id','expense_date','expense_type','description','amount','receipt_url','status','approver_id','approver_comment','approver_at','approved_amount','created_by','created_at','updated_at'],
-  Holidays: ['id','holiday_date','name','created_at','updated_at']
+  Holidays: ['id','holiday_date','name','created_at','updated_at'],
+  Checkins: ['id','user_id','check_in_at','check_out_at','check_in_lat','check_in_lng','check_out_lat','check_out_lng','check_in_loc','check_out_loc','status','created_at','updated_at']
 });
 
 // ── TEXT_COLUMNS — บังคับ Sheet เก็บเป็น text กัน auto-coercion ─
@@ -434,7 +436,7 @@ function _dbIdCol_(table) {
 }
 
 async function DB_warmCache() {
-  var tables = ['Users', 'Leaves', 'Sessions', 'Settings', 'AuditLog', 'Missions', 'Expenses', 'Holidays'];
+  var tables = ['Users', 'Leaves', 'Sessions', 'Settings', 'AuditLog', 'Missions', 'Expenses', 'Holidays', 'Checkins'];
   for (var i = 0; i < tables.length; i++) {
     var t = tables[i];
     var rows = await sbFetch('GET', t, 'select=*&limit=10000');
@@ -575,6 +577,55 @@ async function Auth_login(payload) {
     caps: CAPS[u.role] || [],
     expires_at: cfg_iso_(expires)
   };
+}
+
+async function Auth_lineLogin(p) {
+  var lineUserId = String(p && p.line_user_id || '').trim();
+  if (!lineUserId) throw new Error('กรุณาระบุ LINE User ID');
+
+  var u = DB_findOne(SHEETS.USERS, function (r) {
+    return String(r.line_user_id || '').trim() === lineUserId;
+  });
+  if (!u) throw new Error('ไม่พบบัญชีผู้ใช้ที่เชื่อมต่อกับ LINE นี้');
+  if (String(u.is_active || '').toLowerCase().trim() === 'pending') throw new Error('บัญชีของคุณรอการอนุมัติจากผู้ดูแลระบบหรือฝ่ายบุคคล');
+  if (!_yes_(u.is_active)) throw new Error('บัญชีนี้ถูกปิดการใช้งาน — โปรดติดต่อผู้ดูแลระบบ');
+
+  var hours = Number(_settingsRaw_('session_hours') || '8');
+  if (!hours || hours < 1) hours = 8;
+  var token = await cfg_token_();
+  var now = cfg_now_();
+  var expires = new Date(now.getTime() + hours * 3600 * 1000);
+  await DB_insert(SHEETS.SESSIONS, {
+    token: token,
+    user_id: u.id,
+    created_at: cfg_iso_(now),
+    expires_at: cfg_iso_(expires),
+    user_agent: 'LINE_LIFF'
+  });
+  await Audit_log_(u, 'auth.line_login', 'session', token.substring(0, 8), {});
+
+  return {
+    token: token,
+    user: Auth_publicUser_(u),
+    caps: CAPS[u.role] || [],
+    expires_at: cfg_iso_(expires)
+  };
+}
+
+async function Auth_linkLine(user, p) {
+  var lineUserId = String(p && p.line_user_id || '').trim();
+  if (!lineUserId) throw new Error('กรุณาระบุ LINE User ID');
+
+  var exists = DB_findOne(SHEETS.USERS, function (r) {
+    return String(r.line_user_id || '').trim() === lineUserId && r.id !== user.id;
+  });
+  if (exists) throw new Error('LINE ID นี้ถูกเชื่อมต่อกับบัญชีอื่นแล้ว');
+
+  await DB_update(SHEETS.USERS, user.id, {
+    line_user_id: lineUserId
+  });
+  await Audit_log_(user, 'auth.link_line', 'user', user.id, { line_user_id: lineUserId });
+  return { ok: true };
 }
 
 async function Auth_logout(token) {
@@ -2998,6 +3049,7 @@ async function api(req) {
 
     if (action === 'app.bootstrap')   return _ok(await Auth_bootstrap(token));
     if (action === 'auth.login')      return _ok(await Auth_login(p));
+    if (action === 'auth.line_login') return _ok(await Auth_lineLogin(p));
     if (action === 'auth.logout')     return _ok(await Auth_logout(token));
     if (action === 'user.register')   return _ok(await Users_register(p));
     if (action === 'auth.forgot_password') return _ok(await Auth_forgotPassword(p));
@@ -3068,6 +3120,12 @@ async function api(req) {
       case 'line.get_connect_code':   return _ok(await Users_getConnectCode(user));
       case 'line.disconnect':         return _ok(await Users_disconnectLine(user));
       case 'line.webhook_url':        return _ok(LINE_getWebhookUrl());
+      case 'auth.link_line':          return _ok(await Auth_linkLine(user, p));
+
+      case 'checkin.get_today':       return _ok(Checkins_getToday(user));
+      case 'checkin.clock_in':        return _ok(await Checkins_clockIn(user, p));
+      case 'checkin.clock_out':       return _ok(await Checkins_clockOut(user, p));
+      case 'checkin.list':            return _ok(Checkins_list(user, p));
 
       case 'holiday.list':            return _ok(Holidays_list(user, p));
       case 'holiday.upsert':          return _ok(await Holidays_upsert(user, p));
@@ -3079,6 +3137,102 @@ async function api(req) {
   } catch (e) {
     return _err(e);
   }
+}
+
+// === CHECKIN LOGIC ===
+function Checkins_list(user, p) {
+  var data = p || {};
+  var items = DB_readAll('Checkins');
+  
+  if (user.role !== 'admin' && user.role !== 'approver' && user.role !== 'supervisor') {
+    items = items.filter(function (r) { return r.user_id === user.id; });
+  } else if (data.user_id) {
+    items = items.filter(function (r) { return r.user_id === data.user_id; });
+  }
+  
+  items.sort(function(a, b) {
+    return new Date(b.check_in_at).getTime() - new Date(a.check_in_at).getTime();
+  });
+
+  var usersMap = DB_buildIndex('Users');
+  var enriched = items.map(function (item) {
+    var u = usersMap[item.user_id] || {};
+    return Object.assign({}, item, {
+      full_name: u.full_name || 'ไม่ระบุชื่อ',
+      department: u.department || 'ไม่ระบุแผนก'
+    });
+  });
+
+  var page = Number(data.page || 1);
+  var per = Number(data.per_page || 50);
+  var total = enriched.length;
+  var slice = enriched.slice((page-1)*per, page*per);
+
+  return { items: slice, total: total, page: page, per_page: per, pages: Math.ceil(total/per) };
+}
+
+function Checkins_getToday(user) {
+  var now = new Date();
+  var localTime = now.getTime() + (7 * 60 * 60 * 1000);
+  var todayDateStr = new Date(localTime).toISOString().substring(0, 10);
+  
+  var rows = DB_readAll('Checkins');
+  var todayRecord = rows.find(function (r) {
+    if (r.user_id !== user.id) return false;
+    var checkInLocal = new Date(new Date(r.check_in_at).getTime() + (7 * 60 * 60 * 1000)).toISOString().substring(0, 10);
+    return checkInLocal === todayDateStr;
+  });
+  
+  return todayRecord || null;
+}
+
+async function Checkins_clockIn(user, p) {
+  var data = p || {};
+  
+  var todayRecord = Checkins_getToday(user);
+  if (todayRecord) {
+    throw new Error('คุณได้เช็คอินเข้างานของวันนี้ไปแล้ว');
+  }
+
+  var now = new Date();
+  var record = await DB_insert('Checkins', {
+    user_id: user.id,
+    check_in_at: cfg_iso_(now),
+    check_out_at: null,
+    check_in_lat: data.latitude ? Number(data.latitude) : null,
+    check_in_lng: data.longitude ? Number(data.longitude) : null,
+    check_out_lat: null,
+    check_out_lng: null,
+    check_in_loc: String(data.location || '').trim() || 'พิกัด GPS',
+    check_out_loc: '',
+    status: 'normal'
+  });
+
+  await Audit_log_(user, 'checkin.clock_in', 'checkin', record.id, { check_in_at: record.check_in_at });
+  return record;
+}
+
+async function Checkins_clockOut(user, p) {
+  var data = p || {};
+  
+  var todayRecord = Checkins_getToday(user);
+  if (!todayRecord) {
+    throw new Error('ไม่พบประวัติการเช็คอินเข้างานของวันนี้ กรุณาเช็คอินเข้างานก่อน');
+  }
+  if (todayRecord.check_out_at) {
+    throw new Error('คุณได้เช็คเอาท์ออกงานของวันนี้ไปแล้ว');
+  }
+
+  var now = new Date();
+  var record = await DB_update('Checkins', todayRecord.id, {
+    check_out_at: cfg_iso_(now),
+    check_out_lat: data.latitude ? Number(data.latitude) : null,
+    check_out_lng: data.longitude ? Number(data.longitude) : null,
+    check_out_loc: String(data.location || '').trim() || 'พิกัด GPS'
+  });
+
+  await Audit_log_(user, 'checkin.clock_out', 'checkin', todayRecord.id, { check_out_at: record.check_out_at });
+  return record;
 }
 
 // === SERVE HANDLER ===
