@@ -2954,6 +2954,17 @@ async function _LINE_handleTextMessage_(event, replyToken, lineUserId) {
       await _LINE_startLeaveFlow_(replyToken, lineUserId, user);
       return;
     }
+    if (lowTxt === 'ตารางงาน' || lowTxt === 'เช็คตารางงาน' || lowTxt === 'schedule' || lowTxt === 'work schedule') {
+      var targetBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+      var isSchedulingUser = user && targetBranches.indexOf(user.branch) >= 0;
+      if (!isSchedulingUser) {
+        await LINE_replyTextMessage_(replyToken, "ℹ️ ระบบเช็คตารางงานเปิดให้ใช้งานเฉพาะพนักงานสาขาและพนักงานแทนเท่านั้นครับ");
+        return;
+      }
+      var scheduleFlex = await LINE_buildScheduleFlex_(user);
+      await LINE_replyMessage_(replyToken, [scheduleFlex]);
+      return;
+    }
     if (lowTxt === 'เบิกค่าใช้จ่าย' || lowTxt === 'เบิก' || lowTxt === 'expense') {
       await _LINE_startExpenseFlow_(replyToken, lineUserId);
       return;
@@ -3144,6 +3155,15 @@ async function _LINE_handlePostbackEvent_(event, replyToken, lineUserId) {
   } else if (action === 'check_quota') {
     var quotaFlex = LINE_buildLeaveQuotaFlex_(user);
     await LINE_replyMessage_(replyToken, [quotaFlex]);
+  } else if (action === 'check_schedule') {
+    var targetBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+    var isSchedulingUser = user && targetBranches.indexOf(user.branch) >= 0;
+    if (!isSchedulingUser) {
+      await LINE_replyTextMessage_(replyToken, "ℹ️ ระบบเช็คตารางงานเปิดให้ใช้งานเฉพาะพนักงานสาขาและพนักงานแทนเท่านั้นครับ");
+      return;
+    }
+    var scheduleFlex = await LINE_buildScheduleFlex_(user);
+    await LINE_replyMessage_(replyToken, [scheduleFlex]);
   } else if (action === 'check_status') {
     var latestLeave = _LINE_getLatestLeaveRequest_(user.id);
     if (!latestLeave) {
@@ -3590,6 +3610,22 @@ function LINE_buildPortalFlexForUser_(user) {
               margin: "sm",
               action: { type: "postback", label: "🔍 ติดตามสถานะใบลาล่าสุด", data: "action=check_status" }
             },
+            // Conditional button for checking work schedule
+            ...(function() {
+              var targetBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+              var isSchedulingUser = user && targetBranches.indexOf(user.branch) >= 0;
+              if (isSchedulingUser) {
+                return [{
+                  type: "button",
+                  style: "primary",
+                  color: "#8b5cf6",
+                  height: "sm",
+                  margin: "sm",
+                  action: { type: "postback", label: "📅 เช็คตารางงานของฉัน", data: "action=check_schedule" }
+                }];
+              }
+              return [];
+            })(),
             {
               type: "button",
               style: "primary",
@@ -4655,14 +4691,7 @@ async function _LINE_startLeaveFlow_(replyToken, lineUserId, user) {
     { type: "button", style: "primary", color: "#10b981", height: "sm", action: { type: "postback", label: "🏖️ ลาพักร้อน (Annual)", data: "action=submit_select_type&type=annual" } }
   ];
 
-  var targetBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
-  var isTargetUser = user && user.department === 'ฝ่ายขาย' && targetBranches.indexOf(user.branch) >= 0;
-  var isManagerOrTarget = isTargetUser || (user && (user.role === 'admin' || (user.role === 'supervisor' && user.department === 'ฝ่ายขาย')));
-
-  if (isManagerOrTarget) {
-    buttons.push({ type: "button", style: "primary", color: "#3b82f6", height: "sm", action: { type: "postback", label: "⏳ ลาหยุดชดเชย (Compensatory)", data: "action=submit_select_type&type=compensatory" } });
-    buttons.push({ type: "button", style: "primary", color: "#0284c7", height: "sm", action: { type: "postback", label: "💪 ขอทำงานในวันหยุด (Work on Off-day)", data: "action=submit_select_type&type=work_offday" } });
-  }
+  // Compensatory leave and Work on off-day systems have been removed from lineflex.
 
   buttons.push({ type: "separator", margin: "md" });
   buttons.push({ type: "button", style: "secondary", color: "#f3f4f6", height: "sm", action: { type: "postback", label: "❌ ยกเลิก", data: "action=submit_cancel" } });
@@ -5033,6 +5062,300 @@ function LINE_buildSubmitSuccessFlex_(user, lv) {
   return {
     type: "flex",
     altText: "ยื่นใบลาเรียบร้อยแล้ว!",
+    contents: bubble
+  };
+}
+
+function _calculateScheduleForMonth_(year, month) {
+  var allUsers = DB_readAll(SHEETS.USERS).filter(function (u) {
+    return String(u.is_active).toLowerCase() === 'yes';
+  });
+
+  var branches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+  var targetUsers = allUsers.filter(function (u) {
+    return branches.indexOf(u.branch) >= 0;
+  });
+
+  var leaves = DB_readAll(SHEETS.LEAVES).filter(function (lv) {
+    if (lv.status !== STATUS.APPROVED) return false;
+    var requesterId = String(lv.requester_id);
+    var isTargetUser = targetUsers.some(function (u) { return String(u.id) === requesterId; });
+    if (!isTargetUser) return false;
+    
+    var startOfMonth = new Date(year, month - 1, 1).getTime();
+    var endOfMonth = new Date(year, month, 0, 23, 59, 59, 999).getTime();
+    var lvStart = new Date(lv.start_date).getTime();
+    var lvEnd = new Date(lv.end_date || lv.start_date).getTime();
+    
+    return lvStart <= endOfMonth && lvEnd >= startOfMonth;
+  });
+
+  var lastDay = new Date(year, month, 0).getDate();
+  var dates = [];
+  
+  for (var d = 1; d <= lastDay; d++) {
+    var dateObj = new Date(year, month - 1, d);
+    var dateStr = year + '-' + ('0' + month).slice(-2) + '-' + ('0' + d).slice(-2);
+    var dayOfWeek = dateObj.getDay();
+    
+    var branchEmployees = [];
+    var substitutePool = [];
+    
+    targetUsers.forEach(function (u) {
+      var leaveInfo = null;
+      var activeLeave = null;
+      
+      leaves.forEach(function (lv) {
+        if (String(lv.requester_id) !== String(u.id)) return;
+        var start = new Date(lv.start_date + 'T00:00:00+07:00').getTime();
+        var end = new Date((lv.end_date || lv.start_date) + 'T23:59:59+07:00').getTime();
+        var current = new Date(dateStr + 'T12:00:00+07:00').getTime();
+        if (current >= start && current <= end) {
+          activeLeave = lv;
+          leaveInfo = { id: lv.id, leave_type: lv.leave_type, leave_no: lv.leave_no };
+        }
+      });
+      
+      var isOffDay = u.off_day !== null && u.off_day !== undefined && u.off_day !== '' && Number(u.off_day) === dayOfWeek;
+      
+      var status = 'working';
+      if (activeLeave) {
+        if (activeLeave.leave_type === 'work_offday') {
+          status = 'working';
+        } else {
+          status = 'leave';
+        }
+      } else if (isOffDay) {
+        status = 'off';
+      }
+      
+      var empState = {
+        id: u.id,
+        full_name: u.full_name,
+        position: u.position,
+        department: u.department,
+        branch: u.branch,
+        off_day: u.off_day,
+        status: status,
+        leave_info: leaveInfo,
+        substitute_by: null,
+        substituting_for: null
+      };
+      
+      if (u.branch === 'พนักงานแทน') {
+        substitutePool.push(empState);
+      } else {
+        branchEmployees.push(empState);
+      }
+    });
+
+    var needyEmployees = branchEmployees.filter(function (emp) {
+      return emp.status === 'off' || emp.status === 'leave';
+    });
+    
+    var availableSubstitutes = substitutePool.filter(function (sub) {
+      return sub.status === 'working';
+    });
+    
+    needyEmployees.forEach(function (emp) {
+      if (availableSubstitutes.length > 0) {
+        var sub = availableSubstitutes.shift();
+        emp.substitute_by = { id: sub.id, full_name: sub.full_name };
+        sub.status = 'substituting';
+        sub.substituting_for = { id: emp.id, full_name: emp.full_name, branch: emp.branch };
+      }
+    });
+
+    dates.push({
+      date: dateStr,
+      day_of_week: dayOfWeek,
+      branch_employees: branchEmployees,
+      substitutes: substitutePool
+    });
+  }
+
+  return dates;
+}
+
+function LINE_buildScheduleFlex_(user) {
+  var daysFullNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+  var monthsShortNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  
+  // Get Bangkok timezone current date
+  var bangkokToday = new Date(cfg_now_().getTime() + (7 * 60 * 60 * 1000));
+  
+  var scheduleCache = {};
+  function getDaySchedule(dateStr) {
+    var parts = dateStr.split('-');
+    var y = Number(parts[0]);
+    var m = Number(parts[1]);
+    var key = y + '-' + m;
+    if (!scheduleCache[key]) {
+      scheduleCache[key] = _calculateScheduleForMonth_(y, m);
+    }
+    var dayList = scheduleCache[key];
+    return dayList.find(function(d) { return d.date === dateStr; }) || null;
+  }
+  
+  var rowBlocks = [];
+  
+  for (var i = 0; i < 7; i++) {
+    var targetDate = new Date(bangkokToday.getTime() + i * 24 * 60 * 60 * 1000);
+    var y = targetDate.getUTCFullYear();
+    var m = targetDate.getUTCMonth() + 1;
+    var d = targetDate.getUTCDate();
+    var dateStr = y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2);
+    
+    var dayOfWeek = targetDate.getUTCDay();
+    var dayLabel = daysFullNames[dayOfWeek];
+    var dateLabel = d + ' ' + monthsShortNames[m - 1];
+    
+    var dayData = getDaySchedule(dateStr);
+    var statusText = 'ไม่พบตารางงาน';
+    var statusColor = '#6b7280';
+    var noteText = '';
+    
+    if (dayData) {
+      var emp = null;
+      if (user.branch === 'พนักงานแทน') {
+        emp = dayData.substitutes.find(function(x) { return String(x.id) === String(user.id); });
+      } else {
+        emp = dayData.branch_employees.find(function(x) { return String(x.id) === String(user.id); });
+      }
+      
+      if (emp) {
+        if (emp.status === 'working') {
+          statusText = '🟢 ปฏิบัติงานปกติ';
+          statusColor = '#10b981';
+        } else if (emp.status === 'off') {
+          statusText = '🔴 วันหยุดประจำสัปดาห์';
+          statusColor = '#ef4444';
+          if (emp.substitute_by) {
+            noteText = 'คนแทน: ' + emp.substitute_by.full_name;
+          }
+        } else if (emp.status === 'leave') {
+          var typeLabel = LEAVE_TYPE_LABEL[emp.leave_info ? emp.leave_info.leave_type : ''] || 'ลาหยุด';
+          statusText = '🟡 ' + typeLabel;
+          statusColor = '#f59e0b';
+          if (emp.substitute_by) {
+            noteText = 'คนแทน: ' + emp.substitute_by.full_name;
+          }
+        } else if (emp.status === 'substituting') {
+          statusText = '🔵 ปฏิบัติงานแทน';
+          statusColor = '#3b82f6';
+          if (emp.substituting_for) {
+            noteText = 'แทน ' + emp.substituting_for.full_name + ' (สาขา ' + emp.substituting_for.branch + ')';
+          }
+        }
+      }
+    }
+    
+    var rowContents = [
+      {
+        type: "box",
+        layout: "vertical",
+        width: "60px",
+        contents: [
+          { type: "text", text: dayLabel, size: "sm", weight: "bold", color: "#1f2937" },
+          { type: "text", text: dateLabel, size: "xs", color: "#6b7280", margin: "xs" }
+        ]
+      },
+      {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          { type: "text", text: statusText, size: "sm", weight: "bold", color: statusColor }
+        ]
+      }
+    ];
+    
+    if (noteText) {
+      rowContents[1].contents.push({
+        type: "text",
+        text: noteText,
+        size: "xs",
+        color: "#4b5563",
+        margin: "xs",
+        wrap: true
+      });
+    }
+    
+    rowBlocks.push({
+      type: "box",
+      layout: "horizontal",
+      spacing: "md",
+      margin: i > 0 ? "lg" : "none",
+      contents: rowContents
+    });
+  }
+  
+  var offDayLabel = 'ไม่กำหนด';
+  if (user.off_day !== null && user.off_day !== undefined && user.off_day !== '') {
+    offDayLabel = daysFullNames[Number(user.off_day)];
+  }
+  
+  var bubble = {
+    type: "bubble",
+    size: "mega",
+    header: {
+      type: "box",
+      layout: "vertical",
+      backgroundColor: "#6366f1",
+      paddingAll: "20px",
+      contents: [
+        { type: "text", text: "WORK SCHEDULE", color: "#e0e7ff", size: "xs", weight: "bold" },
+        { type: "text", text: "ตารางทำงานพนักงานสาขา", color: "#ffffff", size: "lg", weight: "bold", margin: "xs" }
+      ]
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      paddingAll: "20px",
+      spacing: "md",
+      contents: [
+        {
+          type: "box",
+          layout: "vertical",
+          backgroundColor: "#f5f3ff",
+          paddingAll: "14px",
+          cornerRadius: "10px",
+          contents: [
+            { type: "text", text: "👤 พนักงาน: " + user.full_name, size: "sm", weight: "bold", color: "#4c1d95" },
+            { type: "text", text: "📍 สาขา: " + user.branch, size: "xs", color: "#5b21b6", margin: "xs" },
+            { type: "text", text: "📅 วันหยุดประจำสัปดาห์: วัน" + offDayLabel, size: "xs", color: "#5b21b6", margin: "xs" }
+          ]
+        },
+        { type: "separator", margin: "md" },
+        {
+          type: "text",
+          text: "🗓️ แผนงาน 7 วันล่วงหน้า:",
+          weight: "bold",
+          size: "sm",
+          color: "#1f2937",
+          margin: "md"
+        },
+        {
+          type: "box",
+          layout: "vertical",
+          spacing: "sm",
+          contents: rowBlocks
+        },
+        { type: "separator", margin: "lg" },
+        {
+          type: "button",
+          style: "primary",
+          color: "#4f46e5",
+          height: "sm",
+          margin: "md",
+          action: { type: "postback", label: "📱 กลับหน้าพอร์ทัลหลัก", data: "action=portal" }
+        }
+      ]
+    }
+  };
+  
+  return {
+    type: "flex",
+    altText: "ตารางทำงานพนักงานสาขา",
     contents: bubble
   };
 }
