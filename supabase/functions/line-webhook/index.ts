@@ -691,6 +691,9 @@ function _LINE_tablesForEvent_(event) {
     if (txt === 'pending leaves' || txt === 'ใบลาค้าง' || txt === 'ใบลาค้างอนุมัติ') {
       tables.push('Leaves', 'Holidays');
     }
+    if (txt === 'ตารางงาน' || txt === 'เช็คตารางงาน' || txt === 'schedule' || txt === 'work schedule') {
+      tables.push('Leaves', 'Holidays');
+    }
     if (txt === 'เบิกค่าใช้จ่าย' || txt === 'เบิก' || txt === 'expense') {
       // no extra table needed yet
     }
@@ -704,7 +707,7 @@ function _LINE_tablesForEvent_(event) {
       }
     }
 
-    if (action.indexOf('submit_') === 0 || action === 'pending_leaves' || action === 'leave_decision' || action === 'check_quota' || action === 'check_status') {
+    if (action.indexOf('submit_') === 0 || action === 'pending_leaves' || action === 'leave_decision' || action === 'check_quota' || action === 'check_status' || action === 'check_schedule') {
       tables.push('Leaves', 'Holidays');
     }
 
@@ -5267,7 +5270,7 @@ function LINE_buildScheduleFlex_(user) {
         type: "box",
         layout: "vertical",
         contents: [
-          { type: "text", text: statusText, size: "sm", weight: "bold", color: statusColor }
+          { type: "text", text: statusText, size: "sm", weight: "bold", color: statusColor, wrap: true }
         ]
       }
     ];
