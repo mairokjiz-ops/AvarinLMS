@@ -16,24 +16,22 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
   <style>
-    /* ── Design Tokens & Base ───────────────────────────────── */
+    /* ── Apple Glassmorphism Design Tokens ───────────────────── */
     :root {
-      --primary: #10b981; /* Emerald green (often used for LINE apps/success) */
-      --primary-dark: #059669;
+      --primary: #10b981; /* Emerald green (LINE vibe / success) */
+      --primary-glow: rgba(16, 185, 129, 0.45);
       --secondary: #6366f1; /* Indigo */
-      --secondary-dark: #4f46e5;
-      --accent: #8b5cf6; /* Violet */
+      --secondary-glow: rgba(99, 102, 241, 0.45);
       --danger: #ef4444; /* Rose */
+      --danger-glow: rgba(239, 68, 68, 0.45);
       --warning: #f59e0b; /* Amber */
       --info: #0ea5e9; /* Sky */
-      --bg-dark: #0f172a; /* Sleek slate dark background */
-      --card-bg: rgba(30, 41, 59, 0.7); /* Translucent slate card */
-      --card-border: rgba(255, 255, 255, 0.08);
+      --glass-bg: rgba(255, 255, 255, 0.05); /* Light glass */
+      --glass-card: rgba(30, 41, 59, 0.45); /* Dark translucent slate */
+      --glass-border: rgba(255, 255, 255, 0.06);
+      --glass-glow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
       --text: #f8fafc;
       --text-muted: #94a3b8;
-      --glow-emerald: 0 0 20px rgba(16, 185, 129, 0.4);
-      --glow-indigo: 0 0 20px rgba(99, 102, 241, 0.4);
-      --glow-danger: 0 0 20px rgba(239, 68, 68, 0.4);
     }
 
     * {
@@ -46,27 +44,11 @@
 
     body {
       font-family: 'Kanit', 'Sarabun', 'Outfit', sans-serif;
-      background: linear-gradient(135deg, #090d16 0%, #0f172a 100%);
+      background: linear-gradient(135deg, #090e18 0%, #0d1527 50%, #090e18 100%);
       color: var(--text);
       min-height: 100vh;
       overflow-x: hidden;
       font-size: 14px;
-    }
-
-    input, textarea, select, button {
-      font-family: 'Sarabun', 'Kanit', sans-serif;
-    }
-
-    /* ── Scrollbars ─────────────────────────────────────────── */
-    ::-webkit-scrollbar {
-      width: 4px;
-    }
-    ::-webkit-scrollbar-track {
-      background: rgba(0,0,0,0.1);
-    }
-    ::-webkit-scrollbar-thumb {
-      background: rgba(255,255,255,0.1);
-      border-radius: 99px;
     }
 
     /* ── Layout & Wrapper ───────────────────────────────────── */
@@ -77,8 +59,8 @@
       display: flex;
       flex-direction: column;
       position: relative;
-      background: rgba(15, 23, 42, 0.6);
-      box-shadow: 0 0 60px rgba(0,0,0,0.5);
+      background: rgba(9, 14, 24, 0.4);
+      box-shadow: 0 0 60px rgba(0,0,0,0.6);
       border-left: 1px solid rgba(255, 255, 255, 0.03);
       border-right: 1px solid rgba(255, 255, 255, 0.03);
     }
@@ -88,7 +70,7 @@
       position: fixed;
       inset: 0;
       z-index: 9999;
-      background: linear-gradient(135deg, #090d16 0%, #0f172a 100%);
+      background: linear-gradient(135deg, #090e18 0%, #0d1527 100%);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -98,35 +80,29 @@
     .boot-logo {
       width: 80px;
       height: 80px;
-      border-radius: 24px;
+      border-radius: 22px;
       background: linear-gradient(135deg, var(--primary), var(--secondary));
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 38px;
       color: #fff;
-      box-shadow: var(--glow-emerald);
+      box-shadow: 0 0 25px var(--primary-glow);
       animation: pulse 2.5s infinite;
       margin-bottom: 20px;
     }
     @keyframes pulse {
-      0%, 100% { transform: scale(1); box-shadow: var(--glow-emerald); }
-      50% { transform: scale(1.06); box-shadow: var(--glow-indigo); }
+      0%, 100% { transform: scale(1); box-shadow: 0 0 25px var(--primary-glow); }
+      50% { transform: scale(1.05); box-shadow: 0 0 35px var(--secondary-glow); }
     }
     .boot-title {
-      font-size: 20px;
+      font-size: 22px;
       font-weight: 700;
-      letter-spacing: 0.5px;
       margin-bottom: 5px;
     }
-    .boot-sub {
-      color: var(--text-muted);
-      font-size: 12px;
-      margin-bottom: 25px;
-    }
     .boot-spinner {
-      width: 32px;
-      height: 32px;
+      width: 28px;
+      height: 28px;
       border: 3px solid rgba(255, 255, 255, 0.05);
       border-top-color: var(--primary);
       border-radius: 50%;
@@ -134,59 +110,171 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Setup & Setup Screen ────────────────────────────────── */
-    .setup-screen {
-      padding: 30px 20px;
+    /* ── Screen UI ──────────────────────────────────────────── */
+    .setup-screen, .login-screen {
+      padding: 30px 24px;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
       min-height: 100vh;
-      text-align: center;
-    }
-    .setup-card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 24px;
-      padding: 30px 20px;
-      width: 100%;
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
     }
 
-    /* ── Login Screen ───────────────────────────────────────── */
-    .login-screen {
-      padding: 40px 24px;
+    /* ── Cards & Glass UI ────────────────────────────────────── */
+    .card {
+      background: var(--glass-card);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 16px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      box-shadow: var(--glass-glow);
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .card-title i {
+      color: var(--primary);
+      font-size: 18px;
+    }
+
+    /* ── Header UI ──────────────────────────────────────────── */
+    .app-header {
+      background: rgba(9, 14, 24, 0.7);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--glass-border);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .user-profile {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .user-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 2px solid var(--primary);
+      object-fit: cover;
+      background: #1e293b;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+    }
+    .user-info {
       display: flex;
       flex-direction: column;
-      justify-content: center;
-      min-height: 100vh;
     }
-    .login-header {
-      text-align: center;
-      margin-bottom: 30px;
+    .user-name {
+      font-size: 14px;
+      font-weight: 600;
+      max-width: 180px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .login-logo {
-      width: 64px;
-      height: 64px;
-      border-radius: 18px;
-      background: linear-gradient(135deg, var(--primary), var(--secondary));
-      display: inline-flex;
+    .user-role {
+      font-size: 11px;
+      color: var(--primary);
+      font-weight: 500;
+    }
+    .header-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      color: var(--text-muted);
+      display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 32px;
+      font-size: 18px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .header-btn:hover {
       color: #fff;
-      margin-bottom: 15px;
-      box-shadow: 0 10px 25px rgba(16, 185, 129, 0.2);
+      background: rgba(255,255,255,0.1);
     }
-    .login-title {
-      font-size: 22px;
-      font-weight: 700;
-      margin-bottom: 5px;
+
+    /* ── Tab Layout & Navigation ────────────────────────────── */
+    .tab-content {
+      flex: 1;
+      padding: 20px;
+      padding-bottom: 110px;
     }
-    .login-desc {
+    .app-tab {
+      display: none;
+      animation: tabFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .app-tab.active {
+      display: block;
+    }
+    @keyframes tabFadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 480px;
+      background: rgba(9, 14, 24, 0.85);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-top: 1px solid var(--glass-border);
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      padding: 10px 0 20px;
+      z-index: 1000;
+      box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
+    }
+    .bottom-nav.nav-4 {
+      grid-template-columns: repeat(4, 1fr);
+    }
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
       color: var(--text-muted);
-      font-size: 13px;
+      cursor: pointer;
+      gap: 4px;
+      transition: all 0.3s;
+    }
+    .nav-item i {
+      font-size: 22px;
+      transition: transform 0.3s;
+    }
+    .nav-item span {
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .nav-item.active {
+      color: var(--primary);
+      text-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+    }
+    .nav-item.active i {
+      transform: translateY(-2px);
     }
 
     /* ── Form Controls ──────────────────────────────────────── */
@@ -205,8 +293,8 @@
     }
     .form-control {
       width: 100%;
-      background: rgba(15, 23, 42, 0.6);
-      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(9, 14, 24, 0.7);
+      border: 1px solid var(--glass-border);
       border-radius: 14px;
       padding: 12px 16px;
       color: #fff;
@@ -217,14 +305,6 @@
       outline: none;
       border-color: var(--primary);
       box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
-    }
-    select.form-control {
-      appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 16px center;
-      background-size: 16px;
-      padding-right: 40px;
     }
 
     /* ── Buttons ────────────────────────────────────────────── */
@@ -245,194 +325,29 @@
     }
     .btn-primary {
       background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-      box-shadow: 0 4px 15px rgba(16, 185, 129, 0.2);
+      box-shadow: 0 4px 15px var(--primary-glow);
     }
     .btn-primary:active {
       transform: scale(0.98);
-      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
     }
     .btn-secondary {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
       color: var(--text);
     }
     .btn-secondary:active {
-      background: rgba(255, 255, 255, 0.08);
-    }
-    .btn-danger {
-      background: linear-gradient(135deg, var(--danger) 0%, #dc2626 100%);
+      background: rgba(255,255,255,0.08);
     }
 
-    /* ── App Header ─────────────────────────────────────────── */
-    .app-header {
-      background: rgba(15, 23, 42, 0.8);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--card-border);
-      padding: 16px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
-    .user-profile {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .user-avatar {
-      width: 42px;
-      height: 42px;
-      border-radius: 50%;
-      border: 2px solid var(--primary);
-      object-fit: cover;
-      background: #1e293b;
-    }
-    .user-info {
-      display: flex;
-      flex-direction: column;
-    }
-    .user-name {
-      font-size: 14px;
-      font-weight: 600;
-      max-width: 180px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .user-role {
-      font-size: 11px;
-      color: var(--primary);
-      font-weight: 500;
-    }
-    .header-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .header-btn {
-      width: 38px;
-      height: 38px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255,255,255,0.06);
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
-      cursor: pointer;
-      transition: all 0.3s;
-    }
-    .header-btn:hover {
-      color: #fff;
-      background: rgba(255, 255, 255, 0.08);
-    }
-
-    /* ── Tab Switcher Layout ────────────────────────────────── */
-    .tab-content {
-      flex: 1;
-      padding: 20px;
-      padding-bottom: 100px;
-    }
-    .app-tab {
-      display: none;
-      animation: tabFadeIn 0.4s ease;
-    }
-    .app-tab.active {
-      display: block;
-    }
-    @keyframes tabFadeIn {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* ── Bottom Nav Bar ─────────────────────────────────────── */
-    .bottom-nav {
-      position: fixed;
-      bottom: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 100%;
-      max-width: 480px;
-      background: rgba(15, 23, 42, 0.95);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border-top: 1px solid var(--card-border);
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      padding: 8px 0 16px;
-      z-index: 1000;
-      box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
-    }
-    /* Dynamic grid for 3 vs 4 tabs based on approvals visibility */
-    .bottom-nav.nav-3 {
-      grid-template-columns: repeat(3, 1fr);
-    }
-    .nav-item {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      color: var(--text-muted);
-      cursor: pointer;
-      gap: 4px;
-      transition: all 0.3s;
-    }
-    .nav-item i {
-      font-size: 20px;
-      transition: transform 0.3s;
-    }
-    .nav-item span {
-      font-size: 11px;
-      font-weight: 500;
-    }
-    .nav-item.active {
-      color: var(--primary);
-    }
-    .nav-item.active i {
-      transform: translateY(-2px);
-    }
-
-    /* ── Card Styling ───────────────────────────────────────── */
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 20px;
-      padding: 18px;
-      margin-bottom: 16px;
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-    }
-    .card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 14px;
-    }
-    .card-title {
-      font-size: 15px;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .card-title i {
-      color: var(--primary);
-    }
-
-    /* ── Tab 1: Check-in Module ─────────────────────────────── */
+    /* ── Tab 1: Check-in with Camera Preview ─────────────────── */
     .clock-widget {
       text-align: center;
-      padding: 20px 0;
+      padding: 16px 0;
     }
     .clock-time {
       font-family: 'Outfit', sans-serif;
-      font-size: 48px;
+      font-size: 46px;
       font-weight: 800;
-      letter-spacing: -1px;
       background: linear-gradient(135deg, #fff 40%, var(--text-muted) 100%);
       -webkit-background-clip: text;
       background-clip: text;
@@ -442,19 +357,18 @@
     }
     .clock-date {
       color: var(--text-muted);
-      font-size: 13px;
-      font-weight: 500;
-      margin-bottom: 15px;
+      font-size: 12px;
+      margin-bottom: 12px;
     }
     .clock-status {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      background: rgba(255,255,255,0.04);
+      background: rgba(255,255,255,0.03);
       padding: 6px 14px;
       border-radius: 99px;
-      font-size: 12px;
-      border: 1px solid rgba(255,255,255,0.06);
+      font-size: 11px;
+      border: 1px solid var(--glass-border);
     }
     .status-dot {
       width: 8px;
@@ -472,15 +386,15 @@
     }
 
     .checkin-btn-container {
-      margin: 25px 0;
+      margin: 20px 0;
       display: flex;
       justify-content: center;
     }
     .checkin-btn {
-      width: 170px;
-      height: 170px;
+      width: 150px;
+      height: 150px;
       border-radius: 50%;
-      border: 6px solid rgba(15, 23, 42, 0.8);
+      border: 6px solid rgba(9, 14, 24, 0.85);
       color: #fff;
       display: flex;
       flex-direction: column;
@@ -492,10 +406,10 @@
       position: relative;
     }
     .checkin-btn i {
-      font-size: 42px;
+      font-size: 38px;
     }
     .checkin-btn span {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
     }
     .checkin-btn-in {
@@ -504,7 +418,6 @@
     }
     .checkin-btn-in:active {
       transform: scale(0.95);
-      box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
     }
     .checkin-btn-out {
       background: linear-gradient(135deg, var(--danger) 0%, #dc2626 100%);
@@ -512,7 +425,6 @@
     }
     .checkin-btn-out:active {
       transform: scale(0.95);
-      box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
     }
     .checkin-btn-disabled {
       background: #1e293b;
@@ -521,23 +433,83 @@
       box-shadow: none;
     }
 
-    /* ── Tab 2: Leave Module ────────────────────────────────── */
+    /* camera streaming container */
+    .camera-card {
+      position: relative;
+      overflow: hidden;
+      border-radius: 20px;
+      border: 1px solid var(--glass-border);
+      background: #000;
+      width: 100%;
+      aspect-ratio: 1/1; /* 1:1 Square aspect ratio for nice selfie */
+      margin-bottom: 16px;
+      box-shadow: var(--glass-glow);
+    }
+    .camera-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* mirror effect */
+    }
+    .camera-overlay {
+      position: absolute;
+      inset: 0;
+      border: 2px dashed rgba(255,255,255,0.15);
+      border-radius: 20px;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .camera-overlay::before {
+      content: '';
+      width: 70%;
+      height: 70%;
+      border: 2px dashed rgba(255,255,255,0.3);
+      border-radius: 50%;
+    }
+    .camera-captured-preview {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+      transform: scaleX(-1);
+    }
+    .camera-status {
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(9, 14, 24, 0.75);
+      backdrop-filter: blur(8px);
+      padding: 6px 14px;
+      border-radius: 99px;
+      font-size: 11px;
+      white-space: nowrap;
+      border: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ── Tab 2: Leave & Quotas ── */
     .quota-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-      margin-bottom: 20px;
+      gap: 10px;
+      margin-bottom: 18px;
     }
     .quota-card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 16px;
-      padding: 14px 8px;
+      background: var(--glass-card);
+      border: 1px solid var(--glass-border);
+      border-radius: 18px;
+      padding: 12px 6px;
       text-align: center;
+      box-shadow: var(--glass-glow);
     }
     .quota-val {
       font-family: 'Outfit', sans-serif;
-      font-size: 22px;
+      font-size: 20px;
       font-weight: 700;
     }
     .quota-lbl {
@@ -545,13 +517,8 @@
       color: var(--text-muted);
       margin-top: 2px;
     }
-    .quota-total {
-      font-size: 10px;
-      color: var(--text-muted);
-      opacity: 0.8;
-    }
 
-    /* ── List Items ─────────────────────────────────────────── */
+    /* ── Lists & History Items ── */
     .list-container {
       display: flex;
       flex-direction: column;
@@ -560,7 +527,7 @@
     .list-item {
       background: rgba(255,255,255,0.02);
       border: 1px solid rgba(255,255,255,0.04);
-      border-radius: 14px;
+      border-radius: 16px;
       padding: 12px 14px;
       display: flex;
       align-items: center;
@@ -594,21 +561,21 @@
       font-weight: 600;
       padding: 2px 10px;
       border-radius: 99px;
-      text-transform: uppercase;
+      border: 1px solid transparent;
     }
-    .badge-pending   { background: rgba(245, 158, 11, 0.1); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.2); }
-    .badge-approved  { background: rgba(16, 185, 129, 0.1); color: var(--primary); border: 1px solid rgba(16, 185, 129, 0.2); }
-    .badge-rejected  { background: rgba(239, 68, 68, 0.1);   color: var(--danger);  border: 1px solid rgba(239, 68, 68, 0.2); }
-    .badge-checked   { background: rgba(14, 165, 233, 0.1);  color: var(--info);    border: 1px solid rgba(14, 165, 233, 0.2); }
-    .badge-reviewed  { background: rgba(139, 92, 246, 0.1);  color: var(--accent);  border: 1px solid rgba(139, 92, 246, 0.2); }
-    .badge-cancelled { background: rgba(148, 163, 184, 0.1); color: var(--text-muted); border: 1px solid rgba(148, 163, 184, 0.2); }
+    .badge-pending   { background: rgba(245, 158, 11, 0.1); color: var(--warning); border-color: rgba(245, 158, 11, 0.2); }
+    .badge-approved  { background: rgba(16, 185, 129, 0.1); color: var(--primary); border-color: rgba(16, 185, 129, 0.2); }
+    .badge-rejected  { background: rgba(239, 68, 68, 0.1);   color: var(--danger);  border-color: rgba(239, 68, 68, 0.2); }
+    .badge-checked   { background: rgba(14, 165, 233, 0.1);  color: var(--info);    border-color: rgba(14, 165, 233, 0.2); }
+    .badge-reviewed  { background: rgba(139, 92, 246, 0.1);  color: var(--accent);  border-color: rgba(139, 92, 246, 0.2); }
+    .badge-cancelled { background: rgba(148, 163, 184, 0.1); color: var(--text-muted); border-color: rgba(148, 163, 184, 0.2); }
 
-    /* ── Slide Up Drawer ────────────────────────────────────── */
+    /* ── Slide Up Drawers ── */
     .drawer-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(4px);
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(6px);
       z-index: 1500;
       opacity: 0;
       pointer-events: none;
@@ -626,22 +593,23 @@
       width: 100%;
       max-width: 480px;
       max-height: 85vh;
-      background: #0f172a;
-      border-top-left-radius: 28px;
-      border-top-right-radius: 28px;
-      border: 1px solid var(--card-border);
+      background: #090e18;
+      border-top-left-radius: 24px;
+      border-top-right-radius: 24px;
+      border: 1px solid var(--glass-border);
       border-bottom: none;
       z-index: 2000;
-      transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
       display: flex;
       flex-direction: column;
+      box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
     }
     .drawer.active {
       transform: translate(-50%, 0);
     }
     .drawer-header {
       padding: 18px 20px;
-      border-bottom: 1px solid var(--card-border);
+      border-bottom: 1px solid var(--glass-border);
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -651,7 +619,7 @@
       font-weight: 600;
     }
     .drawer-close {
-      font-size: 20px;
+      font-size: 24px;
       color: var(--text-muted);
       cursor: pointer;
     }
@@ -661,25 +629,29 @@
       flex: 1;
     }
 
-    /* ── Receipt Upload Preview ─────────────────────────────── */
+    /* ── Image Upload Preview ── */
     .receipt-preview-grid {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
       margin-top: 10px;
     }
-    .receipt-thumb {
+    .receipt-thumb-wrapper {
+      position: relative;
       width: 72px;
       height: 72px;
+    }
+    .receipt-thumb {
+      width: 100%;
+      height: 100%;
       border-radius: 8px;
       object-fit: cover;
       border: 1px solid rgba(255,255,255,0.1);
-      position: relative;
     }
     .receipt-remove {
       position: absolute;
-      top: -6px;
-      right: -6px;
+      top: -5px;
+      right: -5px;
       width: 18px;
       height: 18px;
       border-radius: 50%;
@@ -688,11 +660,13 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 11px;
+      font-size: 10px;
       cursor: pointer;
+      font-weight: bold;
+      border: 1px solid #fff;
     }
 
-    /* ── Empty State ────────────────────────────────────────── */
+    /* ── Empty State ── */
     .empty-state {
       text-align: center;
       padding: 30px 10px;
@@ -704,12 +678,34 @@
       display: block;
     }
 
-    /* ── Settings Panel ─────────────────────────────────────── */
-    .settings-drawer .form-group {
-      margin-bottom: 15px;
+    /* ── Profile Stats ── */
+    .profile-card {
+      text-align: center;
+      padding: 24px;
+    }
+    .profile-avatar {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 3px solid var(--primary);
+      margin-bottom: 12px;
+      object-fit: cover;
+      box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .stat-lbl {
+      color: var(--text-muted);
+    }
+    .stat-val {
+      font-weight: 500;
     }
 
-    /* ── Approval Detail Drawer ─────────────────────────────── */
+    /* ── Detail Rows (Modal-like details) ── */
     .detail-row {
       display: flex;
       justify-content: space-between;
@@ -739,12 +735,12 @@
     <div class="boot-spinner"></div>
   </div>
 
-  <!-- ── Main App Container ── -->
+  <!-- ── App Container ── -->
   <div class="app-container">
 
-    <!-- ── Screen 1: LIFF Setup Form (Required if no liffId is present) ── -->
+    <!-- ── Setup Screen (LINE LIFF ID Configuration) ── -->
     <div id="setupScreen" class="setup-screen" style="display:none;">
-      <div class="setup-card">
+      <div class="card" style="width:100%;padding:25px;text-align:center;">
         <i class="bi bi-gear-fill" style="font-size:42px;color:var(--primary);margin-bottom:15px;display:block;"></i>
         <h3 style="margin-bottom:8px;">LINE LIFF Setup</h3>
         <p style="font-size:12px;color:var(--text-muted);margin-bottom:20px;">
@@ -760,7 +756,7 @@
       </div>
     </div>
 
-    <!-- ── Screen 2: LMS Account Login Screen (When LINE is not linked) ── -->
+    <!-- ── Login Screen (LMS Account Linkage) ── -->
     <div id="loginScreen" class="login-screen" style="display:none;">
       <div class="login-header">
         <div class="login-logo">
@@ -769,7 +765,7 @@
         <h3 class="login-title">เชื่อมต่อบัญชี AvarinLMS</h3>
         <p class="login-desc">กรอกชื่อผู้ใช้และรหัสผ่านเพื่อเข้าใช้งานและผูกบัญชีเข้ากับ LINE</p>
       </div>
-      <div class="card" style="padding:22px;">
+      <div class="card" style="width:100%;padding:22px;">
         <div class="form-group">
           <label class="form-label">ชื่อผู้ใช้ (Username)</label>
           <input type="text" id="loginUsername" class="form-control" placeholder="Username หรืออีเมล">
@@ -784,10 +780,10 @@
       </div>
     </div>
 
-    <!-- ── Screen 3: Main Dashboard Screen (Authenticated & Linked) ── -->
+    <!-- ── Screen 3: Dashboard Layout ── -->
     <div id="mainDashboard" style="display:none; flex:1; display:flex; flex-direction:column;">
       
-      <!-- Top Sticky Header -->
+      <!-- Sticky Top Header -->
       <div class="app-header">
         <div class="user-profile">
           <img id="headerAvatar" class="user-avatar" src="https://img.icons8.com/color/96/user-male-circle--v1.png" alt="Avatar">
@@ -798,15 +794,15 @@
         </div>
         <div class="header-actions">
           <div class="header-btn" onclick="openDrawer('settingsDrawer')" title="การตั้งค่า">
-            <i class="bi bi-gear"></i>
+            <i class="bi bi-sliders"></i>
           </div>
         </div>
       </div>
 
-      <!-- Tab Content Area -->
+      <!-- Tab View Content -->
       <div class="tab-content">
 
-        <!-- ── TAB 1: CHECK-IN ── -->
+        <!-- ── TAB 1: HOME & CHECK-IN ── -->
         <div id="tab-checkin" class="app-tab">
           <div class="card clock-widget">
             <div class="clock-time" id="liveClock">00:00:00</div>
@@ -817,116 +813,126 @@
             </div>
           </div>
 
-          <div class="checkin-btn-container">
-            <div id="checkinBtn" class="checkin-btn checkin-btn-disabled" onclick="handleClockAction()">
-              <i class="bi bi-fingerprint"></i>
-              <span id="checkinBtnText">เช็คอินเข้างาน</span>
+          <!-- Camera Stream Selfie Card -->
+          <div class="camera-card">
+            <video id="cameraVideo" class="camera-video" autoplay playsinline muted></video>
+            <img id="cameraCapturedPreview" class="camera-captured-preview" alt="Selfie Preview">
+            <div class="camera-overlay"></div>
+            <div class="camera-status">
+              <span id="gpsIndicator" class="status-dot"></span>
+              <span id="gpsStatusText">กำลังดึงพิกัด GPS...</span>
             </div>
           </div>
 
-          <!-- Geolocation Coordinates Display -->
+          <!-- Geolocation Notes Input -->
           <div class="card" style="padding:15px 18px;">
-            <div class="card-title" style="font-size:13px;margin-bottom:8px;">
-              <i class="bi bi-geo-alt"></i> พิกัดตำแหน่งปัจจุบัน
+            <div id="gpsDetails" style="font-size:12px;color:var(--text-muted);font-family:monospace;margin-bottom:10px;">
+              ละติจูด: -- | ลองจิจูด: --
             </div>
-            <div id="gpsLocationText" style="font-size:12px;color:var(--text-muted);font-family:monospace;">
-              กำลังระบุตำแหน่งจาก GPS...
+            <div class="form-group" style="margin-bottom:0;">
+              <input type="text" id="clockNotes" class="form-control" style="font-size:12px;padding:10px 14px;" placeholder="ระบุสถานที่/หมายเหตุ (เช่น WFH, ไปหาลูกค้า)">
             </div>
-            <div class="form-group" style="margin-top:12px;margin-bottom:0;">
-              <input type="text" id="clockNotes" class="form-control" style="font-size:12px;padding:8px 12px;" placeholder="ระบุสถานที่/หมายเหตุ (เช่น WFH, ไซต์งานลูกค้า)">
+          </div>
+
+          <!-- Large action button -->
+          <div class="checkin-btn-container">
+            <div id="checkinBtn" class="checkin-btn checkin-btn-disabled" onclick="handleClockAction()">
+              <i class="bi bi-fingerprint"></i>
+              <span id="checkinBtnText">ลงเวลาเข้างาน</span>
             </div>
           </div>
         </div>
 
         <!-- ── TAB 2: LEAVE REQUEST ── -->
         <div id="tab-leave" class="app-tab">
-          <!-- Quota Info Grid -->
+          <!-- Quotas info grid -->
           <div class="quota-grid">
             <div class="quota-card">
               <div id="quotaSickUsed" class="quota-val">0</div>
               <div class="quota-lbl">ลาป่วย</div>
-              <div id="quotaSickLimit" class="quota-total">/ 30 วัน</div>
+              <div id="quotaSickLimit" style="font-size:9px;color:var(--text-muted);">/ 30 วัน</div>
             </div>
             <div class="quota-card">
               <div id="quotaPersonalUsed" class="quota-val">0</div>
               <div class="quota-lbl">ลากิจ</div>
-              <div id="quotaPersonalLimit" class="quota-total">/ 6 วัน</div>
+              <div id="quotaPersonalLimit" style="font-size:9px;color:var(--text-muted);">/ 6 วัน</div>
             </div>
             <div class="quota-card">
               <div id="quotaAnnualUsed" class="quota-val">0</div>
               <div class="quota-lbl">ลาพักร้อน</div>
-              <div id="quotaAnnualLimit" class="quota-total">/ 10 วัน</div>
+              <div id="quotaAnnualLimit" style="font-size:9px;color:var(--text-muted);">/ 10 วัน</div>
             </div>
           </div>
 
-          <!-- Leave Actions -->
+          <!-- Request trigger -->
           <button onclick="openDrawer('leaveRequestDrawer')" class="btn btn-primary" style="margin-bottom:20px;">
             <i class="bi bi-plus-lg"></i> เขียนใบลาออนไลน์
           </button>
 
-          <!-- Leave List -->
+          <!-- History Logs -->
           <div class="card">
             <div class="card-header">
               <div class="card-title"><i class="bi bi-clock-history"></i> ประวัติการลาล่าสุด</div>
             </div>
             <div id="leaveList" class="list-container">
-              <!-- Dynamically populated -->
-              <div class="empty-state">
-                <i class="bi bi-calendar-x"></i>
-                ไม่มีประวัติการลา
-              </div>
+              <div class="empty-state"><i class="bi bi-calendar-x"></i>ไม่มีประวัติการลา</div>
             </div>
           </div>
         </div>
 
         <!-- ── TAB 3: EXPENSE CLAIM ── -->
         <div id="tab-expense" class="app-tab">
-          <!-- Expense Actions -->
           <button onclick="openDrawer('expenseRequestDrawer')" class="btn btn-primary" style="margin-bottom:20px;">
             <i class="bi bi-plus-lg"></i> ส่งใบเบิกค่าใช้จ่าย
           </button>
 
-          <!-- Expense List -->
           <div class="card">
             <div class="card-header">
               <div class="card-title"><i class="bi bi-receipt"></i> ประวัติการเบิกค่าใช้จ่าย</div>
             </div>
             <div id="expenseList" class="list-container">
-              <!-- Dynamically populated -->
-              <div class="empty-state">
-                <i class="bi bi-wallet2"></i>
-                ไม่มีประวัติการเบิกค่าใช้จ่าย
-              </div>
+              <div class="empty-state"><i class="bi bi-wallet2"></i>ไม่มีรายการเบิกเงิน</div>
             </div>
           </div>
         </div>
 
-        <!-- ── TAB 4: APPROVAL (SUPERVISOR / HR) ── -->
+        <!-- ── TAB 4: APPROVAL HUB (SUPERVISORS / ADMIN) ── -->
         <div id="tab-approval" class="app-tab">
-          <!-- Segment Control for Approvals -->
-          <div class="card" style="padding:5px;display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:16px;">
-            <button id="btnApproveLeaveTab" onclick="switchApprovalSubTab('leave')" class="btn btn-primary" style="padding:8px;font-size:12px;border-radius:10px;">
+          <div class="card" style="padding:4px;display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:16px;">
+            <button id="btnApproveLeaveTab" onclick="switchApprovalSubTab('leave')" class="btn btn-primary" style="padding:8px;font-size:11px;border-radius:10px;">
               อนุมัติการลา
             </button>
-            <button id="btnApproveExpenseTab" onclick="switchApprovalSubTab('expense')" class="btn btn-secondary" style="padding:8px;font-size:12px;border-radius:10px;border:none;">
+            <button id="btnApproveExpenseTab" onclick="switchApprovalSubTab('expense')" class="btn btn-secondary" style="padding:8px;font-size:11px;border-radius:10px;border:none;">
               อนุมัติการเบิก
+            </button>
+            <button id="btnApproveCheckinTab" onclick="switchApprovalSubTab('checkin')" class="btn btn-secondary" style="padding:8px;font-size:11px;border-radius:10px;border:none;">
+              การเข้างานวันนี้
             </button>
           </div>
 
-          <!-- Pending Approvals list -->
           <div id="approvalList" class="list-container">
-            <!-- Dynamically populated -->
-            <div class="empty-state">
-              <i class="bi bi-check-all"></i>
-              ไม่มีรายการรออนุมัติ
-            </div>
+            <div class="empty-state"><i class="bi bi-check-all"></i>ไม่มีรายการรอดำเนินการ</div>
+          </div>
+        </div>
+
+        <!-- ── TAB 5: PROFILE ── -->
+        <div id="tab-profile" class="app-tab">
+          <div class="card profile-card">
+            <img id="profileAvatar" class="profile-avatar" src="https://img.icons8.com/color/96/user-male-circle--v1.png" alt="Avatar">
+            <h3 id="profileName" style="margin-bottom:4px;">...</h3>
+            <p id="profilePosition" style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:20px;">...</p>
+            
+            <div class="stat-row"><span class="stat-lbl">รหัสพนักงาน</span><span id="profileUserId" class="stat-val">--</span></div>
+            <div class="stat-row"><span class="stat-lbl">แผนก</span><span id="profileDept" class="stat-val">--</span></div>
+            <div class="stat-row"><span class="stat-lbl">สาขาปฏิบัติงาน</span><span id="profileBranch" class="stat-val">--</span></div>
+            <div class="stat-row"><span class="stat-lbl">สถานะ LINE</span><span id="profileLineStatus" class="stat-val" style="color:var(--primary)">เชื่อมต่อแล้ว</span></div>
           </div>
         </div>
 
       </div>
 
-      <!-- Bottom Navigation Bar -->
-      <div id="bottomNav" class="bottom-nav">
+      <!-- Bottom Apple-Style Navigation Bar -->
+      <div id="bottomNav" class="bottom-nav nav-4">
         <div class="nav-item active" onclick="switchTab('checkin')">
           <i class="bi bi-fingerprint"></i>
           <span>เข้างาน</span>
@@ -937,11 +943,15 @@
         </div>
         <div class="nav-item" onclick="switchTab('expense')">
           <i class="bi bi-wallet2"></i>
-          <span>เบิกค่าใช้จ่าย</span>
+          <span>เบิกเงิน</span>
         </div>
         <div id="navApprovalItem" class="nav-item" onclick="switchTab('approval')" style="display:none;">
           <i class="bi bi-check-circle"></i>
           <span>อนุมัติ</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('profile')">
+          <i class="bi bi-person"></i>
+          <span>โปรไฟล์</span>
         </div>
       </div>
 
@@ -951,10 +961,9 @@
 
   <!-- ── DRAWERS (SLIDE UP FORMS) ── -->
 
-  <!-- Drawer Overlay -->
   <div id="drawerOverlay" class="drawer-overlay" onclick="closeAllDrawers()"></div>
 
-  <!-- Settings Drawer -->
+  <!-- Settings / Config Drawer -->
   <div id="settingsDrawer" class="drawer">
     <div class="drawer-header">
       <div class="drawer-title">การตั้งค่าระบบ</div>
@@ -967,7 +976,7 @@
       </div>
       <div class="form-group">
         <label class="form-label">AvarinLMS API Web URL</label>
-        <input type="text" id="settingsWebUrl" class="form-control" placeholder="http://localhost:8000">
+        <input type="text" id="settingsWebUrl" class="form-control" placeholder="https://djcvqxjwakiorahdiwwk.supabase.co">
       </div>
       <div style="display:flex;gap:12px;margin-top:25px;">
         <button onclick="saveSettings()" class="btn btn-primary" style="flex:1;">
@@ -980,7 +989,7 @@
     </div>
   </div>
 
-  <!-- Leave Request Drawer -->
+  <!-- Leave Request Form Drawer -->
   <div id="leaveRequestDrawer" class="drawer">
     <div class="drawer-header">
       <div class="drawer-title">เขียนใบลาออนไลน์</div>
@@ -1043,10 +1052,10 @@
     </div>
   </div>
 
-  <!-- Expense Request Drawer -->
+  <!-- Expense Claim Drawer -->
   <div id="expenseRequestDrawer" class="drawer">
     <div class="drawer-header">
-      <div class="drawer-title">ส่งคำขอเบิกค่าใช้จ่าย</div>
+      <div class="drawer-title">ส่งใบเบิกค่าใช้จ่าย</div>
       <div class="drawer-close" onclick="closeDrawer('expenseRequestDrawer')">&times;</div>
     </div>
     <div class="drawer-body">
@@ -1091,23 +1100,23 @@
     </div>
   </div>
 
-  <!-- Approval Detail Drawer -->
+  <!-- Approval Detail view drawer -->
   <div id="approvalDetailDrawer" class="drawer">
     <div class="drawer-header">
-      <div id="approvalDetailTitle" class="drawer-title">คำร้องขอการอนุมัติ</div>
+      <div id="approvalDetailTitle" class="drawer-title">คำร้องขออนุมัติ</div>
       <div class="drawer-close" onclick="closeDrawer('approvalDetailDrawer')">&times;</div>
     </div>
     <div class="drawer-body">
       <div id="approvalDetailContent" style="margin-bottom:20px;">
-        <!-- Dynamically populated detail rows -->
+        <!-- Dynamically filled -->
       </div>
       
-      <div class="form-group">
-        <label class="form-label">ความเห็นผู้อนุมัติ (ความคิดเห็นเพิ่มเติม)</label>
+      <div class="form-group" id="approvalCommentGroup">
+        <label class="form-label">ความเห็นผู้อนุมัติ (ใส่ความเห็นเพิ่มเติม)</label>
         <textarea id="approvalComment" class="form-control" rows="2" placeholder="ใส่ความเห็นเพิ่มเติม (ไม่บังคับ)"></textarea>
       </div>
 
-      <div style="display:flex;gap:12px;margin-top:20px;">
+      <div style="display:flex;gap:12px;margin-top:20px;" id="approvalActionButtons">
         <button id="btnApprove" class="btn btn-primary" style="flex:1;">
           <i class="bi bi-check-circle"></i> อนุมัติ
         </button>
@@ -1132,8 +1141,17 @@
       currentGps: null,
       currentTab: 'checkin',
       todayCheckin: null,
-      approvalTab: 'leave', // leave or expense
-      chosenReceipts: [] // compressed base64 images
+      approvalTab: 'leave', // leave, expense, or checkin
+      chosenReceipts: [],
+      cameraStream: null
+    };
+
+    // ── Office Locations Coordinates Mapping ──
+    const BRANCH_COORDINATES = {
+      'ออฟฟิต': { latitude: 13.7563, longitude: 100.5018, name: 'ออฟฟิศหลัก' }, // Pin Klao
+      'ราชพฤกษ์': { latitude: 13.8052, longitude: 100.4578, name: 'สาขาราชพฤกษ์' },
+      'วิรันด้า': { latitude: 13.7198, longitude: 100.6087, name: 'สาขาวิรันด้า' },
+      'ปอโต': { latitude: 13.5684, longitude: 100.2795, name: 'สาขาปอร์โต้' }
     };
 
     // ── Fallback configuration defaults ──
@@ -1146,7 +1164,6 @@
       if (currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1')) {
         AppState.webUrl = 'http://localhost:8000';
       } else {
-        // Default to production Supabase project URL
         AppState.webUrl = 'https://djcvqxjwakiorahdiwwk.supabase.co';
       }
       localStorage.setItem('liff_web_url', AppState.webUrl);
@@ -1193,7 +1210,6 @@
     window.addEventListener('DOMContentLoaded', async () => {
       startLiveClock();
       
-      // Update config inputs
       document.getElementById('settingsLiffId').value = AppState.liffId;
       document.getElementById('settingsWebUrl').value = AppState.webUrl;
 
@@ -1221,25 +1237,20 @@
         setBootText('ดึงข้อมูลโปรไฟล์ LINE...');
         const profile = await liff.getProfile();
         AppState.lineProfile = profile;
-        console.log('LINE Profile retrieved:', profile);
 
-        // Try direct login using LINE User ID
         await attemptLineLogin(profile.userId);
 
       } catch (err) {
         console.error('LIFF initialization failed:', err);
         
-        // Render fallback for development/testing outside LINE
         Swal.fire({
           icon: 'warning',
-          title: 'LIFF SDK Error',
-          html: `<p style="font-size:13px;text-align:left;">ระบบไม่สามารถเริ่มทำงานในโหมด LINE App ได้โดยตรง (อาจเนื่องมาจาก LIFF ID ไม่ถูกต้อง หรือกำลังรันในเบราว์เซอร์ปกติ)</p>
-                 <p style="font-size:13px;text-align:left;margin-top:10px;font-weight:600;color:var(--primary);">คุณสามารถข้ามขั้นตอนนี้เพื่อทดสอบผ่านหน้าเข้าสู่ระบบแทน</p>`,
-          confirmButtonText: 'เข้าสู่ระบบแบบปกติ',
+          title: 'LINE LIFF Mode Fallback',
+          text: 'ระบบรันในโหมดจำลองนอกไลน์แอป กรุณาเข้าสู่ระบบด้วย Username/Password ปกติ',
+          confirmButtonText: 'เข้าสู่ระบบ',
           confirmButtonColor: '#10b981'
         }).then(() => {
           hideLoader();
-          // Verify if session token exists
           if (AppState.token) {
             loadUserProfileAndDashboard();
           } else {
@@ -1264,7 +1275,7 @@
       } catch (err) {
         console.warn('LINE User ID not linked yet:', err.message);
         hideLoader();
-        showScreen('loginScreen'); // Prompt username/pwd link
+        showScreen('loginScreen');
       }
     }
 
@@ -1280,21 +1291,17 @@
 
       Swal.showLoading();
       try {
-        // 1. Authenticate with AvarinLMS
         const loginRes = await api('auth.login', { username, password });
         AppState.token = loginRes.token;
         AppState.user = loginRes.user;
         AppState.caps = loginRes.caps;
         localStorage.setItem('liff_token', loginRes.token);
 
-        // 2. Link LINE account if available
         if (AppState.lineProfile && AppState.lineProfile.userId) {
           try {
             await api('auth.link_line', { line_user_id: AppState.lineProfile.userId });
-            console.log('Linked LINE User ID successfully:', AppState.lineProfile.userId);
           } catch (linkErr) {
-            console.error('Failed to auto-link LINE:', linkErr.message);
-            // Non-blocking, continue login
+            console.error('Failed to link LINE:', linkErr.message);
           }
         }
 
@@ -1318,26 +1325,25 @@
       hideLoader();
       showScreen('mainDashboard');
       updateHeaderUI();
+      updateProfileUI();
       startGeolocating();
       
-      // Update tab layout based on permissions (approvals tab)
       const isApprover = AppState.caps.includes('leave.approve') || AppState.caps.includes('mission.approve') || AppState.caps.includes('expense.manage');
       const nav = document.getElementById('bottomNav');
       const navAppr = document.getElementById('navApprovalItem');
       
       if (isApprover) {
         navAppr.style.display = 'flex';
-        nav.classList.remove('nav-3');
+        nav.classList.remove('nav-4');
       } else {
         navAppr.style.display = 'none';
-        nav.classList.add('nav-3');
+        nav.classList.add('nav-4');
       }
 
-      // Initial tab load
       switchTab('checkin');
     }
 
-    // ── Load User Profile & Dashboard Fallback ──
+    // ── Load User Profile Fallback ──
     async function loadUserProfileAndDashboard() {
       try {
         const res = await api('auth.me');
@@ -1345,7 +1351,6 @@
         AppState.caps = res.caps;
         await completeLoginFlow();
       } catch (err) {
-        console.error('Session expired:', err);
         localStorage.removeItem('liff_token');
         AppState.token = '';
         showScreen('loginScreen');
@@ -1376,12 +1381,28 @@
       document.getElementById('headerName').innerText = AppState.user.full_name;
       document.getElementById('headerRole').innerText = AppState.user.position || 'พนักงาน';
       
-      // Load avatar
       const avatarEl = document.getElementById('headerAvatar');
       if (AppState.lineProfile && AppState.lineProfile.pictureUrl) {
         avatarEl.src = AppState.lineProfile.pictureUrl;
       } else if (AppState.user.avatar) {
         avatarEl.src = AppState.user.avatar;
+      }
+    }
+
+    function updateProfileUI() {
+      if (!AppState.user) return;
+      document.getElementById('profileName').innerText = AppState.user.full_name;
+      document.getElementById('profilePosition').innerText = AppState.user.position || 'พนักงาน';
+      document.getElementById('profileUserId').innerText = AppState.user.id.substring(0,8).toUpperCase();
+      document.getElementById('profileDept').innerText = AppState.user.department || 'ไม่ระบุแผนก';
+      document.getElementById('profileBranch').innerText = AppState.user.branch || 'ออฟฟิศหลัก';
+      document.getElementById('profileLineStatus').innerText = AppState.user.line_user_id ? 'เชื่อมโยงกับ LINE สำเร็จ' : 'ยังไม่ได้เชื่อมโยง';
+      
+      const pAvatar = document.getElementById('profileAvatar');
+      if (AppState.lineProfile && AppState.lineProfile.pictureUrl) {
+        pAvatar.src = AppState.lineProfile.pictureUrl;
+      } else if (AppState.user.avatar) {
+        pAvatar.src = AppState.user.avatar;
       }
     }
 
@@ -1422,7 +1443,7 @@
     function handleLogout() {
       Swal.fire({
         title: 'ยืนยันการออกจากระบบ?',
-        text: 'บัญชีของคุณจะถูกยกเลิกการเชื่อมโยงกับอุปกรณ์เครื่องนี้',
+        text: 'ประวัติการใช้งานและข้อมูล LINE เชื่อมโยงจะถูกลบออกจากอุปกรณ์นี้',
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#ef4444',
@@ -1447,13 +1468,13 @@
     function switchTab(tabId) {
       AppState.currentTab = tabId;
       
-      // Update Tab CSS
       document.querySelectorAll('.app-tab').forEach(el => el.classList.remove('active'));
       document.getElementById(`tab-${tabId}`).classList.add('active');
 
-      // Update Nav CSS
       document.querySelectorAll('.nav-item').forEach((el, index) => {
-        const tabs = ['checkin', 'leave', 'expense', 'approval'];
+        const tabs = AppState.caps.includes('leave.approve') || AppState.caps.includes('mission.approve') || AppState.caps.includes('expense.manage')
+          ? ['checkin', 'leave', 'expense', 'approval', 'profile']
+          : ['checkin', 'leave', 'expense', 'profile'];
         if (tabs[index] === tabId) {
           el.classList.add('active');
         } else {
@@ -1461,41 +1482,40 @@
         }
       });
 
-      // Load Tab-specific data
+      // Manage camera resource
       if (tabId === 'checkin') {
+        startCamera();
         loadTodayCheckin();
-      } else if (tabId === 'leave') {
+      } else {
+        stopCamera();
+      }
+
+      if (tabId === 'leave') {
         loadLeaveDashboard();
       } else if (tabId === 'expense') {
         loadExpenseDashboard();
       } else if (tabId === 'approval') {
         loadApprovalDashboard();
+      } else if (tabId === 'profile') {
+        updateProfileUI();
       }
     }
 
-    // ── Live Clock & Date Widget ──
+    // ── Live Clock Widget ──
     function startLiveClock() {
       const liveClock = document.getElementById('liveClock');
       const liveDate = document.getElementById('liveDate');
       
-      const thaiMonths = [
-        'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
-        'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
-      ];
-      const thaiDays = [
-        'วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'
-      ];
+      const thaiMonths = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+      const thaiDays = ['วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'];
 
       setInterval(() => {
         const now = new Date();
-        
-        // Clock Time (hh:mm:ss)
         const hr = String(now.getHours()).padStart(2, '0');
         const min = String(now.getMinutes()).padStart(2, '0');
         const sec = String(now.getSeconds()).padStart(2, '0');
         liveClock.innerText = `${hr}:${min}:${sec}`;
 
-        // Date String (Day D Month YYYY)
         const dayName = thaiDays[now.getDay()];
         const date = now.getDate();
         const month = thaiMonths[now.getMonth()];
@@ -1504,7 +1524,87 @@
       }, 1000);
     }
 
-    // ── Tab 1: Check-in logic ──
+    // ── Geolocation & Camera Selfie Check-in ──
+    async function startCamera() {
+      stopCamera(); // Safety clear
+      document.getElementById('cameraVideo').style.display = 'block';
+      document.getElementById('cameraCapturedPreview').style.display = 'none';
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: 640, height: 640 },
+          audio: false
+        });
+        AppState.cameraStream = stream;
+        const video = document.getElementById('cameraVideo');
+        video.srcObject = stream;
+      } catch (err) {
+        console.error('Camera access failed:', err);
+        Swal.fire({
+          icon: 'error',
+          title: 'กล้องไม่พร้อมใช้งาน',
+          text: 'ระบบไม่สามารถเปิดกล้องหน้าของคุณได้ โปรดเปิดสิทธิ์ในการใช้กล้องของเบราว์เซอร์',
+          confirmButtonColor: '#ef4444'
+        });
+      }
+    }
+
+    function stopCamera() {
+      if (AppState.cameraStream) {
+        AppState.cameraStream.getTracks().forEach(track => track.stop());
+        AppState.cameraStream = null;
+      }
+    }
+
+    function startGeolocating() {
+      const gpsInd = document.getElementById('gpsIndicator');
+      const gpsTxt = document.getElementById('gpsStatusText');
+      const gpsDtl = document.getElementById('gpsDetails');
+
+      if (!navigator.geolocation) {
+        gpsTxt.innerText = 'เบราว์เซอร์ไม่รองรับ GPS';
+        gpsInd.className = 'status-dot danger';
+        return;
+      }
+
+      gpsTxt.innerText = 'กำลังระบุตำแหน่ง...';
+      navigator.geolocation.watchPosition(
+        (pos) => {
+          AppState.currentGps = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude
+          };
+          gpsInd.className = 'status-dot active';
+          
+          // Calculate distance to branch
+          const branchName = (AppState.user && AppState.user.branch) || 'ออฟฟิต';
+          const branch = BRANCH_COORDINATES[branchName] || BRANCH_COORDINATES['ออฟฟิต'];
+          const distance = calculateDistance(pos.coords.latitude, pos.coords.longitude, branch.latitude, branch.longitude);
+
+          gpsTxt.innerText = `ห่างจาก ${branch.name}: ${distance.toFixed(0)} ม.`;
+          gpsDtl.innerHTML = `ละติจูด: ${pos.coords.latitude.toFixed(6)} | ลองจิจูด: ${pos.coords.longitude.toFixed(6)} (ความแม่นยำ ${pos.coords.accuracy.toFixed(0)} ม.)`;
+        },
+        (err) => {
+          gpsInd.className = 'status-dot danger';
+          gpsTxt.innerText = 'สัญญาณ GPS ล้มเหลว';
+          gpsDtl.innerText = 'กรุณาเปิดระบบหาตำแหน่งบนโทรศัพท์';
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+      );
+    }
+
+    // Geodetic Distance calculation helper (Haversine formula)
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3; // Earth radius in meters
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c; // in meters
+    }
+
     async function loadTodayCheckin() {
       try {
         const res = await api('checkin.get_today');
@@ -1518,24 +1618,21 @@
         btn.className = 'checkin-btn'; // reset
 
         if (!res) {
-          // Not Clocked-in yet
           dot.className = 'status-dot';
           txt.innerText = 'วันนี้คุณยังไม่ได้เช็คอินเข้างาน';
           btn.classList.add('checkin-btn-in');
           btnText.innerText = 'เช็คอินเข้างาน';
         } else if (res && !res.check_out_at) {
-          // Clocked-in, but not clocked-out
           dot.className = 'status-dot active';
           const t = new Date(res.check_in_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-          txt.innerText = `เช็คอินแล้ววันนี้เมื่อเวลา ${t} น.`;
+          txt.innerText = `เช็คอินเข้างานแล้ววันนี้เมื่อเวลา ${t} น.`;
           btn.classList.add('checkin-btn-out');
           btnText.innerText = 'เช็คเอาท์ออกงาน';
         } else {
-          // Both Clocked-in and Clocked-out
           dot.className = 'status-dot danger';
           const inT = new Date(res.check_in_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
           const outT = new Date(res.check_out_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-          txt.innerText = `เช็คอินเข้างาน: ${inT} น. · เช็คเอาท์ออกงาน: ${outT} น.`;
+          txt.innerText = `เข้างาน: ${inT} น. · ออกงาน: ${outT} น.`;
           btn.classList.add('checkin-btn-disabled');
           btnText.innerText = 'เช็คอินสมบูรณ์แล้ว';
         }
@@ -1544,38 +1641,27 @@
       }
     }
 
-    function startGeolocating() {
-      const gpsEl = document.getElementById('gpsLocationText');
-      if (!navigator.geolocation) {
-        gpsEl.innerHTML = '<span style="color:var(--danger)"><i class="bi bi-x-circle"></i> เบราว์เซอร์ไม่รองรับ GPS</span>';
-        return;
-      }
+    // Capture front camera frame to Canvas and compress to JPEG Base64
+    function captureSelfie() {
+      const video = document.getElementById('cameraVideo');
+      const canvas = document.createElement('canvas');
+      canvas.width = 320; // 320x320 is large enough for verification and stays under 48KB
+      canvas.height = 320;
+      
+      const ctx = canvas.getContext('2d');
+      // Mirror flip the selfie so it looks correct
+      ctx.translate(320, 0);
+      ctx.scale(-1, 1);
 
-      gpsEl.innerText = 'กำลังอัปเดตตำแหน่ง GPS...';
-      navigator.geolocation.watchPosition(
-        (pos) => {
-          AppState.currentGps = {
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude
-          };
-          gpsEl.innerHTML = `ละติจูด: ${pos.coords.latitude.toFixed(6)}<br>ลองจิจูด: ${pos.coords.longitude.toFixed(6)}<br><span style="color:var(--primary);"><i class="bi bi-check-circle-fill"></i> สัญญาณ GPS มีความแม่นยำประมาณ ${pos.coords.accuracy.toFixed(1)} ม.</span>`;
-        },
-        (err) => {
-          console.error('GPS Error:', err);
-          gpsEl.innerHTML = `<span style="color:var(--danger)"><i class="bi bi-exclamation-triangle"></i> ไม่สามารถเข้าถึงตำแหน่งจีพีเอสได้ (โปรดอนุญาตสิทธิ์ตำแหน่ง)</span>`;
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
+      ctx.drawImage(video, 0, 0, 320, 320);
+      
+      // Compress to JPEG with quality 0.5 to keep file size under 35KB
+      return canvas.toDataURL('image/jpeg', 0.5);
     }
 
     async function handleClockAction() {
       if (!AppState.currentGps) {
-        Swal.fire({
-          icon: 'warning',
-          title: 'ไม่พิกัดตำแหน่ง',
-          text: 'ระบบกำลังดึงค่าพิกัด GPS โปรดแน่ใจว่าอุปกรณ์เปิดระบบระบุตำแหน่งและรอสักครู่',
-          confirmButtonColor: '#f59e0b'
-        });
+        Swal.fire({ icon: 'warning', title: 'ไม่พบพิกัดตำแหน่ง', text: 'กรุณาเปิดระบบบอกพิกัด GPS และรอสัญญาณตำแหน่งสักครู่', confirmButtonColor: '#f59e0b' });
         return;
       }
 
@@ -1583,54 +1669,76 @@
       const isClockIn = !AppState.todayCheckin;
       const isClockOut = AppState.todayCheckin && !AppState.todayCheckin.check_out_at;
 
-      if (!isClockIn && !isClockOut) {
-        // Disabled state
-        return;
+      if (!isClockIn && !isClockOut) return;
+
+      let selfieBase64 = null;
+      if (AppState.cameraStream) {
+        try {
+          selfieBase64 = captureSelfie();
+          // Preview captured selfie
+          const preview = document.getElementById('cameraCapturedPreview');
+          preview.src = selfieBase64;
+          preview.style.display = 'block';
+          document.getElementById('cameraVideo').style.display = 'none';
+        } catch(e) {
+          console.error("Failed to capture selfie:", e);
+        }
       }
 
       Swal.showLoading();
       try {
         const action = isClockIn ? 'checkin.clock_in' : 'checkin.clock_out';
+        
+        // Calculate distance to verify if they are within branch range
+        const branchName = (AppState.user && AppState.user.branch) || 'ออฟฟิต';
+        const branch = BRANCH_COORDINATES[branchName] || BRANCH_COORDINATES['ออฟฟิต'];
+        const distance = calculateDistance(AppState.currentGps.latitude, AppState.currentGps.longitude, branch.latitude, branch.longitude);
+
         await api(action, {
           latitude: AppState.currentGps.latitude,
           longitude: AppState.currentGps.longitude,
-          location: notes || 'พิกัด GPS'
+          location: notes || (distance < 50 ? 'ออฟฟิศสาขา' : 'นอกสถานที่'),
+          image: selfieBase64 // send base64 selfie string
         });
 
-        Swal.fire({
-          icon: 'success',
-          title: isClockIn ? 'เช็คอินเข้างานสำเร็จ' : 'เช็คเอาท์ออกงานสำเร็จ',
-          text: isClockIn ? 'ขอให้มีความสุขกับการทำงานในวันนี้!' : 'พักผ่อนให้สบายและเดินทางปลอดภัยนะ!',
-          timer: 2000,
-          showConfirmButton: false
-        });
+        // Wait to show image preview then show success alert
+        setTimeout(() => {
+          Swal.fire({
+            icon: 'success',
+            title: isClockIn ? 'ลงเวลาเข้างานสำเร็จ' : 'ลงเวลาออกงานสำเร็จ',
+            html: `<div style="text-align:center;">
+                     <p style="font-size:14px;font-weight:600;color:var(--primary);margin-bottom:8px;"><i class="bi bi-check-circle-fill"></i> ✓ ทำรายการสำเร็จ</p>
+                     <p style="font-size:12px;color:var(--text-muted);">ระยะห่างจากสำนักงาน: ${distance.toFixed(0)} เมตร</p>
+                   </div>`,
+            timer: 2500,
+            showConfirmButton: false
+          });
 
-        document.getElementById('clockNotes').value = '';
-        await loadTodayCheckin();
+          document.getElementById('clockNotes').value = '';
+          loadTodayCheckin();
+          switchTab('checkin'); // restart camera preview
+        }, 1200);
+
       } catch (err) {
-        Swal.fire({ icon: 'error', title: 'เช็คอินไม่สำเร็จ', text: err.message, confirmButtonColor: '#ef4444' });
+        Swal.fire({ icon: 'error', title: 'ลงเวลาล้มเหลว', text: err.message, confirmButtonColor: '#ef4444' });
+        // restart camera on failure
+        startCamera();
       }
     }
 
     // ── Tab 2: Leave Module logic ──
     async function loadLeaveDashboard() {
       try {
-        // 1. Quotas (Normally loaded from app bootstrap / config settings)
-        // Hardcoded or calculated on backend. Let's calculate quotas from user statistics.
         const stats = await api('leave.my_stats', { year: new Date().getFullYear() });
         if (stats) {
-          // Sick
           document.getElementById('quotaSickUsed').innerText = stats.sick ? stats.sick.used : 0;
           document.getElementById('quotaSickLimit').innerText = `/ ${stats.sick ? stats.sick.limit : 30} วัน`;
-          // Personal
           document.getElementById('quotaPersonalUsed').innerText = stats.personal ? stats.personal.used : 0;
           document.getElementById('quotaPersonalLimit').innerText = `/ ${stats.personal ? stats.personal.limit : 6} วัน`;
-          // Annual
           document.getElementById('quotaAnnualUsed').innerText = stats.annual ? stats.annual.used : 0;
           document.getElementById('quotaAnnualLimit').innerText = `/ ${stats.annual ? stats.annual.limit : 10} วัน`;
         }
 
-        // 2. Leave list
         const leavesData = await api('leave.list', { per_page: 15 });
         const listEl = document.getElementById('leaveList');
         
@@ -1660,12 +1768,7 @@
           });
           listEl.innerHTML = html;
         } else {
-          listEl.innerHTML = `
-            <div class="empty-state">
-              <i class="bi bi-calendar-x"></i>
-              ไม่มีประวัติการลา
-            </div>
-          `;
+          listEl.innerHTML = `<div class="empty-state"><i class="bi bi-calendar-x"></i>ไม่มีประวัติการลา</div>`;
         }
       } catch (err) {
         console.error('Failed to load leave dashboard:', err);
@@ -1707,19 +1810,11 @@
         };
 
         const res = await api('leave.create', payload);
-        
-        // Auto submit leave if it's created successfully
         await api('leave.submit', { id: res.id });
 
-        Swal.fire({
-          icon: 'success',
-          title: 'ยื่นใบลาสำเร็จ',
-          text: 'ใบลาของคุณถูกส่งไปยังหัวหน้างานตรวจสอบแล้ว',
-          timer: 2000,
-          showConfirmButton: false
-        });
-
+        Swal.fire({ icon: 'success', title: 'ยื่นใบลาสำเร็จ', text: 'ใบลาของคุณถูกส่งไปยังหัวหน้างานแล้ว', timer: 2000, showConfirmButton: false });
         closeDrawer('leaveRequestDrawer');
+        
         // Clear fields
         document.getElementById('leaveStartDate').value = '';
         document.getElementById('leaveEndDate').value = '';
@@ -1798,12 +1893,7 @@
           });
           listEl.innerHTML = html;
         } else {
-          listEl.innerHTML = `
-            <div class="empty-state">
-              <i class="bi bi-wallet2"></i>
-              ไม่มีประวัติการเบิกค่าใช้จ่าย
-            </div>
-          `;
+          listEl.innerHTML = `<div class="empty-state"><i class="bi bi-wallet2"></i>ไม่มีประวัติการเบิกเงิน</div>`;
         }
       } catch (err) {
         console.error('Failed to load expense dashboard:', err);
@@ -1814,17 +1904,15 @@
       document.getElementById(id).click();
     }
 
-    // Canvas image compression (Max 48KB, matches main application design)
     function handleReceiptFiles(e) {
       const files = e.target.files;
       if (!files.length) return;
 
-      const previewContainer = document.getElementById('receiptPreviewContainer');
-      const max_size = 800; // max width/height
+      const max_size = 800; // max size
 
       for (let i = 0; i < files.length; i++) {
         if (AppState.chosenReceipts.length >= 4) {
-          Swal.fire({ icon: 'warning', title: 'จำกัดจำนวนรูป', text: 'แนบหลักฐานการจ่ายเงินได้สูงสุด 4 รูปภาพเท่านั้น', confirmButtonColor: '#f59e0b' });
+          Swal.fire({ icon: 'warning', title: 'แนบภาพได้สูงสุด 4 ใบ', text: 'ระบบจำกัดสูงสุด 4 รูปภาพเท่านั้น', confirmButtonColor: '#f59e0b' });
           break;
         }
 
@@ -1837,7 +1925,6 @@
             let width = img.width;
             let height = img.height;
             
-            // Resize logic
             if (width > height) {
               if (width > max_size) {
                 height *= max_size / width;
@@ -1856,8 +1943,7 @@
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
 
-            // Compress to fit 48KB
-            let quality = 0.6;
+            let quality = 0.5;
             let dataUrl = '';
             for (let attempt = 0; attempt < 5; attempt++) {
               dataUrl = canvas.toDataURL('image/jpeg', quality);
@@ -1872,7 +1958,7 @@
         };
         reader.readAsDataURL(file);
       }
-      e.target.value = ''; // Reset file input
+      e.target.value = ''; // Reset
     }
 
     function renderReceiptPreviews() {
@@ -1881,7 +1967,7 @@
       
       AppState.chosenReceipts.forEach((src, idx) => {
         const wrapper = document.createElement('div');
-        wrapper.style.position = 'relative';
+        wrapper.className = 'receipt-thumb-wrapper';
         wrapper.innerHTML = `
           <img class="receipt-thumb" src="${src}">
           <div class="receipt-remove" onclick="removeReceipt(${idx})">&times;</div>
@@ -1902,7 +1988,7 @@
       const description = document.getElementById('expenseDescription').value.trim();
 
       if (!expense_date || isNaN(amount) || amount <= 0 || !description) {
-        Swal.fire({ icon: 'error', title: 'ข้อมูลไม่ครบ', text: 'กรุณากรอกข้อมูลค่าใช้จ่ายให้ถูกต้องครบถ้วน', confirmButtonColor: '#ef4444' });
+        Swal.fire({ icon: 'error', title: 'ข้อมูลไม่ครบ', text: 'กรุณากรอกข้อมูลการเบิกเงินให้ครบถ้วนถูกต้อง', confirmButtonColor: '#ef4444' });
         return;
       }
 
@@ -1910,7 +1996,6 @@
       try {
         const receipt_url = AppState.chosenReceipts.length > 0 ? JSON.stringify(AppState.chosenReceipts) : '';
 
-        // 1. Create expense
         const res = await api('expense.create', {
           expense_type,
           expense_date,
@@ -1920,19 +2005,11 @@
           draft: false
         });
 
-        // 2. Submit expense
         await api('expense.submit', { id: res.id });
 
-        Swal.fire({
-          icon: 'success',
-          title: 'ส่งใบเบิกสำเร็จ',
-          text: 'ระบบได้ส่งใบเบิกเงินรออนุมัติแล้ว',
-          timer: 2000,
-          showConfirmButton: false
-        });
-
+        Swal.fire({ icon: 'success', title: 'ส่งใบเบิกสำเร็จ', text: 'ระบบส่งคำขอรอพิจารณาแล้ว', timer: 2000, showConfirmButton: false });
         closeDrawer('expenseRequestDrawer');
-        // Clear inputs
+        
         document.getElementById('expenseAmount').value = '';
         document.getElementById('expenseDescription').value = '';
         AppState.chosenReceipts = [];
@@ -1962,17 +2039,13 @@
         if (x.receipt_url) {
           let urls = [];
           try {
-            if (x.receipt_url.startsWith('[')) {
-              urls = JSON.parse(x.receipt_url);
-            } else {
-              urls = [x.receipt_url];
-            }
+            urls = x.receipt_url.startsWith('[') ? JSON.parse(x.receipt_url) : [x.receipt_url];
           } catch(e) {
             urls = [x.receipt_url];
           }
 
           if (urls.length > 0) {
-            detailHtml += `<div style="margin-top:12px;font-size:12px;color:var(--text-muted);font-weight:500;">รูปภาพหลักฐานการจ่ายเงิน</div>`;
+            detailHtml += `<div style="margin-top:12px;font-size:12px;color:var(--text-muted);font-weight:500;">ภาพถ่ายหลักฐานการจ่ายเงิน</div>`;
             detailHtml += `<div class="receipt-preview-grid">`;
             urls.forEach(src => {
               detailHtml += `<img src="${src}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid rgba(255,255,255,0.1);" onclick="previewImage('${src}')">`;
@@ -1998,31 +2071,26 @@
         imageUrl: src,
         imageAlt: 'Receipt Image',
         showConfirmButton: false,
-        background: '#0f172a',
+        background: '#090e18',
         width: 'auto'
       });
     }
 
-    // ── Tab 4: Approvals Module logic ──
+    // ── Tab 4: Approvals Module logic (Leaves, Expenses, and Check-ins) ──
     async function loadApprovalDashboard() {
       const listEl = document.getElementById('approvalList');
       listEl.innerHTML = '<div style="text-align:center;padding:20px;"><div class="boot-spinner" style="margin:0 auto;"></div></div>';
       
       try {
         if (AppState.approvalTab === 'leave') {
-          // Leaves waiting for supervisor comment/check or HR approval
-          const pending = await api('user.list_pending'); // wait, list_pending in users?
-          // Actually, let's load all leaves and filter those waiting for check/comment/approval
           const leavesData = await api('leave.list', { status: 'pending,checked,reviewed', per_page: 50 });
           
-          // Filter leaves where user can act
           let filtered = [];
           if (leavesData.items) {
             filtered = leavesData.items.filter(x => {
               if (AppState.caps.includes('leave.approve') && x.status === 'reviewed') return true;
               if (AppState.caps.includes('leave.comment') && x.status === 'checked') return true;
               if (AppState.caps.includes('leave.check') && x.status === 'pending') return true;
-              // Admin can approve anything pending
               if (AppState.user.role === 'admin' && ['pending', 'checked', 'reviewed'].includes(x.status)) return true;
               return false;
             });
@@ -2046,21 +2114,14 @@
             });
             listEl.innerHTML = html;
           } else {
-            listEl.innerHTML = `
-              <div class="empty-state">
-                <i class="bi bi-check-all"></i>
-                ไม่มีใบลาที่รอคุณตรวจสอบหรืออนุมัติ
-              </div>
-            `;
+            listEl.innerHTML = `<div class="empty-state"><i class="bi bi-check-all"></i>ไม่มีใบลาที่รออนุมัติ</div>`;
           }
 
-        } else {
-          // Expenses waiting for manager approval
+        } else if (AppState.approvalTab === 'expense') {
           const expData = await api('expense.list', { status: 'pending', per_page: 50 });
           let filtered = [];
           if (expData.items) {
             filtered = expData.items.filter(x => {
-              // Supervisors/Admins can approve expense claims
               return AppState.caps.includes('expense.manage') || AppState.user.role === 'admin';
             });
           }
@@ -2083,12 +2144,34 @@
             });
             listEl.innerHTML = html;
           } else {
-            listEl.innerHTML = `
-              <div class="empty-state">
-                <i class="bi bi-check-all"></i>
-                ไม่มีใบเบิกค่าใช้จ่ายรอการอนุมัติ
-              </div>
-            `;
+            listEl.innerHTML = `<div class="empty-state"><i class="bi bi-check-all"></i>ไม่มีคำขอเบิกค่าใช้จ่ายรอดำเนินการ</div>`;
+          }
+        } else {
+          // Check-ins for Today (Attendances logs list)
+          const checkinData = await api('checkin.list', { per_page: 50 });
+          
+          if (checkinData.items && checkinData.items.length > 0) {
+            let html = '';
+            checkinData.items.forEach(x => {
+              const inT = x.check_in_at ? new Date(x.check_in_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+              const outT = x.check_out_at ? new Date(x.check_out_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+              
+              html += `
+                <div class="list-item" onclick="openApprovalDetail('checkin', '${x.id}')">
+                  <div class="item-main">
+                    <span class="item-title">${x.full_name || 'ไม่ระบุชื่อ'} (${x.department || 'ไม่ระบุแผนก'})</span>
+                    <span class="item-desc"><i class="bi bi-geo-alt-fill" style="color:var(--primary)"></i> เข้างาน: ${inT} น. | ออกงาน: ${outT} น.</span>
+                  </div>
+                  <div class="item-meta">
+                    <span class="item-badge badge-approved">${x.status.toUpperCase()}</span>
+                    <span style="font-size:10px;color:var(--text-muted)">${formatThaiDate(x.check_in_at)}</span>
+                  </div>
+                </div>
+              `;
+            });
+            listEl.innerHTML = html;
+          } else {
+            listEl.innerHTML = `<div class="empty-state"><i class="bi bi-clock-history"></i>วันนี้ยังไม่มีพนักงานลงเวลาเข้างาน</div>`;
           }
         }
       } catch (err) {
@@ -2101,17 +2184,15 @@
       
       const btnLeave = document.getElementById('btnApproveLeaveTab');
       const btnExp = document.getElementById('btnApproveExpenseTab');
+      const btnCheck = document.getElementById('btnApproveCheckinTab');
 
-      if (tab === 'leave') {
-        btnLeave.className = 'btn btn-primary';
-        btnExp.className = 'btn btn-secondary';
-      } else {
-        btnLeave.className = 'btn btn-secondary';
-        btnExp.className = 'btn btn-primary';
-      }
-      // remove border style from secondary
+      btnLeave.className = tab === 'leave' ? 'btn btn-primary' : 'btn btn-secondary';
+      btnExp.className = tab === 'expense' ? 'btn btn-primary' : 'btn btn-secondary';
+      btnCheck.className = tab === 'checkin' ? 'btn btn-primary' : 'btn btn-secondary';
+
       btnLeave.style.border = tab === 'leave' ? '' : 'none';
       btnExp.style.border = tab === 'expense' ? '' : 'none';
+      btnCheck.style.border = tab === 'checkin' ? '' : 'none';
 
       loadApprovalDashboard();
     }
@@ -2120,6 +2201,9 @@
       Swal.showLoading();
       try {
         const bodyEl = document.getElementById('approvalDetailContent');
+        const commGroup = document.getElementById('approvalCommentGroup');
+        const actionBtns = document.getElementById('approvalActionButtons');
+        
         document.getElementById('approvalComment').value = ''; // clear
 
         if (type === 'leave') {
@@ -2127,9 +2211,12 @@
           const x = res.leave;
           const u = res.requester || {};
 
+          commGroup.style.display = 'block';
+          actionBtns.style.display = 'flex';
+
           document.getElementById('approvalDetailTitle').innerText = 'ตรวจสอบ/อนุมัติใบลา';
           bodyEl.innerHTML = `
-            <div class="detail-row"><span class="detail-row-label">ผู้ส่งคำขอ: </span><span class="detail-val" style="font-weight:600;">${u.full_name} (${u.department})</span></div>
+            <div class="detail-row"><span class="detail-label">ผู้ส่งใบลา</span><span class="detail-val" style="font-weight:600;">${u.full_name} (${u.department})</span></div>
             <div class="detail-row"><span class="detail-label">ประเภทการลา</span><span class="detail-val">${getLeaveTypeLabel(x.leave_type)}</span></div>
             <div class="detail-row"><span class="detail-label">วันที่ลา</span><span class="detail-val">${formatThaiDate(x.start_date)} - ${formatThaiDate(x.end_date)}</span></div>
             ${x.leave_unit === 'hour' ? `<div class="detail-row"><span class="detail-label">เวลาที่ลา</span><span class="detail-val">${x.start_time} - ${x.end_time} น. (${x.hours} ชม.)</span></div>` : `<div class="detail-row"><span class="detail-label">จำนวนวันลา</span><span class="detail-val">${x.days} วัน</span></div>`}
@@ -2137,9 +2224,7 @@
             <div class="detail-row"><span class="detail-label">สถานะปัจจุบัน</span><span class="detail-val" style="color:var(--warning);font-weight:600;">${getStatusLabel(x.status)}</span></div>
           `;
 
-          // Setup buttons actions for Leave Workflow
-          // Depending on status, the actions will call check/comment/approve
-          let actionName = 'leave.approve'; // default fallback
+          let actionName = 'leave.approve';
           let approveText = 'อนุมัติการลา';
           let rejectText = 'ไม่อนุมัติ';
 
@@ -2159,8 +2244,12 @@
           document.getElementById('btnApprove').onclick = () => submitApproval('leave', actionName, id, 'approve');
           document.getElementById('btnReject').onclick = () => submitApproval('leave', actionName, id, 'reject');
 
-        } else {
+        } else if (type === 'expense') {
           const x = await api('expense.get', { id: id });
+          
+          commGroup.style.display = 'block';
+          actionBtns.style.display = 'flex';
+
           document.getElementById('approvalDetailTitle').innerText = 'อนุมัติใบเบิกค่าใช้จ่าย';
 
           let imageHtml = '';
@@ -2171,7 +2260,7 @@
             } catch(e){ urls = [x.receipt_url]; }
             
             if (urls.length > 0) {
-              imageHtml = `<div style="margin-top:12px;font-size:12px;color:var(--text-muted);">หลักฐานใบเสร็จ (คลิกเพื่อขยาย):</div>`;
+              imageHtml = `<div style="margin-top:12px;font-size:12px;color:var(--text-muted);">หลักฐานใบเสร็จ (คลิกภาพเพื่อขยาย):</div>`;
               imageHtml += `<div class="receipt-preview-grid">`;
               urls.forEach(src => {
                 imageHtml += `<img src="${src}" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid rgba(255,255,255,0.1);" onclick="previewImage('${src}')">`;
@@ -2182,7 +2271,7 @@
 
           bodyEl.innerHTML = `
             <div class="detail-row"><span class="detail-label">ผู้ส่งใบเบิก</span><span class="detail-val" style="font-weight:600;">${x.full_name} (${x.department || 'ไม่ระบุแผนก'})</span></div>
-            <div class="detail-row"><span class="detail-label">ประเภทค่าเบิก</span><span class="detail-val">${x.expense_type}</span></div>
+            <div class="detail-row"><span class="detail-label">ประเภทค่าใช้จ่าย</span><span class="detail-val">${x.expense_type}</span></div>
             <div class="detail-row"><span class="detail-label">วันที่จ่ายเงิน</span><span class="detail-val">${formatThaiDate(x.expense_date)}</span></div>
             <div class="detail-row"><span class="detail-label">จำนวนเงินที่ขอเบิก</span><span class="detail-val" style="font-size:15px;color:var(--primary);font-weight:700;">${x.amount.toLocaleString()} บาท</span></div>
             <div class="detail-row"><span class="detail-label">รายละเอียด</span><span class="detail-val">${x.description || '-'}</span></div>
@@ -2194,6 +2283,47 @@
 
           document.getElementById('btnApprove').onclick = () => submitApproval('expense', 'expense.approve', id, 'approve');
           document.getElementById('btnReject').onclick = () => submitApproval('expense', 'expense.approve', id, 'reject');
+        
+        } else {
+          // Check-in detail viewer (Read-only for details and viewing selfie picture)
+          const checkins = await api('checkin.list', { per_page: 100 });
+          const x = checkins.items.find(item => item.id === id);
+
+          commGroup.style.display = 'none';
+          actionBtns.style.display = 'none';
+
+          document.getElementById('approvalDetailTitle').innerText = 'ข้อมูลการลงเวลาเข้า-ออกงาน';
+
+          const inTime = x.check_in_at ? new Date(x.check_in_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--:--';
+          const outTime = x.check_out_at ? new Date(x.check_out_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--:--';
+
+          let imageHtml = '';
+          if (x.check_in_img || x.check_out_img) {
+            imageHtml += `<div style="margin-top:15px;font-size:12px;color:var(--text-muted);font-weight:500;margin-bottom:8px;">ภาพถ่ายเซลฟี่ยืนยันตัวตน:</div>`;
+            imageHtml += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">`;
+            if (x.check_in_img) {
+              imageHtml += `<div style="text-align:center;"><img src="${x.check_in_img}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;border:1px solid rgba(255,255,255,0.1);" onclick="previewImage('${x.check_in_img}')"><span style="font-size:11px;color:var(--text-muted);margin-top:4px;display:block;">ตอนเช็คอิน</span></div>`;
+            }
+            if (x.check_out_img) {
+              imageHtml += `<div style="text-align:center;"><img src="${x.check_out_img}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;border:1px solid rgba(255,255,255,0.1);" onclick="previewImage('${x.check_out_img}')"><span style="font-size:11px;color:var(--text-muted);margin-top:4px;display:block;">ตอนเช็คเอาท์</span></div>`;
+            }
+            imageHtml += `</div>`;
+          }
+
+          let mapsUrlIn = x.check_in_lat ? `https://www.google.com/maps?q=${x.check_in_lat},${x.check_in_lng}` : null;
+          let mapsUrlOut = x.check_out_lat ? `https://www.google.com/maps?q=${x.check_out_lat},${x.check_out_lng}` : null;
+
+          bodyEl.innerHTML = `
+            <div class="detail-row"><span class="detail-label">พนักงาน</span><span class="detail-val" style="font-weight:600;">${x.full_name}</span></div>
+            <div class="detail-row"><span class="detail-label">แผนก / สังกัด</span><span class="detail-val">${x.department}</span></div>
+            <div class="detail-row"><span class="detail-label">วันที่ทำงาน</span><span class="detail-val">${formatThaiDate(x.check_in_at)}</span></div>
+            <div class="detail-row"><span class="detail-label">เวลาเช็คอินเข้างาน</span><span class="detail-val" style="color:var(--primary);font-weight:600;">${inTime} น.</span></div>
+            <div class="detail-row"><span class="detail-label">สถานที่เช็คอิน</span><span class="detail-val">${mapsUrlIn ? `<a href="${mapsUrlIn}" target="_blank" style="color:var(--info)"><i class="bi bi-map"></i> ${x.check_in_loc}</a>` : (x.check_in_loc || '-')}</span></div>
+            <div class="detail-row"><span class="detail-label">เวลาเช็คเอาท์ออกงาน</span><span class="detail-val" style="color:var(--danger);font-weight:600;">${outTime} น.</span></div>
+            <div class="detail-row"><span class="detail-label">สถานที่เช็คเอาท์</span><span class="detail-val">${mapsUrlOut ? `<a href="${mapsUrlOut}" target="_blank" style="color:var(--info)"><i class="bi bi-map"></i> ${x.check_out_loc}</a>` : (x.check_out_loc || '-')}</span></div>
+            <div class="detail-row"><span class="detail-label">สถานะการทำงาน</span><span class="detail-val">${x.status.toUpperCase()}</span></div>
+            ${imageHtml}
+          `;
         }
 
         Swal.close();
@@ -2206,11 +2336,10 @@
 
     async function submitApproval(type, action, id, decision) {
       const comment = document.getElementById('approvalComment').value.trim();
-
-      let confirmText = decision === 'approve' ? 'อนุมัติรายการนี้ใช่หรือไม่?' : 'ปฏิเสธรายการนี้ใช่หรือไม่?';
+      let confirmText = decision === 'approve' ? 'ยืนยันการอนุมัติรายการนี้?' : 'ยืนยันการปฏิเสธรายการนี้?';
       
       Swal.fire({
-        title: 'ยืนยันการทำรายการ',
+        title: 'ยืนยันการอนุมัติ',
         text: confirmText,
         icon: 'question',
         showCancelButton: true,
@@ -2223,38 +2352,27 @@
           Swal.showLoading();
           try {
             const payload = { id: id };
-            
             if (type === 'leave') {
               if (action === 'leave.check') {
                 payload.checked = decision === 'approve';
                 payload.comment = comment;
               } else if (action === 'leave.comment') {
                 payload.comment = comment;
-                // comment action is approval in step 2 (normally yes)
               } else {
                 payload.approved = decision === 'approve';
                 payload.comment = comment;
               }
             } else {
-              // expense.approve
               payload.approved = decision === 'approve';
               payload.comment = comment;
             }
 
             await api(action, payload);
-
-            Swal.fire({
-              icon: 'success',
-              title: 'ทำรายการเสร็จสิ้น',
-              timer: 1500,
-              showConfirmButton: false
-            });
-
+            Swal.fire({ icon: 'success', title: 'บันทึกสำเร็จ', timer: 1200, showConfirmButton: false });
             closeDrawer('approvalDetailDrawer');
             await loadApprovalDashboard();
-
           } catch (err) {
-            Swal.fire({ icon: 'error', title: 'การทำรายการล้มเหลว', text: err.message, confirmButtonColor: '#ef4444' });
+            Swal.fire({ icon: 'error', title: 'ผิดพลาด', text: err.message, confirmButtonColor: '#ef4444' });
           }
         }
       });
@@ -2267,15 +2385,7 @@
     }
 
     function getStatusLabel(status) {
-      const m = {
-        draft: 'ฉบับร่าง',
-        pending: 'รอตรวจสอบ',
-        checked: 'รอความเห็นหัวหน้างาน',
-        reviewed: 'รอฝ่ายบุคคลอนุมัติ',
-        approved: 'อนุมัติแล้ว',
-        rejected: 'ไม่อนุมัติ',
-        cancelled: 'ยกเลิก'
-      };
+      const m = { draft: 'ฉบับร่าง', pending: 'รอตรวจสอบ', checked: 'รอความเห็นหัวหน้า', reviewed: 'รอฝ่ายบุคคลอนุมัติ', approved: 'อนุมัติแล้ว', rejected: 'ปฏิเสธ', cancelled: 'ยกเลิก' };
       return m[status.toLowerCase()] || status;
     }
 
@@ -2288,12 +2398,10 @@
         const m = shortMonths[d.getMonth()];
         const y = d.getFullYear() + 543;
         return `${day} ${m} ${y}`;
-      } catch(e) {
-        return dateStr;
-      }
+      } catch(e) { return dateStr; }
     }
 
-    // ── Drawer UI Controls ──
+    // ── Drawer Controls ──
     function openDrawer(id) {
       document.getElementById('drawerOverlay').classList.add('active');
       document.getElementById(id).classList.add('active');
@@ -2301,7 +2409,6 @@
 
     function closeDrawer(id) {
       document.getElementById(id).classList.remove('active');
-      // Check if any other drawer is active
       const activeDrawers = document.querySelectorAll('.drawer.active');
       if (activeDrawers.length === 0) {
         document.getElementById('drawerOverlay').classList.remove('active');

@@ -88,7 +88,7 @@ const SCHEMAS = Object.freeze({
   Missions: ['id','mission_no','requester_id','title','purpose','destination','start_date','end_date','transport_type','requested_amount','status','approver_id','approver_comment','approver_at','approved_amount','created_at','updated_at'],
   Expenses: ['id','expense_no','mission_id','expense_date','expense_type','description','amount','receipt_url','status','approver_id','approver_comment','approver_at','approved_amount','created_by','created_at','updated_at'],
   Holidays: ['id','holiday_date','name','created_at','updated_at'],
-  Checkins: ['id','user_id','check_in_at','check_out_at','check_in_lat','check_in_lng','check_out_lat','check_out_lng','check_in_loc','check_out_loc','status','created_at','updated_at']
+  Checkins: ['id','user_id','check_in_at','check_out_at','check_in_lat','check_in_lng','check_out_lat','check_out_lng','check_in_loc','check_out_loc','status','created_at','updated_at','check_in_img','check_out_img']
 });
 
 // ── TEXT_COLUMNS — บังคับ Sheet เก็บเป็น text กัน auto-coercion ─
@@ -3205,7 +3205,9 @@ async function Checkins_clockIn(user, p) {
     check_out_lng: null,
     check_in_loc: String(data.location || '').trim() || 'พิกัด GPS',
     check_out_loc: '',
-    status: 'normal'
+    status: 'normal',
+    check_in_img: String(data.image || '').trim() || null,
+    check_out_img: null
   });
 
   await Audit_log_(user, 'checkin.clock_in', 'checkin', record.id, { check_in_at: record.check_in_at });
@@ -3228,7 +3230,8 @@ async function Checkins_clockOut(user, p) {
     check_out_at: cfg_iso_(now),
     check_out_lat: data.latitude ? Number(data.latitude) : null,
     check_out_lng: data.longitude ? Number(data.longitude) : null,
-    check_out_loc: String(data.location || '').trim() || 'พิกัด GPS'
+    check_out_loc: String(data.location || '').trim() || 'พิกัด GPS',
+    check_out_img: String(data.image || '').trim() || null
   });
 
   await Audit_log_(user, 'checkin.clock_out', 'checkin', todayRecord.id, { check_out_at: record.check_out_at });

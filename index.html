@@ -3398,7 +3398,8 @@ async function api(req) {
     '#/profile':      { title: 'โปรไฟล์ของฉัน',      sub: 'จัดการข้อมูลส่วนตัว',                  icon: 'person-circle' },
     '#/branches':     { title: 'ตารางสาขาพนักงาน',   sub: 'รายชื่อพนักงานแยกตามสาขาและข้อมูลติดต่อ', icon: 'building' },
     '#/schedule':     { title: 'ตารางทำงานสาขา',     sub: 'ตารางทำงานและคนแทนอัตโนมัติ (6 วัน หยุด 1 วัน)', icon: 'calendar-week' },
-    '#/audit':        { title: 'บันทึกระบบ',         sub: 'ประวัติการใช้งาน',                    icon: 'shield-check' }
+    '#/audit':        { title: 'บันทึกระบบ',         sub: 'ประวัติการใช้งาน',                    icon: 'shield-check' },
+    '#/attendance':   { title: 'ประวัติการเข้างาน',  sub: 'ตรวจสอบการลงเวลาเข้า-ออกงานและภาพถ่ายเซลฟี่', icon: 'clock-history' }
   };
 
   // ── Menu groups ────────────────────────────────────
@@ -3447,6 +3448,7 @@ async function api(req) {
       {
         title: 'รายงานและประวัติ',
         items: [
+          { hash: '#/attendance', icon: 'clock-history', label: 'ประวัติการเข้างาน', cap: 'user.manage|leave.approve|leave.comment' },
           { hash: '#/reports', icon: 'graph-up',     label: 'รายงานสถิติ', cap: 'report.view_own' },
           { hash: '#/audit',   icon: 'shield-check', label: 'บันทึกระบบ',   cap: 'audit.manage' }
         ]
@@ -4475,6 +4477,7 @@ async function api(req) {
       { hash: '#/expenses/new',   icon: 'cash-coin',             label: 'เบิกค่าใช้จ่าย', grad: '#0ea5e9,#0284c7', cap: 'expense.create_own|expense.manage' },
       { hash: '#/reports',      icon: 'graph-up',               label: 'รายงาน',     grad: '#ec4899,#db2777', cap: 'report.view_own' },
       { hash: '#/users',        icon: 'people-fill',            label: 'ผู้ใช้',      grad: '#f43f5e,#e11d48', cap: 'user.manage' },
+      { hash: '#/attendance',   icon: 'clock-history',          label: 'เข้างาน',     grad: '#f59e0b,#d97706', cap: 'user.manage|leave.approve|leave.comment' },
       { hash: '#/settings',     icon: 'gear-fill',              label: 'ตั้งค่า',    grad: '#64748b,#334155', cap: 'setting.manage' },
       { hash: '#/audit',        icon: 'shield-check',           label: 'บันทึก',     grad: '#0ea5e9,#0284c7', cap: 'audit.manage' },
       { hash: '#/profile',      icon: 'person-circle',          label: 'โปรไฟล์',    grad: '#296ef9,#0e3191', cap: '*' }
@@ -7258,6 +7261,208 @@ async function api(req) {
       }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
     }
     load();
+  };
+  // ── Attendance Logs ─────────────────────────────────
+  Routes['#/attendance'] = function () {
+    if (!hasCap('user.manage|leave.approve|leave.comment')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
+    var st = { page: 1, user_id: '', branch: '', department: '', q: '' };
+    
+    Spinner.show('กำลังโหลดข้อมูล...');
+    call('user.list', { per_page: 1000 }).then(function (userRes) {
+      Spinner.hide();
+      var users = userRes.items || [];
+      
+      setPage('<div class="toolbar">'
+        + '<div class="search-box"><i class="bi bi-search"></i><input type="text" id="att-q" placeholder="ค้นหา ชื่อพนักงาน..."></div>'
+        + '<select class="select" id="att-user" style="max-width:180px"><option value="">พนักงานทั้งหมด</option>'
+        + users.map(function (u) { return '<option value="' + u.id + '">' + esc(u.full_name) + '</option>'; }).join('')
+        + '</select>'
+        + '<select class="select" id="att-branch" style="max-width:150px"><option value="">ทุกสาขา</option>'
+        + BRANCHES.map(function (b) { return '<option value="' + b + '">' + esc(b) + '</option>'; }).join('')
+        + '</select>'
+        + '<select class="select" id="att-dept" style="max-width:150px"><option value="">ทุกแผนก</option>'
+        + DEPARTMENTS.map(function (d) { return '<option value="' + d + '">' + esc(d) + '</option>'; }).join('')
+        + '</select>'
+        + '</div>'
+        + '<div id="att-content">'
+        + '  <div id="att-list">' + skBlocks(5, 50) + '</div>'
+        + '  <div id="lv-pager" style="margin-top:14px"></div>'
+        + '</div>');
+        
+      var allCheckins = [];
+      
+      function load() {
+        Spinner.show('กำลังโหลดประวัติการเข้างาน...');
+        call('checkin.list', { per_page: 1000 }).then(function (r) {
+          Spinner.hide();
+          allCheckins = r.items || [];
+          render();
+        }).catch(function (e) {
+          Spinner.hide();
+          alertError('ผิดพลาด', e.message);
+        });
+      }
+      
+      function render() {
+        var filtered = allCheckins.filter(function (item) {
+          if (st.user_id && item.user_id !== st.user_id) return false;
+          if (st.branch) {
+            var matchCheckIn = item.check_in_loc && item.check_in_loc.indexOf(st.branch) >= 0;
+            var matchCheckOut = item.check_out_loc && item.check_out_loc.indexOf(st.branch) >= 0;
+            if (!matchCheckIn && !matchCheckOut) return false;
+          }
+          if (st.department && item.department !== st.department) return false;
+          if (st.q) {
+            var qLower = st.q.toLowerCase();
+            var nameLower = (item.full_name || '').toLowerCase();
+            if (nameLower.indexOf(qLower) === -1) return false;
+          }
+          return true;
+        });
+        
+        var total = filtered.length;
+        var per = 15;
+        var pages = Math.ceil(total / per) || 1;
+        if (st.page > pages) st.page = pages;
+        var pageItems = filtered.slice((st.page - 1) * per, st.page * per);
+        
+        var rows = pageItems.map(function (item) {
+          var dateStr = TH.date(item.check_in_at);
+          
+          var checkInPhotoHtml = '-';
+          if (item.check_in_img) {
+            checkInPhotoHtml = '<button class="btn btn-sm btn-ghost btn-icon view-selfie-btn" data-img="' + esc(item.check_in_img) + '" data-name="' + esc(item.full_name) + '" data-type="เช็คอิน" data-time="' + esc(TH.time(item.check_in_at)) + '">'
+              + '<i class="bi bi-camera-fill" style="color:#024ad8;font-size:16px;"></i></button>';
+          }
+          
+          var checkInLocHtml = esc(item.check_in_loc || 'พิกัด GPS');
+          if (item.check_in_lat && item.check_in_lng) {
+            var mapUrl = 'https://www.google.com/maps?q=' + item.check_in_lat + ',' + item.check_in_lng;
+            checkInLocHtml = '<a href="' + mapUrl + '" target="_blank" class="map-link" style="color:#024ad8;text-decoration:none;display:inline-flex;align-items:center;gap:4px;" title="ดูแผนที่">'
+              + '<i class="bi bi-geo-alt-fill" style="color:#ef4444"></i>' + esc(item.check_in_loc || 'แผนที่') + '</a>';
+          }
+          
+          var checkOutPhotoHtml = '-';
+          var checkOutTimeHtml = '<span style="color:#94a3b8">-</span>';
+          var checkOutLocHtml = '<span style="color:#94a3b8">-</span>';
+          
+          if (item.check_out_at) {
+            checkOutTimeHtml = TH.time(item.check_out_at);
+            if (item.check_out_img) {
+              checkOutPhotoHtml = '<button class="btn btn-sm btn-ghost btn-icon view-selfie-btn" data-img="' + esc(item.check_out_img) + '" data-name="' + esc(item.full_name) + '" data-type="เช็คเอาท์" data-time="' + esc(TH.time(item.check_out_at)) + '">'
+                + '<i class="bi bi-camera-fill" style="color:#024ad8;font-size:16px;"></i></button>';
+            }
+            if (item.check_out_lat && item.check_out_lng) {
+              var mapUrl = 'https://www.google.com/maps?q=' + item.check_out_lat + ',' + item.check_out_lng;
+              checkOutLocHtml = '<a href="' + mapUrl + '" target="_blank" class="map-link" style="color:#024ad8;text-decoration:none;display:inline-flex;align-items:center;gap:4px;" title="ดูแผนที่">'
+                + '<i class="bi bi-geo-alt-fill" style="color:#ef4444"></i>' + esc(item.check_out_loc || 'แผนที่') + '</a>';
+            } else {
+              checkOutLocHtml = esc(item.check_out_loc || 'พิกัด GPS');
+            }
+          }
+          
+          var statusHtml = '';
+          if (item.check_out_at) {
+            statusHtml = '<span class="badge b-emerald"><i class="bi bi-check-circle-fill"></i> ลงเวลาครบ</span>';
+          } else {
+            statusHtml = '<span class="badge b-amber"><i class="bi bi-clock-fill"></i> ยังไม่เช็คเอาท์</span>';
+          }
+          
+          return '<tr>'
+            + '<td>'
+            + '  <div style="font-weight:600">' + esc(item.full_name) + '</div>'
+            + '  <div style="font-size:11px;color:#94a3b8">' + esc(item.department) + '</div>'
+            + '</td>'
+            + '<td>' + dateStr + '</td>'
+            + '<td>'
+            + '  <div style="font-weight:600">' + TH.time(item.check_in_at) + '</div>'
+            + '  <div style="font-size:11px;margin-top:2px">' + checkInLocHtml + '</div>'
+            + '</td>'
+            + '<td style="text-align:center">' + checkInPhotoHtml + '</td>'
+            + '<td>'
+            + '  <div style="font-weight:600">' + checkOutTimeHtml + '</div>'
+            + '  <div style="font-size:11px;margin-top:2px">' + checkOutLocHtml + '</div>'
+            + '</td>'
+            + '<td style="text-align:center">' + checkOutPhotoHtml + '</td>'
+            + '<td>' + statusHtml + '</td>'
+            + '</tr>';
+        }).join('');
+        
+        var tableHtml = '<table class="data-table">'
+          + '<thead><tr>'
+          + '  <th>พนักงาน</th>'
+          + '  <th>วันที่</th>'
+          + '  <th>เวลาเข้างาน</th>'
+          + '  <th style="text-align:center">เซลฟี่เข้า</th>'
+          + '  <th>เวลาออกงาน</th>'
+          + '  <th style="text-align:center">เซลฟี่ออก</th>'
+          + '  <th>สถานะ</th>'
+          + '</tr></thead>'
+          + '<tbody>' + (rows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:30px">ไม่พบข้อมูลการเข้างาน</td></tr>') + '</tbody>'
+          + '</table>';
+          
+        $('#att-list').innerHTML = tableHtml;
+        
+        var pagerObj = { page: st.page, pages: pages };
+        $('#lv-pager').innerHTML = pagerHtml(pagerObj);
+        wirePager(pagerObj, function (n) {
+          st.page = n;
+          render();
+        });
+        
+        $$('#att-list .view-selfie-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var img = btn.getAttribute('data-img');
+            var name = btn.getAttribute('data-name');
+            var type = btn.getAttribute('data-type');
+            var time = btn.getAttribute('data-time');
+            viewSelfie(img, 'รูปเซลฟี่ ' + type + ' - ' + name + ' (' + time + ')');
+          });
+        });
+      }
+      
+      function viewSelfie(imageUrl, title) {
+        Modal.open({
+          title: title || 'ภาพถ่ายลงเวลา',
+          html: '<div style="text-align:center; padding:10px;"><img src="' + esc(imageUrl) + '" style="max-width:100%; max-height:65vh; border-radius:12px; box-shadow:0 8px 30px rgba(0,0,0,0.15); border: 2px solid rgba(255,255,255,0.1);"></div>',
+          footer: '<button class="btn btn-secondary" style="width:100%" data-modal-close>ปิดหน้าต่าง</button>'
+        });
+      }
+      
+      var searchInput = $('#att-q');
+      var t;
+      searchInput.addEventListener('input', function () {
+        clearTimeout(t);
+        t = setTimeout(function () {
+          st.q = searchInput.value;
+          st.page = 1;
+          render();
+        }, 300);
+      });
+      
+      $('#att-user').addEventListener('change', function () {
+        st.user_id = $('#att-user').value;
+        st.page = 1;
+        render();
+      });
+      
+      $('#att-branch').addEventListener('change', function () {
+        st.branch = $('#att-branch').value;
+        st.page = 1;
+        render();
+      });
+      
+      $('#att-dept').addEventListener('change', function () {
+        st.department = $('#att-dept').value;
+        st.page = 1;
+        render();
+      });
+      
+      load();
+    }).catch(function (err) {
+      Spinner.hide();
+      alertError('โหลดผู้ใช้ล้มเหลว', err.message);
+    });
   };
   // ── Workforce / Calendar / Schedule / Missions ───────────
   function _mkMonthKey(v) {
