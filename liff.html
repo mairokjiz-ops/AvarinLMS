@@ -255,10 +255,16 @@
       SUPABASE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqY3ZxeGp3YWtpb3JhaGRpd3drIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NDk4MjUsImV4cCI6MjA5NzQyNTgyNX0.efr2QuUfbk8WNK8I9A-ga4OKzJal7w_dNKoICXX1nPQ',
       COMPANY_LAT: Number(new URLSearchParams(location.search).get('officeLat') || localStorage.getItem('office_lat') || NaN),
       COMPANY_LNG: Number(new URLSearchParams(location.search).get('officeLng') || localStorage.getItem('office_lng') || NaN),
-      COMPANY_RADIUS_M: Number(new URLSearchParams(location.search).get('officeRadius') || localStorage.getItem('office_radius_m') || 200)
+      COMPANY_RADIUS_M: Number(new URLSearchParams(location.search).get('officeRadius') || localStorage.getItem('office_radius_m') || 200),
+      BRANCHES: [
+        { id: 'office',       name: 'ออฟฟิต',                                    lat: 13.807558,  lng: 100.453157, radius: 200 },
+        { id: 'crystal_sb',   name: 'สาขา Crystal SB ราชพฤกษ์',                  lat: 13.809389,  lng: 100.448361, radius: 200 },
+        { id: 'crystal_ekmai',name: 'สาขา The Crystal เลียบด่วนเอกมัย-รามอินทรา', lat: 13.811656,  lng: 100.619054, radius: 200 },
+        { id: 'porto_chino',  name: 'สาขา Porto Chino',                           lat: 13.569572,  lng: 100.288989, radius: 200 }
+      ]
     };
 
-    const Store = { token: '', user: null, caps: [], liffProfile: null, route: 'dashboard', cache: {}, checkinPhoto: '', checkinGeo: null, cameraStream: null, clockTimer: null };
+    const Store = { token: '', user: null, caps: [], liffProfile: null, route: 'dashboard', cache: {}, checkinPhoto: '', checkinGeo: null, cameraStream: null, clockTimer: null, selectedBranchId: 'office' };
     const $ = (s, root = document) => root.querySelector(s);
     const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
     const today = () => new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
@@ -266,9 +272,10 @@
     const dateTH = (v) => v ? new Date(String(v).slice(0, 10) + 'T00:00:00+07:00').toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
     const statusText = (s) => ({ pending: 'รอดำเนินการ', checked: 'ตรวจแล้ว', reviewed: 'รออนุมัติ', approved: 'อนุมัติ', rejected: 'ไม่อนุมัติ', cancelled: 'ยกเลิก', draft: 'ร่าง' }[s] || s || '-');
     const hasCap = (cap) => Store.caps.includes(cap) || Store.caps.includes(cap.split('.')[0] + '.manage');
-    const hasOfficeLocation = () => Number.isFinite(CONFIG.COMPANY_LAT) && Number.isFinite(CONFIG.COMPANY_LNG);
+    const hasOfficeLocation = () => CONFIG.BRANCHES.length > 0 || (Number.isFinite(CONFIG.COMPANY_LAT) && Number.isFinite(CONFIG.COMPANY_LNG));
     const formatMeters = (m) => !Number.isFinite(m) ? '-' : (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(2)} km`);
-    const distanceTone = (m) => !Number.isFinite(m) ? '' : (m <= CONFIG.COMPANY_RADIUS_M ? 'distance-ok' : m <= CONFIG.COMPANY_RADIUS_M * 2 ? 'distance-warn' : 'distance-bad');
+    const distanceTone = (m, radius) => { const r = radius || CONFIG.COMPANY_RADIUS_M; return !Number.isFinite(m) ? '' : (m <= r ? 'distance-ok' : m <= r * 2 ? 'distance-warn' : 'distance-bad'); };
+    const getSelectedBranch = () => CONFIG.BRANCHES.find(b => b.id === Store.selectedBranchId) || CONFIG.BRANCHES[0];
     const timeOnly = (v) => v ? new Date(v).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '-';
 
     async function api(action, payload = {}, token = Store.token) {
@@ -434,12 +441,15 @@
     }
 
     function buildGeoPayload(latitude, longitude) {
-      const distance = hasOfficeLocation() ? distanceMeters(latitude, longitude, CONFIG.COMPANY_LAT, CONFIG.COMPANY_LNG) : null;
+      const branch = getSelectedBranch();
+      const distance = branch ? distanceMeters(latitude, longitude, branch.lat, branch.lng) : null;
       return {
         latitude,
         longitude,
         distance_m: distance,
-        location: `${latitude.toFixed(6)},${longitude.toFixed(6)}${Number.isFinite(distance) ? ` · ${formatMeters(distance)} from office` : ''}`
+        branch_id: branch?.id || '',
+        branch_name: branch?.name || '',
+        location: `${latitude.toFixed(6)},${longitude.toFixed(6)}${Number.isFinite(distance) ? ` · ${formatMeters(distance)} from ${branch?.name || 'office'}` : ''}`
       };
     }
 
@@ -498,10 +508,16 @@
 
         <div class="panel">
           <div class="section-head"><div class="section-title">GPS & Location</div><button id="refreshGps" class="btn btn-secondary" style="min-height:34px;padding:6px 10px"><i class="bi bi-arrow-clockwise"></i></button></div>
+          <div class="field" style="margin-bottom:10px">
+            <label style="font-size:12px;color:var(--muted);font-weight:600"><i class="bi bi-shop"></i> สาขาที่ Check In</label>
+            <select id="branchSelect" style="width:100%;min-height:44px;border-radius:18px;border:1px solid rgba(255,255,255,.72);background:rgba(255,255,255,.74);color:var(--text);padding:9px 12px;outline:none;font:inherit">
+              ${CONFIG.BRANCHES.map(b => `<option value="${b.id}" ${b.id === Store.selectedBranchId ? 'selected' : ''}>${b.name}</option>`).join('')}
+            </select>
+          </div>
           <div class="signal-list">
             <div class="signal-row"><span class="signal-label"><i class="bi bi-geo-alt-fill"></i> พิกัดปัจจุบัน</span><span id="gpsText" class="signal-value">ยังไม่ได้อ่าน GPS</span></div>
-            <div class="signal-row"><span class="signal-label"><i class="bi bi-building-fill"></i> ระยะห่างบริษัท</span><span id="distanceText" class="signal-value">-</span></div>
-            <div class="signal-row"><span class="signal-label"><i class="bi bi-bullseye"></i> รัศมีที่กำหนด</span><span class="signal-value">${hasOfficeLocation() ? formatMeters(CONFIG.COMPANY_RADIUS_M) : 'ยังไม่ได้ตั้งพิกัดบริษัท'}</span></div>
+            <div class="signal-row"><span class="signal-label"><i class="bi bi-building-fill"></i> ระยะห่างสาขา</span><span id="distanceText" class="signal-value">-</span></div>
+            <div class="signal-row"><span class="signal-label"><i class="bi bi-bullseye"></i> รัศมีที่กำหนด</span><span id="radiusText" class="signal-value">${formatMeters(getSelectedBranch()?.radius || CONFIG.COMPANY_RADIUS_M)}</span></div>
             <div class="signal-row"><span class="signal-label"><i class="bi bi-box-arrow-in-right"></i> Check In</span><span class="signal-value">${timeOnly(rec?.check_in_at)}</span></div>
             <div class="signal-row"><span class="signal-label"><i class="bi bi-box-arrow-right"></i> Check Out</span><span class="signal-value">${timeOnly(rec?.check_out_at)}</span></div>
           </div>
@@ -511,6 +527,13 @@
       $('#startCamera').onclick = startCamera;
       $('#captureSelfie').onclick = captureSelfie;
       $('#refreshGps').onclick = refreshGps;
+      $('#branchSelect').onchange = (e) => {
+        Store.selectedBranchId = e.target.value;
+        const branch = getSelectedBranch();
+        const radiusEl = $('#radiusText');
+        if (radiusEl) radiusEl.textContent = formatMeters(branch?.radius || CONFIG.COMPANY_RADIUS_M);
+        refreshGps();
+      };
       refreshGps();
     }
 
@@ -530,22 +553,26 @@
     }
 
     async function refreshGps() {
-      $('#gpsText').textContent = 'กำลังอ่าน GPS...';
-      $('#distanceText').textContent = '-';
+      const gpsEl = $('#gpsText');
+      const distanceEl = $('#distanceText');
+      if (gpsEl) gpsEl.textContent = 'กำลังอ่าน GPS...';
+      if (distanceEl) distanceEl.textContent = '-';
       const geo = await getPosition();
       if (!geo.latitude) {
-        $('#gpsText').textContent = 'ไม่สามารถอ่าน GPS';
-        $('#distanceText').textContent = hasOfficeLocation() ? 'รอ GPS' : 'ยังไม่ได้ตั้งพิกัดบริษัท';
+        if (gpsEl) gpsEl.textContent = 'ไม่สามารถอ่าน GPS';
+        if (distanceEl) distanceEl.textContent = 'รอ GPS';
         return geo;
       }
-      $('#gpsText').textContent = `${geo.latitude.toFixed(5)}, ${geo.longitude.toFixed(5)}`;
-      const distanceEl = $('#distanceText');
-      if (Number.isFinite(geo.distance_m)) {
-        distanceEl.textContent = formatMeters(geo.distance_m);
-        distanceEl.className = `signal-value ${distanceTone(geo.distance_m)}`;
-      } else {
-        distanceEl.textContent = 'ยังไม่ได้ตั้งพิกัดบริษัท';
-        distanceEl.className = 'signal-value';
+      if (gpsEl) gpsEl.textContent = `${geo.latitude.toFixed(5)}, ${geo.longitude.toFixed(5)}`;
+      if (distanceEl) {
+        if (Number.isFinite(geo.distance_m)) {
+          const branch = getSelectedBranch();
+          distanceEl.textContent = formatMeters(geo.distance_m);
+          distanceEl.className = `signal-value ${distanceTone(geo.distance_m, branch?.radius)}`;
+        } else {
+          distanceEl.textContent = '-';
+          distanceEl.className = 'signal-value';
+        }
       }
       return geo;
     }
