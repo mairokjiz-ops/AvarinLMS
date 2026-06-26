@@ -129,6 +129,19 @@
       background: rgba(255,255,255,.74); color: var(--text); padding: 9px 12px; outline: none;
     }
     .field textarea { min-height: 82px; resize: vertical; }
+    .file-drop {
+      position: relative; min-height: 96px; border-radius: 22px; border: 1px dashed rgba(26,168,255,.46);
+      background: rgba(255,255,255,.54); display: grid; place-items: center; text-align: center;
+      padding: 14px; color: var(--muted); box-shadow: var(--soft-shadow); overflow: hidden;
+    }
+    .file-drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .file-drop i { display: block; font-size: 28px; color: var(--blue); margin-bottom: 6px; }
+    .file-drop strong { display: block; color: var(--text); font-size: 13px; }
+    .file-preview { display: grid; grid-template-columns: 56px 1fr auto; align-items: center; gap: 10px; padding: 10px; border-radius: 18px; background: rgba(255,255,255,.60); border: 1px solid rgba(255,255,255,.70); }
+    .file-preview img { width: 56px; height: 56px; border-radius: 14px; object-fit: cover; background: #e8f8ff; }
+    .file-preview .file-icon { width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center; background: #e8f8ff; color: var(--blue); font-size: 24px; }
+    .file-preview b { display: block; font-size: 13px; line-height: 1.25; word-break: break-word; }
+    .file-preview span { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
     .btn { min-height: 44px; border-radius: 18px; padding: 9px 14px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-weight: 700; box-shadow: var(--soft-shadow); }
     .btn-primary { background: linear-gradient(135deg, var(--cyan), var(--brand)); color: #fff; }
     .btn-secondary { background: rgba(255,255,255,.64); color: var(--text); border: 1px solid rgba(255,255,255,.72); }
@@ -646,7 +659,14 @@
             </div>
             <div class="field"><label>ประเภท</label><select name="expense_type"><option>ค่าเดินทาง</option><option>ค่าอาหาร</option><option>ค่าที่พัก</option><option>ค่าวัสดุ/อุปกรณ์</option><option>อื่นๆ</option></select></div>
             <div class="field"><label>รายละเอียด</label><textarea name="description" required placeholder="ระบุรายละเอียดค่าใช้จ่าย"></textarea></div>
-            <div class="field"><label>ลิงก์ใบเสร็จ (ถ้ามี)</label><input name="receipt_url" type="url" placeholder="https://"></div>
+            <div class="field">
+              <label>แนบไฟล์ใบเสร็จ (ถ้ามี)</label>
+              <label class="file-drop" id="receiptDrop">
+                <input id="receiptFile" name="receipt_file" type="file" accept="image/*,.pdf">
+                <span><i class="bi bi-cloud-arrow-up-fill"></i><strong>แตะเพื่อเลือกไฟล์</strong><small>รองรับรูปภาพหรือ PDF</small></span>
+              </label>
+              <div id="receiptPreview" class="hidden"></div>
+            </div>
             <button class="btn btn-primary" type="submit"><i class="bi bi-send-fill"></i> ส่งรายการเบิก</button>
           </form>
         </div>
@@ -655,6 +675,7 @@
           <div class="list" style="margin-top:10px">${renderExpenseItems(list.items || [], false)}</div>
         </div>`;
       $('#expenseForm').onsubmit = submitExpense;
+      $('#receiptFile').onchange = previewReceiptFile;
     }
 
     function renderExpenseItems(items, withActions) {
@@ -669,10 +690,79 @@
         </div>`).join('');
     }
 
+    function previewReceiptFile(e) {
+      const file = e.target.files && e.target.files[0];
+      const box = $('#receiptPreview');
+      if (!file) {
+        box.classList.add('hidden');
+        box.innerHTML = '';
+        return;
+      }
+      const size = file.size < 1024 * 1024 ? `${Math.ceil(file.size / 1024)} KB` : `${(file.size / 1024 / 1024).toFixed(2)} MB`;
+      const isImage = file.type.startsWith('image/');
+      const preview = isImage ? `<img id="receiptThumb" alt="">` : '<div class="file-icon"><i class="bi bi-file-earmark-pdf"></i></div>';
+      box.classList.remove('hidden');
+      box.innerHTML = `<div class="file-preview">${preview}<div><b>${esc(file.name)}</b><span>${esc(file.type || 'file')} · ${size}</span></div><button class="btn btn-secondary" id="clearReceipt" type="button" style="min-height:38px;padding:6px 10px"><i class="bi bi-x-lg"></i></button></div>`;
+      if (isImage) {
+        const reader = new FileReader();
+        reader.onload = () => { $('#receiptThumb').src = reader.result; };
+        reader.readAsDataURL(file);
+      }
+      $('#clearReceipt').onclick = () => {
+        $('#receiptFile').value = '';
+        box.classList.add('hidden');
+        box.innerHTML = '';
+      };
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error || new Error('อ่านไฟล์ไม่สำเร็จ'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function safeFileName(name) {
+      return String(name || 'receipt').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'receipt';
+    }
+
+    async function uploadReceiptFile(file) {
+      if (!file) return '';
+      const path = `liff/${Store.user?.id || 'user'}/${Date.now()}-${crypto.randomUUID()}-${safeFileName(file.name)}`;
+      const uploadUrl = `${CONFIG.SUPABASE_URL}/storage/v1/object/receipts/${path.split('/').map(encodeURIComponent).join('/')}`;
+      try {
+        const res = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: {
+            apikey: CONFIG.SUPABASE_KEY,
+            Authorization: 'Bearer ' + CONFIG.SUPABASE_KEY,
+            'Content-Type': file.type || 'application/octet-stream',
+            'x-upsert': 'false'
+          },
+          body: file
+        });
+        if (!res.ok) throw new Error('Storage upload denied');
+        return `${CONFIG.SUPABASE_URL}/storage/v1/object/public/receipts/${path.split('/').map(encodeURIComponent).join('/')}`;
+      } catch (err) {
+        if (file.size > 900 * 1024) throw new Error('อัปโหลดไฟล์ไม่สำเร็จ และไฟล์ใหญ่เกินไปสำหรับแนบแบบสำรอง');
+        return await readFileAsDataUrl(file);
+      }
+    }
+
     async function submitExpense(e) {
       e.preventDefault();
       try {
-        await api('expense.create', Object.fromEntries(new FormData(e.currentTarget).entries()));
+        const form = new FormData(e.currentTarget);
+        const file = $('#receiptFile').files && $('#receiptFile').files[0];
+        const payload = Object.fromEntries(form.entries());
+        delete payload.receipt_file;
+        if (file) {
+          toast('กำลังอัปโหลดไฟล์แนบ...');
+          payload.receipt_url = await uploadReceiptFile(file);
+        }
+        await api('expense.create', payload);
         toast('ส่งรายการเบิกสำเร็จ');
         await route('expenses');
       } catch (err) { toast(err.message, 'error'); }
