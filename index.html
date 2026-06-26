@@ -3828,8 +3828,9 @@ body {
 }
 .lb-stat-num {
   background: var(--grad-soft) !important;
-  -webkit-background-clip: text;
-  background-clip: text;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: transparent !important;
 }
 .login-form-card {
   background: rgba(255, 255, 255, 0.5) !important;
@@ -7609,7 +7610,7 @@ async function api(req) {
       tbl += '<th class="sticky-col" rowspan="2" style="border-bottom: 2px solid #cbd5e1; font-size:12px;">รายชื่อพนักงาน</th>';
       dates.forEach(function (dObj) {
         var dateNum = new Date(dObj.date).getDate();
-        var isToday = dObj.date === new Date().toISOString().slice(0,10);
+        var isToday = dObj.date === (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
         var isWeekend = dObj.day_of_week === 0 || dObj.day_of_week === 6;
         var cls = isToday ? ' class="col-today-header"' : (isWeekend ? ' style="background:#f8fafc;"' : '');
         tbl += '<th' + cls + ' style="font-size:13px;font-weight:800;' + (isWeekend && !isToday ? 'background:#f8fafc;' : '') + '">' + dateNum + '</th>';
@@ -7620,7 +7621,7 @@ async function api(req) {
       tbl += '<tr>';
       dates.forEach(function (dObj) {
         var dayText = daysNamesShort[dObj.day_of_week];
-        var isToday = dObj.date === new Date().toISOString().slice(0,10);
+        var isToday = dObj.date === (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
         var dayColor = '';
         if (dObj.day_of_week === 0) dayColor = 'color:#ef4444;font-weight:700;';
         else if (dObj.day_of_week === 6) dayColor = 'color:#3b82f6;font-weight:700;';
@@ -7649,28 +7650,25 @@ async function api(req) {
           var q = loadedData.quotas && loadedData.quotas[emp.id];
           var quotaText = '';
           if (q) {
-            quotaText = '<div style="font-size: 10px; color: var(--brand-1); font-weight: 600; margin-top: 3px; line-height: 1.2;">'
-              + 'ชดเชยคงเหลือ: ' + q.remaining_quota + ' วัน (จาก ' + q.total_quota + ' วัน)'
-              + '</div>';
+            quotaText = '<div style="font-size:10px;color:#024ad8;font-weight:600;margin-top:3px;">🔄 ชดเชยคงเหลือ: ' + q.remaining_quota + '/' + q.total_quota + ' วัน</div>';
           }
-          
-          tbl += '<td class="sticky-col">';
-          tbl += '<div style="font-weight: 600; color: var(--ink);">' + esc(emp.full_name) + '</div>';
-          tbl += '<div style="font-size: 11px; color: var(--ink-muted);">' + esc(emp.position || 'พนักงาน') + '</div>';
-          tbl += quotaText;
-          tbl += '</td>';
           
           var offDayVal = emp.off_day;
           var idx = parseInt(offDayVal);
-          var offDayText = (!isNaN(idx) && idx >= 0 && idx <= 6) ? daysFullNames[idx] : 'ไม่มี';
+          var offDayText = (!isNaN(idx) && idx >= 0 && idx <= 6) ? daysFullNames[idx] : null;
           var editClass = canEdit ? ' editable' : '';
           var editTitle = canEdit ? ' title="คลิกเพื่อแก้ไขวันหยุดประจำ"' : '';
+          var offTag = '<span class="off-day-badge emp-offday-tag' + editClass + '"' + editTitle
+            + ' data-uid="' + esc(emp.id) + '" data-name="' + esc(emp.full_name) + '" data-offday="' + esc(offDayVal || '') + '">'
+            + (offDayText ? '<i class="bi bi-moon-fill" style="font-size:8px;margin-right:2px;"></i>' + esc(offDayText) : 'ทำงานทุกวัน')
+            + (canEdit ? ' <i class="bi bi-pencil-fill" style="font-size:8px;opacity:.5;"></i>' : '')
+            + '</span>';
           
-          tbl += '<td class="off-day-col" style="border-right: 2px solid #cbd5e1;">';
-          tbl += '<span class="off-day-badge' + editClass + '"' + editTitle + ' data-uid="' + esc(emp.id) + '" data-name="' + esc(emp.full_name) + '" data-offday="' + esc(offDayVal || '') + '">';
-          tbl += esc(offDayText);
-          if (canEdit) tbl += ' <i class="bi bi-pencil-fill" style="font-size: 9px; opacity: 0.6;"></i>';
-          tbl += '</span>';
+          tbl += '<td class="sticky-col">';
+          tbl += '<div style="font-weight:700;font-size:13px;color:#1a1a1a;">' + esc(emp.full_name) + '</div>';
+          tbl += '<div style="font-size:11px;color:#64748b;margin-top:1px;">' + esc(emp.position || 'พนักงาน') + '</div>';
+          tbl += offTag;
+          tbl += quotaText;
           tbl += '</td>';
           
           dates.forEach(function (dObj) {
@@ -8979,37 +8977,76 @@ async function api(req) {
         descriptionText = match[2];
       }
 
-      var evidenceNote = chosenReceipts.length > 0 ? 'มีหลักฐานแนบอยู่แล้ว (' + chosenReceipts.length + '/4 รูป)' : 'แนบรูปภาพหลักฐานการจ่ายเงิน (สูงสุด 4 รูป)';
-      return '<div class="expense-form-shell">'
-        + '<div class="wiz-section expense-form-section">'
-        + '  <div class="wiz-section-icon"><i class="bi bi-receipt-cutoff"></i></div>'
-        + '  <div><div class="wiz-section-title">รายละเอียดใบเบิก</div><div class="wiz-section-sub">ระบุรายการ ค่าใช้จ่าย และวันที่ใช้งาน</div></div>'
-        + '</div>'
-        + '<div class="field"><label>เบิกในนามบริษัท <span class="req">*</span></label>'
-        + '  <select id="fe-company" class="select">'
-        + '    <option value="">-- เลือกบริษัท --</option>'
-        +      COMPANIES.map(function(c) {
-                 var selected = (companyValue === c) ? ' selected' : '';
-                 return '<option value="' + esc(c) + '"' + selected + '>' + esc(c) + '</option>';
-               }).join('')
-        + '  </select>'
-        + '</div>'
-        + '<div class="grid-2">'
-        + '  <div class="field"><label>ประเภทค่าใช้จ่าย <span class="req">*</span></label><select id="fe-type" class="select">' + typeOpts + '</select></div>'
-        + '  <div class="field"><label>จำนวนเงิน (บาท) <span class="req">*</span></label><input id="fe-amt" type="number" class="input" value="' + (preset.amount || '') + '" placeholder="0.00"></div>'
-        + '</div>'
-        + '<div class="field"><label>รายละเอียด / หัวข้อ <span class="req">*</span></label><input id="fe-desc" class="input" placeholder="เช่น ค่ารถแท็กซี่ไปพบลูกค้า" value="' + esc(descriptionText || '') + '"></div>'
-        + '<div class="grid-2">'
-        + '  <div class="field"><label>วันที่ใช้จ่าย <span class="req">*</span></label><input id="fe-date" type="date" class="input" value="' + (preset.expense_date || TH.iso(new Date())) + '"></div>'
-        + '  <div class="field"><label>เชื่อมโยงกับงานออกนอกพื้นที่</label><select id="fe-mission" class="select">' + missionOpts + '</select></div>'
-        + '</div>'
-        + '<div class="wiz-section expense-form-section">'
-        + '  <div class="wiz-section-icon"><i class="bi bi-image-fill"></i></div>'
-        + '  <div><div class="wiz-section-title">หลักฐานการจ่ายเงิน</div><div class="wiz-section-sub">แนบรูปใบเสร็จหรือสลิปเพื่อประกอบการอนุมัติ (สูงสุด 4 รูป)</div></div>'
-        + '</div>'
-        + '<div class="field"><label>แนบหลักฐานการจ่ายเงิน (รูปภาพ)</label><input id="fe-file" type="file" accept="image/*" class="input" multiple><div id="fe-file-note" class="field-hint">' + evidenceNote + '</div>'
-        + '<div id="fe-previews-container" style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap;"></div></div>'
-        + '</div>';
+      var evidenceNote = chosenReceipts.length > 0 ? 'มีหลักฐานแนบอยู่แล้ว (' + chosenReceipts.length + '/4 รูป)' : 'คลิกหรือลากไฟล์มาวางที่นี่';
+
+      return '<div class="ef-shell">' +
+
+        /* ── Company + Mission header ── */
+        '<div class="ef-header-card">' +
+          '<div class="ef-header-row">' +
+            '<div class="ef-field" style="flex:2">' +
+              '<label class="ef-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> เบิกในนามบริษัท <span class="ef-req">*</span></label>' +
+              '<select id="fe-company" class="ef-select">' +
+                '<option value="">— เลือกบริษัท —</option>' +
+                COMPANIES.map(function(c) {
+                  var selected = (companyValue === c) ? ' selected' : '';
+                  return '<option value="' + esc(c) + '"' + selected + '>' + esc(c) + '</option>';
+                }).join('') +
+              '</select>' +
+            '</div>' +
+            '<div class="ef-field" style="flex:2">' +
+              '<label class="ef-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 17l6-6 4 4 8-10"/></svg> เชื่อมโยงงานออกนอกพื้นที่</label>' +
+              '<select id="fe-mission" class="ef-select">' + missionOpts + '</select>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
+        /* ── Items section ── */
+        '<div class="ef-section-label">' +
+          '<div class="ef-section-icon">' +
+            '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>' +
+          '</div>' +
+          '<div>' +
+            '<div class="ef-section-title">รายการค่าใช้จ่าย</div>' +
+            '<div class="ef-section-sub">เพิ่มได้หลายรายการในครั้งเดียว</div>' +
+          '</div>' +
+        '</div>' +
+
+        '<div id="ef-items-list"></div>' +
+
+        '<button type="button" id="ef-add-item" class="ef-add-btn">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+          ' เพิ่มรายการ' +
+        '</button>' +
+
+        /* ── Total bar ── */
+        '<div class="ef-total-bar">' +
+          '<span class="ef-total-label">ยอดรวมทั้งหมด</span>' +
+          '<span class="ef-total-val" id="ef-grand-total">฿ 0.00</span>' +
+        '</div>' +
+
+        /* ── Evidence ── */
+        '<div class="ef-section-label">' +
+          '<div class="ef-section-icon" style="background:linear-gradient(135deg,#10b981,#059669)">' +
+            '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>' +
+          '</div>' +
+          '<div>' +
+            '<div class="ef-section-title">หลักฐานการจ่ายเงิน</div>' +
+            '<div class="ef-section-sub">แนบรูปใบเสร็จหรือสลิป (สูงสุด 4 รูป)</div>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="ef-upload-zone" id="ef-upload-zone">' +
+          '<input id="fe-file" type="file" accept="image/*" multiple style="display:none">' +
+          '<div class="ef-upload-inner" id="ef-upload-inner">' +
+            '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' +
+            '<div id="fe-file-note" class="ef-upload-note">' + evidenceNote + '</div>' +
+            '<button type="button" class="ef-upload-btn" onclick="document.getElementById(&#39;fe-file&#39;).click()">เลือกไฟล์</button>' +
+          '</div>' +
+          '<div id="fe-previews-container" class="ef-previews"></div>' +
+        '</div>' +
+
+      '</div>';
     }
 
     function bindExpenseFileNote(evidenceNote) {
@@ -9101,26 +9138,61 @@ async function api(req) {
     function collectExpensePayload(preset) {
       preset = preset || {};
       var comp = document.getElementById('fe-company') ? document.getElementById('fe-company').value.trim() : '';
-      var amt = parseFloat(document.getElementById('fe-amt').value);
-      var desc = document.getElementById('fe-desc').value.trim();
-      var date = document.getElementById('fe-date').value;
+      var missionId = document.getElementById('fe-mission') ? document.getElementById('fe-mission').value : '';
+      var receipts = chosenReceipts.length > 0 ? JSON.stringify(chosenReceipts) : '';
 
       if (!comp) return Promise.reject(new Error('กรุณาเลือกบริษัทที่ต้องการเบิก'));
+
+      /* multi-item mode — merge into one expense */
+      var rows = document.querySelectorAll('#ef-items-list .ef-item-row');
+      if (rows && rows.length > 0) {
+        var totalAmt = 0;
+        var descParts = [];
+        var firstDate = '';
+        var firstType = '';
+        var err = null;
+        rows.forEach(function(row, i) {
+          var type = row.querySelector('.ef-item-type') ? row.querySelector('.ef-item-type').value : '';
+          var desc = row.querySelector('.ef-item-desc') ? row.querySelector('.ef-item-desc').value.trim() : '';
+          var amt  = parseFloat(row.querySelector('.ef-item-amt') ? row.querySelector('.ef-item-amt').value : '');
+          var date = row.querySelector('.ef-item-date') ? row.querySelector('.ef-item-date').value : '';
+          if (!desc) { err = 'รายการที่ ' + (i+1) + ': กรุณาระบุรายละเอียด'; return; }
+          if (isNaN(amt) || amt <= 0) { err = 'รายการที่ ' + (i+1) + ': กรุณาระบุจำนวนเงินที่มากกว่า 0'; return; }
+          if (!date) { err = 'รายการที่ ' + (i+1) + ': กรุณาระบุวันที่ใช้จ่าย'; return; }
+          totalAmt += amt;
+          descParts.push((i+1) + '. [' + type + '] ' + desc + ' (฿' + amt.toLocaleString('th-TH') + ')');
+          if (!firstDate || date < firstDate) firstDate = date;
+          if (!firstType) firstType = type;
+        });
+        if (err) return Promise.reject(new Error(err));
+        var combinedDesc = '[' + comp + '] ' + descParts.join(' | ');
+        return Promise.resolve({
+          id: preset.id || '',
+          expense_type: firstType || 'อื่น ๆ',
+          description: combinedDesc,
+          amount: totalAmt,
+          expense_date: firstDate,
+          mission_id: missionId,
+          receipt_url: receipts
+        });
+      }
+
+      /* legacy single-item (modal) */
+      var amt = parseFloat(document.getElementById('fe-amt') ? document.getElementById('fe-amt').value : '');
+      var desc = document.getElementById('fe-desc') ? document.getElementById('fe-desc').value.trim() : '';
+      var date = document.getElementById('fe-date') ? document.getElementById('fe-date').value : '';
       if (!desc) return Promise.reject(new Error('กรุณาระบุรายละเอียด/หัวข้อ'));
       if (isNaN(amt) || amt <= 0) return Promise.reject(new Error('กรุณาระบุจำนวนเงินที่มากกว่า 0'));
       if (!date) return Promise.reject(new Error('กรุณาระบุวันที่ใช้จ่าย'));
-
-      var payload = {
+      return Promise.resolve({
         id: preset.id || '',
-        expense_type: document.getElementById('fe-type').value,
+        expense_type: document.getElementById('fe-type') ? document.getElementById('fe-type').value : '',
         description: '[' + comp + '] ' + desc,
         amount: amt,
         expense_date: date,
-        mission_id: document.getElementById('fe-mission').value,
-        receipt_url: chosenReceipts.length > 0 ? JSON.stringify(chosenReceipts) : ''
-      };
-
-      return Promise.resolve(payload);
+        mission_id: missionId,
+        receipt_url: receipts
+      });
     }
 
     function saveExpense(payload, isEdit, onDone) {
@@ -9135,35 +9207,171 @@ async function api(req) {
       });
     }
 
+    function bindExpenseItems() {
+      var list = document.getElementById('ef-items-list');
+      var addBtn = document.getElementById('ef-add-item');
+      if (!list || !addBtn) return;
+
+      var TYPES = ['ค่าเดินทาง', 'ค่าอาหาร', 'ค่าที่พัก', 'ค่าทางด่วน', 'อื่น ๆ'];
+      var ICONS = { 'ค่าเดินทาง': '🚗', 'ค่าอาหาร': '🍽️', 'ค่าที่พัก': '🏨', 'ค่าทางด่วน': '🛣️', 'อื่น ๆ': '📎' };
+
+      function typeOptions(sel) {
+        return TYPES.map(function(t) {
+          return '<option value="' + t + '"' + (t === sel ? ' selected' : '') + '>' + ICONS[t] + ' ' + t + '</option>';
+        }).join('');
+      }
+
+      function recalcTotal() {
+        var total = 0;
+        list.querySelectorAll('.ef-item-amt').forEach(function(el) {
+          var v = parseFloat(el.value);
+          if (!isNaN(v)) total += v;
+        });
+        var el = document.getElementById('ef-grand-total');
+        if (el) el.textContent = '฿ ' + total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+
+      function addRow(preset) {
+        preset = preset || {};
+        var idx = list.children.length;
+        var row = document.createElement('div');
+        row.className = 'ef-item-row';
+        row.innerHTML =
+          '<div class="ef-item-num">' + (idx + 1) + '</div>' +
+          '<div class="ef-item-fields">' +
+            '<div class="ef-item-row-top">' +
+              '<select class="ef-select ef-item-type">' + typeOptions(preset.type || 'ค่าเดินทาง') + '</select>' +
+              '<input class="ef-input ef-item-desc" placeholder="รายละเอียด / หัวข้อ" value="' + esc(preset.desc || '') + '">' +
+            '</div>' +
+            '<div class="ef-item-row-bot">' +
+              '<input class="ef-input ef-item-date" type="date" value="' + (preset.date || TH.iso(new Date())) + '">' +
+              '<div class="ef-input-money">' +
+                '<span class="ef-baht-prefix">฿</span>' +
+                '<input class="ef-input ef-item-amt" type="number" placeholder="0.00" min="0" value="' + (preset.amount || '') + '">' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<button type="button" class="ef-item-del" title="ลบรายการ">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>' +
+          '</button>';
+
+        row.querySelector('.ef-item-del').addEventListener('click', function() {
+          row.style.opacity = '0'; row.style.transform = 'scale(0.96)';
+          setTimeout(function() {
+            list.removeChild(row);
+            list.querySelectorAll('.ef-item-num').forEach(function(el, i) { el.textContent = i + 1; });
+            recalcTotal();
+            if (list.children.length === 0) addRow();
+          }, 180);
+        });
+        row.querySelector('.ef-item-amt').addEventListener('input', recalcTotal);
+        setTimeout(function() { row.style.opacity = '1'; row.style.transform = 'translateY(0)'; }, 20);
+        list.appendChild(row);
+        recalcTotal();
+      }
+
+      addBtn.addEventListener('click', function() { addRow(); });
+      addRow(null); // start with 1 row
+    }
+
     function renderExpenseFullPage(preloadMissionId) {
       Spinner.show('กำลังโหลดข้อมูลฟอร์ม...');
       call('mission.list', {}).then(function (res) {
         Spinner.hide();
         var missions = res.items || [];
-        var typeOpts = expenseTypeOptions('');
         var missionOpts = expenseMissionOptions(missions, preloadMissionId);
-        var evidenceNote = 'แนบรูปภาพหลักฐานการจ่ายเงิน';
-        setPage('<div class="expense-page-form">'
-          + '<div class="expense-page-title">ยื่นใบเบิกค่าใช้จ่าย</div>'
-          + '<div class="wiz expense-full-form">'
-          + '<div class="wiz-pane">' + expenseFormHtml(typeOpts, missionOpts, {}) + '</div>'
-          + '<div class="expense-form-actions">'
-          + '<button class="btn btn-primary" id="exp-submit"><i class="bi bi-send-fill"></i> ส่งคำขอเบิก</button>'
-          + '<button class="btn btn-danger" id="exp-draft"><i class="bi bi-save"></i> บันทึกแบบร่าง</button>'
-          + '<a class="btn btn-secondary" href="#/expenses"><i class="bi bi-x-lg"></i> ยกเลิก</a>'
-          + '</div>'
-          + '</div>'
-          + '</div>');
+        var evidenceNote = 'คลิกหรือลากไฟล์มาวางที่นี่';
+        var typeOpts = expenseTypeOptions('');
+        setPage(
+          '<style>' +
+          '.ef-shell{display:flex;flex-direction:column;gap:20px;max-width:860px;margin:0 auto;padding:0 0 40px;}' +
+          '.ef-header-card{background:#fff;border-radius:16px;border:1px solid #e8e8e8;box-shadow:0 2px 12px rgba(0,0,0,.06);padding:20px 24px;}' +
+          '.ef-header-row{display:flex;gap:16px;flex-wrap:wrap;}' +
+          '.ef-field{display:flex;flex-direction:column;gap:6px;flex:1;min-width:180px;}' +
+          '.ef-label{font-size:12px;font-weight:700;color:#475569;display:flex;align-items:center;gap:5px;text-transform:uppercase;letter-spacing:.04em;}' +
+          '.ef-req{color:#ef4444;}' +
+          '.ef-select{height:42px;border:1.5px solid #e2e8f0;border-radius:10px;padding:0 12px;font-size:13px;background:#fafafa;color:#1a1a1a;outline:none;transition:border .15s,box-shadow .15s;}' +
+          '.ef-select:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.12);background:#fff;}' +
+          '.ef-input{height:42px;border:1.5px solid #e2e8f0;border-radius:10px;padding:0 12px;font-size:13px;background:#fafafa;color:#1a1a1a;outline:none;transition:border .15s,box-shadow .15s;width:100%;box-sizing:border-box;}' +
+          '.ef-input:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.12);background:#fff;}' +
+          '.ef-section-label{display:flex;align-items:center;gap:14px;padding:4px 0;}' +
+          '.ef-section-icon{width:42px;height:42px;border-radius:13px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 14px rgba(59,130,246,.3);}' +
+          '.ef-section-title{font-size:15px;font-weight:800;color:#1a1a1a;}' +
+          '.ef-section-sub{font-size:12px;color:#94a3b8;margin-top:2px;}' +
+          '.ef-item-row{background:#fff;border:1.5px solid #e2e8f0;border-radius:14px;padding:14px 16px;display:flex;align-items:flex-start;gap:12px;transition:opacity .18s,transform .18s;opacity:0;transform:translateY(6px);box-shadow:0 2px 8px rgba(0,0,0,.04);}' +
+          '.ef-item-num{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:8px;}' +
+          '.ef-item-fields{flex:1;display:flex;flex-direction:column;gap:10px;}' +
+          '.ef-item-row-top{display:flex;gap:10px;flex-wrap:wrap;}' +
+          '.ef-item-row-top .ef-select{flex:0 0 160px;}' +
+          '.ef-item-row-top .ef-input{flex:1;min-width:180px;}' +
+          '.ef-item-row-bot{display:flex;gap:10px;flex-wrap:wrap;}' +
+          '.ef-item-row-bot .ef-input[type=date]{flex:0 0 160px;}' +
+          '.ef-input-money{position:relative;flex:1;min-width:130px;}' +
+          '.ef-baht-prefix{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:13px;font-weight:700;color:#3b82f6;pointer-events:none;}' +
+          '.ef-input-money .ef-input{padding-left:24px;}' +
+          '.ef-item-del{flex-shrink:0;width:34px;height:34px;border-radius:10px;border:1.5px solid #fee2e2;background:#fff;color:#ef4444;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;margin-top:4px;}' +
+          '.ef-item-del:hover{background:#fef2f2;border-color:#fca5a5;}' +
+          '.ef-add-btn{display:flex;align-items:center;justify-content:center;gap:8px;height:44px;border-radius:12px;border:1.5px dashed #93c5fd;background:#eff6ff;color:#2563eb;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;width:100%;}' +
+          '.ef-add-btn:hover{background:#dbeafe;border-color:#3b82f6;}' +
+          '.ef-total-bar{background:linear-gradient(135deg,#1d4ed8,#3b82f6);border-radius:14px;padding:16px 24px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 6px 20px rgba(59,130,246,.3);}' +
+          '.ef-total-label{color:rgba(255,255,255,.85);font-size:13px;font-weight:600;}' +
+          '.ef-total-val{color:#fff;font-size:22px;font-weight:900;letter-spacing:-.01em;}' +
+          '.ef-upload-zone{background:#f8fafc;border:2px dashed #cbd5e1;border-radius:16px;padding:24px;transition:border .15s,background .15s;}' +
+          '.ef-upload-zone:hover,.ef-upload-zone.dragover{border-color:#3b82f6;background:#eff6ff;}' +
+          '.ef-upload-inner{display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px 0;cursor:pointer;}' +
+          '.ef-upload-note{font-size:13px;color:#64748b;text-align:center;line-height:1.5;}' +
+          '.ef-upload-btn{height:36px;padding:0 20px;background:#3b82f6;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s;}' +
+          '.ef-upload-btn:hover{background:#2563eb;}' +
+          '.ef-previews{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}' +
+          '.ef-form-actions{display:flex;gap:12px;flex-wrap:wrap;padding:4px 0;}' +
+          '.ef-form-actions .btn{min-width:120px;height:48px;border-radius:12px;font-size:14px;font-weight:700;}' +
+          '@media(max-width:600px){.ef-item-row-top,.ef-item-row-bot{flex-direction:column;}.ef-item-row-top .ef-select,.ef-item-row-bot .ef-input[type=date]{flex:1;}}' +
+          '</style>' +
+
+          '<div class="ef-page-hero" style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);border-radius:20px;padding:24px 28px;margin-bottom:4px;position:relative;overflow:hidden;box-shadow:0 8px 32px rgba(29,78,216,.25);">' +
+            '<div style="position:absolute;top:-40px;right:-40px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.06);"></div>' +
+            '<div style="display:flex;align-items:center;gap:14px;position:relative;z-index:1;">' +
+              '<div style="width:52px;height:52px;border-radius:16px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:24px;border:1px solid rgba(255,255,255,.25);">' +
+                '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>' +
+              '</div>' +
+              '<div>' +
+                '<div style="font-size:22px;font-weight:900;color:#fff;letter-spacing:-.02em;">ยื่นใบเบิกค่าใช้จ่าย</div>' +
+                '<div style="font-size:13px;color:rgba(255,255,255,.75);margin-top:3px;">เบิกได้หลายรายการในครั้งเดียว · ส่งครั้งเดียวเลย</div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="ef-shell">' +
+            expenseFormHtml(typeOpts, missionOpts, {}) +
+          '</div>' +
+
+          '<div class="ef-form-actions" style="max-width:860px;margin:0 auto;">' +
+            '<button class="btn btn-primary" id="exp-submit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:6px"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> ส่งคำขอเบิก</button>' +
+            '<button class="btn" style="background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;" id="exp-draft"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:6px"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> บันทึกแบบร่าง</button>' +
+            '<a class="btn" style="background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;" href="#/expenses"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:6px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> ยกเลิก</a>' +
+          '</div>'
+        );
         bindExpenseFileNote(evidenceNote);
+        bindExpenseItems();
         $('#exp-submit').addEventListener('click', function () {
           collectExpensePayload({}).then(function (payload) {
-            saveExpense(payload, false, function () { location.hash = '#/expenses'; });
+            Spinner.show('กำลังบันทึกใบเบิก...');
+            call('expense.create', payload).then(function() {
+              Spinner.hide();
+              toast('บันทึกใบเบิกเรียบร้อย', 'success');
+              location.hash = '#/expenses';
+            }).catch(function(err) { Spinner.hide(); alertError('ผิดพลาด', err.message); });
           }).catch(function (err) { alertError('ตรวจสอบข้อมูล', err.message); });
         });
         $('#exp-draft').addEventListener('click', function () {
           collectExpensePayload({}).then(function (payload) {
             payload.draft = true;
-            saveExpense(payload, false, function () { location.hash = '#/expenses'; });
+            Spinner.show('กำลังบันทึก...');
+            call('expense.create', payload).then(function() {
+              Spinner.hide();
+              toast('บันทึกร่างเรียบร้อย', 'success');
+              location.hash = '#/expenses';
+            }).catch(function(err) { Spinner.hide(); alertError('ผิดพลาด', err.message); });
           }).catch(function (err) { alertError('ตรวจสอบข้อมูล', err.message); });
         });
       }).catch(function (e) {
@@ -9619,10 +9827,35 @@ async function api(req) {
           + '<div style="margin-bottom:7px;">ข้าพเจ้า <span class="dotted" style="width:220px;text-align:center;">' + esc((ex.requester && ex.requester.full_name) || '-') + '</span> แผนก/ฝ่าย <span class="dotted" style="width:150px;text-align:center;">' + esc((ex.requester && ex.requester.department) || '-') + '</span></div>'
           + '<div style="margin-bottom:7px;">มีความประสงค์ขออนุมัติเบิกเงินค่า <span class="dotted" style="width:150px;text-align:center;">' + esc(ex.expense_type) + '</span> ดังรายละเอียดต่อไปนี้:</div>'
           + '<table>'
-          + '<thead><tr><th style="width:60px;">ลำดับ</th><th>รายละเอียดการใช้จ่าย</th><th style="width:150px;text-align:right;">จำนวนเงิน (บาท)</th></tr></thead>'
+          + '<thead><tr><th style="width:50px;text-align:center;">ลำดับ</th><th>รายละเอียดการใช้จ่าย</th><th style="width:150px;text-align:right;">จำนวนเงิน (บาท)</th></tr></thead>'
           + '<tbody>'
-          + '<tr><td class="center">1</td><td>' + esc(printDesc) + '</td><td class="right">' + Number(ex.amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td></tr>'
-          + '<tr><td colspan="2"><div style="display:flex;justify-content:space-between;"><span>(ตัวอักษร) <span id="baht-text"></span></span><span style="font-weight:bold;">รวมเป็นเงินทั้งสิ้น</span></div></td><td class="right" style="font-weight:bold;">' + Number(ex.amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2}) + '</td></tr>'
+          + (function() {
+              /* parse multi-item: "1. [type] desc (฿amt) | 2. [type] desc (฿amt)" */
+              var parts = printDesc.split(' | ');
+              var multiPattern = /^(\d+)\.\s*\[([^\]]+)\]\s*(.*?)\s*\(฿([\d,\.]+)\)$/;
+              var rows = '';
+              var anyMatch = false;
+              var itemTotal = 0;
+              parts.forEach(function(part, idx) {
+                var m = part.trim().match(multiPattern);
+                if (m) {
+                  anyMatch = true;
+                  var amt = parseFloat(m[4].replace(/,/g,'')) || 0;
+                  itemTotal += amt;
+                  rows += '<tr>'
+                    + '<td style="text-align:center;">' + m[1] + '</td>'
+                    + '<td>[' + m[2] + '] ' + m[3] + '</td>'
+                    + '<td style="text-align:right;">' + amt.toLocaleString('th-TH', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</td>'
+                    + '</tr>';
+                }
+              });
+              if (!anyMatch) {
+                /* legacy single item */
+                rows = '<tr><td style="text-align:center;">1</td><td>' + printDesc + '</td><td style="text-align:right;">' + Number(ex.amount||0).toLocaleString('th-TH',{minimumFractionDigits:2}) + '</td></tr>';
+              }
+              rows += '<tr><td colspan="2"><div style="display:flex;justify-content:space-between;"><span>(ตัวอักษร) <span id="baht-text"></span></span><span style="font-weight:bold;">รวมเป็นเงินทั้งสิ้น</span></div></td><td style="text-align:right;font-weight:bold;">' + Number(ex.amount||0).toLocaleString('th-TH',{minimumFractionDigits:2}) + '</td></tr>';
+              return rows;
+            })()
           + '</tbody>'
           + '</table>'
           + '<div class="signature-box">'
