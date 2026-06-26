@@ -2793,8 +2793,8 @@ async function doPost(e) {
     }
 
     // 2. ดึงข้อมูลการตั้งค่า LINE API (เมื่อมี Event จริงส่งมาเท่านั้น)
-    var channelAccessToken = _settingsRaw_('line_channel_access_token');
-    var channelSecret = _settingsRaw_('line_channel_secret');
+    var channelAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') || _settingsRaw_('line_channel_access_token') || '';
+    var channelSecret = Deno.env.get('LINE_CHANNEL_SECRET') || _settingsRaw_('line_channel_secret') || '';
     
     // หากไม่มีการตั้งค่า Token ให้แจ้งเตือน แต่ตอบกลับ OK (ป้องกัน webhook บล็อก)
     if (!channelAccessToken) {
@@ -3405,7 +3405,7 @@ function LINE_getWebhookUrl() {
  */
 async function LINE_replyMessage_(replyToken, messages) {
   var url = 'https://api.line.me/v2/bot/message/reply';
-  var channelAccessToken = _settingsRaw_('line_channel_access_token');
+  var channelAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') || _settingsRaw_('line_channel_access_token') || '';
   
   var options = {
     method: 'post',
@@ -3441,7 +3441,7 @@ async function LINE_replyTextMessage_(replyToken, text) {
  * ดาวน์โหลดไฟล์มีเดียจาก LINE Content API
  */
 async function LINE_downloadLineContent_(messageId) {
-  var channelAccessToken = _settingsRaw_('line_channel_access_token');
+  var channelAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') || _settingsRaw_('line_channel_access_token') || '';
   if (!channelAccessToken) throw new Error('ยังไม่ได้ตั้งค่า LINE channel access token');
   var url = 'https://api-data.line.me/v2/bot/message/' + encodeURIComponent(String(messageId || '')) + '/content';
   var res = await fetch(url, {
@@ -5099,6 +5099,16 @@ function _calculateScheduleForMonth_(year, month) {
   });
 
   var lastDay = new Date(year, month, 0).getDate();
+
+  // Fetch overrides from Settings
+  var overrides = DB_readAll(SHEETS.SETTINGS).filter(function (s) {
+    return s.key.indexOf('sched_override_') === 0;
+  });
+  var overrideMap = {};
+  overrides.forEach(function (s) {
+    overrideMap[s.key] = s.value;
+  });
+
   var dates = [];
   
   for (var d = 1; d <= lastDay; d++) {
@@ -5126,8 +5136,18 @@ function _calculateScheduleForMonth_(year, month) {
       
       var isOffDay = u.off_day !== null && u.off_day !== undefined && u.off_day !== '' && Number(u.off_day) === dayOfWeek;
       
+      var overrideKey = 'sched_override_' + u.id + '_' + dateStr;
+      var overrideVal = overrideMap[overrideKey] || '';
+      
       var status = 'working';
-      if (activeLeave) {
+      var subBranch = null;
+
+      if (overrideVal === 'off_no_sub') {
+        status = 'off_no_sub';
+      } else if (overrideVal.indexOf('sub_') === 0) {
+        status = 'substituting';
+        subBranch = overrideVal.substring(4);
+      } else if (activeLeave) {
         if (activeLeave.leave_type === 'work_offday') {
           status = 'working';
         } else {
@@ -5147,6 +5167,8 @@ function _calculateScheduleForMonth_(year, month) {
         status: status,
         leave_info: leaveInfo,
         substitute_by: null,
+        substitute_branch: subBranch,
+        override_value: overrideVal,
         substituting_for: null
       };
       
@@ -5157,8 +5179,24 @@ function _calculateScheduleForMonth_(year, month) {
       }
     });
 
+    // 1. Process manual substitute assignments first
+    substitutePool.forEach(function (sub) {
+      if (sub.status === 'substituting' && sub.substitute_branch) {
+        var match = branchEmployees.find(function (emp) {
+          return emp.branch === sub.substitute_branch && (emp.status === 'off' || emp.status === 'leave') && !emp.substitute_by;
+        });
+        if (match) {
+          match.substitute_by = { id: sub.id, full_name: sub.full_name };
+          sub.substituting_for = { id: match.id, full_name: match.full_name, branch: match.branch };
+        } else {
+          sub.substituting_for = { id: null, full_name: 'สแตนด์บาย', branch: sub.substitute_branch };
+        }
+      }
+    });
+
+    // 2. Process automatic substitutions for remaining needy employees
     var needyEmployees = branchEmployees.filter(function (emp) {
-      return emp.status === 'off' || emp.status === 'leave';
+      return (emp.status === 'off' || emp.status === 'leave') && !emp.substitute_by;
     });
     
     var availableSubstitutes = substitutePool.filter(function (sub) {
@@ -5242,6 +5280,9 @@ function LINE_buildScheduleFlex_(user) {
           if (emp.substitute_by) {
             noteText = 'คนแทน: ' + emp.substitute_by.full_name;
           }
+        } else if (emp.status === 'off_no_sub') {
+          statusText = '🔴 หยุดงาน/ลาออก (ไม่มีคนแทน)';
+          statusColor = '#ef4444';
         } else if (emp.status === 'leave') {
           var typeLabel = LEAVE_TYPE_LABEL[emp.leave_info ? emp.leave_info.leave_type : ''] || 'ลาหยุด';
           statusText = '🟡 ' + typeLabel;
