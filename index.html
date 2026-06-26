@@ -9667,10 +9667,57 @@ async function api(req) {
       });
     }
 
-    function bindExpenseItems() {
+    function parseExpenseItems(descriptionText, presetDate, presetAmount, presetType) {
+      var items = [];
+      var descText = descriptionText || '';
+      var match = descText.match(/^\[([^\]]+)\]\s*(.*)$/);
+      if (match) {
+        descText = match[2];
+      }
+      
+      if (descText.match(/^\d+\.\s*\[/)) {
+        var parts = descText.split(/\s*\|\s*\d+\.\s*\[/);
+        parts.forEach(function (part, i) {
+          if (i === 0) {
+            part = part.replace(/^\d+\.\s*\[/, '');
+          }
+          var typeMatch = part.match(/^([^\]]+)\]\s*(.*)$/);
+          if (typeMatch) {
+            var type = typeMatch[1];
+            var rest = typeMatch[2];
+            
+            var amtMatch = rest.match(/^(.*)\s*\(฿([^\)]+)\)$/);
+            var desc = rest;
+            var amount = presetAmount;
+            if (amtMatch) {
+              desc = amtMatch[1].trim();
+              amount = parseFloat(amtMatch[2].replace(/,/g, ''));
+            }
+            items.push({
+              type: type,
+              desc: desc,
+              date: presetDate,
+              amount: amount
+            });
+          }
+        });
+      } else {
+        items.push({
+          type: presetType || 'อื่น ๆ',
+          desc: descText,
+          date: presetDate,
+          amount: presetAmount
+        });
+      }
+      return items;
+    }
+
+    function bindExpenseItems(presetItems) {
       var list = document.getElementById('ef-items-list');
       var addBtn = document.getElementById('ef-add-item');
       if (!list || !addBtn) return;
+
+      list.innerHTML = '';
 
       var TYPES = ['ค่าเดินทาง', 'ค่าอาหาร', 'ค่าที่พัก', 'ค่าทางด่วน', 'อื่น ๆ'];
       var ICONS = { 'ค่าเดินทาง': '🚗', 'ค่าอาหาร': '🍽️', 'ค่าที่พัก': '🏨', 'ค่าทางด่วน': '🛣️', 'อื่น ๆ': '📎' };
@@ -9731,7 +9778,14 @@ async function api(req) {
       }
 
       addBtn.addEventListener('click', function() { addRow(); });
-      addRow(null); // start with 1 row
+      
+      if (presetItems && presetItems.length > 0) {
+        presetItems.forEach(function(item) {
+          addRow(item);
+        });
+      } else {
+        addRow(null);
+      }
     }
 
     function renderExpenseFullPage(preloadMissionId) {
@@ -9868,6 +9922,8 @@ async function api(req) {
           focusConfirm: false,
           didOpen: function () {
             bindExpenseFileNote(evidenceNote);
+            var items = parseExpenseItems(preset.description, preset.expense_date, preset.amount, preset.expense_type);
+            bindExpenseItems(items);
           },
           preConfirm: function () {
             return collectExpensePayload(preset).catch(function (err) {
