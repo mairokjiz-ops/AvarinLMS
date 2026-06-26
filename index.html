@@ -4050,6 +4050,314 @@ body {
     z-index: 50 !important;
   }
 }
+
+/* ── Expense Form Styles ────────────────────────── */
+.expense-form-popup {
+  text-align: left !important;
+}
+.expense-form-popup .swal2-html-container {
+  text-align: left !important;
+  padding: 0 !important;
+  margin: 1.5em 0 0 0 !important;
+}
+.ef-shell {
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  text-align: left;
+}
+.ef-header-card {
+  background: #fff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+}
+.ef-header-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ef-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 180px;
+}
+.ef-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.ef-req {
+  color: #ef4444;
+}
+.ef-select {
+  height: 42px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0 12px;
+  font-size: 13px;
+  background: #fafafa;
+  color: #1a1a1a;
+  outline: none;
+  transition: border .15s, box-shadow .15s;
+}
+.ef-select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+  background: #fff;
+}
+.ef-input {
+  height: 42px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0 12px;
+  font-size: 13px;
+  background: #fafafa;
+  color: #1a1a1a;
+  outline: none;
+  transition: border .15s, box-shadow .15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+.ef-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+  background: #fff;
+}
+.ef-section-label {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 0;
+}
+.ef-section-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(59,130,246,.3);
+}
+.ef-section-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #1a1a1a;
+}
+.ef-section-sub {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+.ef-item-row {
+  background: #fff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  transition: opacity .18s, transform .18s;
+  opacity: 0;
+  transform: translateY(6px);
+  box-shadow: 0 2px 8px rgba(0,0,0,.04);
+}
+.ef-item-num {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 8px;
+}
+.ef-item-fields {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ef-item-row-top {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ef-item-row-top .ef-select {
+  flex: 0 0 160px;
+}
+.ef-item-row-top .ef-input {
+  flex: 1;
+  min-width: 180px;
+}
+.ef-item-row-bot {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ef-item-row-bot .ef-input[type=date] {
+  flex: 0 0 160px;
+}
+.ef-input-money {
+  position: relative;
+  flex: 1;
+  min-width: 130px;
+}
+.ef-baht-prefix {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 13px;
+  font-weight: 700;
+  color: #3b82f6;
+  pointer-events: none;
+}
+.ef-input-money .ef-input {
+  padding-left: 24px;
+}
+.ef-item-del {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1.5px solid #fee2e2;
+  background: #fff;
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all .15s;
+  margin-top: 4px;
+}
+.ef-item-del:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+.ef-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1.5px dashed #93c5fd;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .15s;
+  width: 100%;
+}
+.ef-add-btn:hover {
+  background: #dbeafe;
+  border-color: #3b82f6;
+}
+.ef-total-bar {
+  background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+  border-radius: 14px;
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 6px 20px rgba(59,130,246,.3);
+}
+.ef-total-label {
+  color: rgba(255,255,255,.85);
+  font-size: 13px;
+  font-weight: 600;
+}
+.ef-total-val {
+  color: #fff;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -.01em;
+}
+.ef-upload-zone {
+  background: #f8fafc;
+  border: 2px dashed #cbd5e1;
+  border-radius: 16px;
+  padding: 24px;
+  transition: border .15s, background .15s;
+}
+.ef-upload-zone:hover, .ef-upload-zone.dragover {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+.ef-upload-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  cursor: pointer;
+}
+.ef-upload-note {
+  font-size: 13px;
+  color: #64748b;
+  text-align: center;
+  line-height: 1.5;
+}
+.ef-upload-btn {
+  height: 36px;
+  padding: 0 20px;
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+.ef-upload-btn:hover {
+  background: #2563eb;
+}
+.ef-previews {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.ef-form-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 4px 0;
+}
+.ef-form-actions .btn {
+  min-width: 120px;
+  height: 48px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+}
+@media (max-width: 600px) {
+  .ef-item-row-top, .ef-item-row-bot {
+    flex-direction: column;
+  }
+  .ef-item-row-top .ef-select, .ef-item-row-bot .ef-input[type=date] {
+    flex: 1;
+  }
+}
   </style>
 </head>
 <body>
