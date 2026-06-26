@@ -1820,7 +1820,9 @@ function _enrichLeave_(lv, usersMap) {
 function Leaves_list(user, p) {
   var data = p || {};
   var scope = String(data.scope || 'mine');
-  var rows = DB_readAll(SHEETS.LEAVES);
+  var rows = DB_readAll(SHEETS.LEAVES).filter(function (r) {
+    return r.leave_type !== 'compensatory' && r.leave_type !== 'work_offday';
+  });
   var users = DB_buildIndex(SHEETS.USERS);
 
   if (scope === 'mine') {
@@ -1997,7 +1999,9 @@ function Reports_users_list(user) {
 function Dashboard_data(user) {
   var fy = cfg_fiscalYear_(cfg_now_());
   var myStats = _leaveStats_(user.id, fy);
-  var rows = DB_readAll(SHEETS.LEAVES);
+  var rows = DB_readAll(SHEETS.LEAVES).filter(function (r) {
+    return r.leave_type !== 'compensatory' && r.leave_type !== 'work_offday';
+  });
   var users = DB_buildIndex(SHEETS.USERS);
 
   var data = {
@@ -2437,6 +2441,7 @@ function Calendar_month(user, p) {
   var visibleStatuses = {};
   [STATUS.PENDING, STATUS.CHECKED, STATUS.REVIEWED, STATUS.APPROVED].forEach(function (s) { visibleStatuses[s] = true; });
   var rows = DB_readAll(SHEETS.LEAVES).filter(function (r) {
+    if (r.leave_type === 'compensatory' || r.leave_type === 'work_offday') return false;
     if (!visibleStatuses[r.status]) return false;
     var s = _wf_asLocalDate_(r.start_date);
     var e = _wf_asLocalDate_(r.end_date);
