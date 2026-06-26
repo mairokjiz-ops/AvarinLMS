@@ -6896,117 +6896,185 @@ async function api(req) {
   function renderQuotasManager() {
     if (!hasCap('setting.manage|leave.adjust_quota')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
     var st = { q: '', department: '', fiscal_year: new Date().getFullYear() };
-    
-    setPage('<div class="toolbar">'
-      + '<div class="search-box"><i class="bi bi-search"></i><input type="text" id="qt-q" placeholder="ค้นหาชื่อพนักงาน..."></div>'
-      + '<select class="select" id="qt-dept" style="max-width:200px"><option value="">ทุกแผนก</option>'
+
+    setPage(
+      '<style>'
+      + '#qt-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:14px; margin-top:16px; }'
+      + '.qt-card { background:#fff; border:1px solid #e8edf3; border-radius:14px; overflow:hidden; transition:box-shadow .2s,transform .2s; }'
+      + '.qt-card:hover { box-shadow:0 8px 28px rgba(0,0,0,.09); transform:translateY(-1px); }'
+      + '.qt-card-head { display:flex; align-items:center; gap:11px; padding:14px 16px 12px; border-bottom:1px solid #f1f5f9; background:linear-gradient(135deg,#f8faff 0%,#ffffff 100%); }'
+      + '.qt-avatar { width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg,#6366f1,#8b5cf6); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; color:#fff; flex-shrink:0; overflow:hidden; }'
+      + '.qt-avatar img { width:100%; height:100%; object-fit:cover; }'
+      + '.qt-name { font-weight:700; font-size:14px; color:#0f172a; line-height:1.3; }'
+      + '.qt-sub  { font-size:11.5px; color:#64748b; margin-top:1px; }'
+      + '.qt-body { padding:12px 16px; display:flex; flex-direction:column; gap:8px; }'
+      + '.qt-row  { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:8px; background:#f8fafc; transition:background .15s; }'
+      + '.qt-row:hover { background:#eef2ff; }'
+      + '.qt-type-badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; white-space:nowrap; }'
+      + '.qt-bar-wrap { flex:1; height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; min-width:40px; }'
+      + '.qt-bar { height:100%; border-radius:3px; transition:width .4s; }'
+      + '.qt-days { font-size:12px; font-weight:700; color:#1e293b; white-space:nowrap; min-width:60px; text-align:right; }'
+      + '.qt-adj-btn { background:none; border:none; cursor:pointer; color:#6366f1; padding:3px 6px; border-radius:6px; font-size:12px; transition:background .15s,color .15s; display:flex; align-items:center; gap:3px; white-space:nowrap; }'
+      + '.qt-adj-btn:hover { background:#eef2ff; color:#4338ca; }'
+      + '.qt-adj-badge { font-size:10px; font-weight:700; padding:1px 5px; border-radius:10px; background:#eef2ff; color:#6366f1; }'
+      + '.qt-fy-chip { display:inline-flex; align-items:center; gap:6px; background:#f0fdf4; color:#15803d; font-weight:700; font-size:12px; padding:4px 12px; border-radius:20px; border:1px solid #bbf7d0; }'
+      + '.qt-empty { grid-column:1/-1; text-align:center; padding:60px 20px; color:#94a3b8; background:#fff; border-radius:14px; border:1px dashed #e2e8f0; }'
+      + '@media(max-width:640px){ #qt-grid{ grid-template-columns:1fr; } }'
+      + '</style>'
+      + '<div class="toolbar" style="align-items:center;flex-wrap:wrap;gap:10px">'
+      + '  <div class="search-box" style="flex:1;min-width:160px"><i class="bi bi-search"></i><input type="text" id="qt-q" placeholder="ค้นหาชื่อพนักงาน..."></div>'
+      + '  <select class="select" id="qt-dept" style="max-width:180px"><option value="">ทุกแผนก</option>'
       + DEPARTMENTS.map(function (d) { return '<option value="' + d + '">' + esc(d) + '</option>'; }).join('')
-      + '</select>'
-      + '<select class="select" id="qt-fy" style="max-width:180px">'
+      + '  </select>'
+      + '  <select class="select" id="qt-fy" style="max-width:160px">'
       + [0, -1, -2].map(function (offset) {
           var y = new Date().getFullYear() + offset;
-          var label = 'ปีงบประมาณ ' + (y + 543);
-          return '<option value="' + y + '"' + (offset === 0 ? ' selected' : '') + '>' + label + '</option>';
+          return '<option value="' + y + '"' + (offset === 0 ? ' selected' : '') + '>ปีงบประมาณ ' + (y + 543) + '</option>';
         }).join('')
-      + '</select>'
+      + '  </select>'
       + '</div>'
-      + '<div id="qt-list" class="table-responsive">' + skBlocks(4, 80) + '</div>');
-      
+      + '<div id="qt-summary" style="margin-top:12px"></div>'
+      + '<div id="qt-grid">' + skBlocks(6, 80) + '</div>');
+
+    var QUOTA_META = {
+      sick:         { label: 'ป่วย',   bg: '#fef2f2', text: '#dc2626', bar: '#ef4444' },
+      personal:     { label: 'กิจ',    bg: '#fffbeb', text: '#d97706', bar: '#f59e0b' },
+      annual:       { label: 'พักร้อน', bg: '#f0fdf4', text: '#16a34a', bar: '#22c55e' },
+      compensatory: { label: 'ชดเชย', bg: '#eff6ff', text: '#2563eb', bar: '#3b82f6' }
+    };
+
+    function renderQuotaRow(u, type, item) {
+      var meta = QUOTA_META[type] || { label: type, bg: '#f8fafc', text: '#475569', bar: '#94a3b8' };
+      var pct = item.limit > 0 ? Math.min(100, Math.round(item.used * 100 / item.limit)) : 0;
+      var barColor = pct >= 90 ? '#ef4444' : (pct >= 70 ? '#f59e0b' : meta.bar);
+      var adjBadge = item.adjustment !== 0
+        ? ' <span class="qt-adj-badge">' + (item.adjustment > 0 ? '+' : '') + item.adjustment + '</span>'
+        : '';
+      return '<div class="qt-row">'
+        + '  <span class="qt-type-badge" style="background:' + meta.bg + ';color:' + meta.text + '">' + meta.label + '</span>'
+        + '  <div class="qt-bar-wrap"><div class="qt-bar" style="width:' + pct + '%;background:' + barColor + '"></div></div>'
+        + '  <span class="qt-days"><strong>' + item.remaining + '</strong><span style="color:#94a3b8;font-weight:400">/' + item.limit + '</span></span>'
+        + adjBadge
+        + '  <button class="qt-adj-btn adjust-link" data-uid="' + esc(u.id) + '" data-type="' + type + '" data-name="' + esc(u.full_name) + '" data-base="' + item.base_limit + '" data-adj="' + item.adjustment + '">'
+        + '    <i class="bi bi-pencil-fill" style="font-size:10px"></i> ปรับ'
+        + '  </button>'
+        + '</div>';
+    }
+
     function load() {
-      Spinner.show('กำลังโหลดข้อมูลสิทธิ์การลา...');
+      var grid = $('#qt-grid');
+      var summDiv = $('#qt-summary');
+      if (!grid) return;
+      grid.innerHTML = skBlocks(6, 80);
+      Spinner.show('กำลังโหลดข้อมูล...');
       call('leave.all_users_quotas', { fiscal_year: st.fiscal_year }).then(function (r) {
         Spinner.hide();
         var users = r.users || [];
-        // Filter locally
         var filtered = users.filter(function (u) {
           if (st.q && (u.full_name || '').toLowerCase().indexOf(st.q.toLowerCase()) < 0) return false;
           if (st.department && u.department !== st.department) return false;
           return true;
         });
-        
-        var rows = filtered.map(function (u) {
+
+        // Summary bar
+        var fyLabel = (st.fiscal_year + 543);
+        summDiv.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px">'
+          + '  <div style="font-size:13px;color:#64748b">แสดง <strong style="color:#0f172a">' + filtered.length + '</strong> จาก ' + users.length + ' คน</div>'
+          + '  <div class="qt-fy-chip"><i class="bi bi-calendar3"></i> ปีงบประมาณ ' + fyLabel + '</div>'
+          + '</div>';
+
+        if (filtered.length === 0) {
+          grid.innerHTML = '<div class="qt-empty"><i class="bi bi-person-slash" style="font-size:36px;display:block;margin-bottom:10px;opacity:.4"></i>ไม่พบพนักงานในเงื่อนไขที่เลือก</div>';
+          return;
+        }
+
+        var cards = filtered.map(function (u) {
           var stats = u.quota_stats.items || {};
-          
-          function renderQuotaCell(type) {
-            var item = stats[type] || { limit: 0, used: 0, remaining: 0, adjustment: 0, base_limit: 0 };
-            var adjText = item.adjustment > 0 ? ' (+' + item.adjustment + ')' : (item.adjustment < 0 ? ' (' + item.adjustment + ')' : '');
-            var adjBadge = item.adjustment !== 0 ? ' <span style="font-size:11px;color:#6366f1;font-weight:700">' + adjText + '</span>' : '';
-            var typeLabel = (LMS.LEAVE_TYPE_LABEL || {})[type] || type;
-            return '<div style="margin-bottom:8px;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px dashed #f1f5f9;padding-bottom:4px">'
-              + '  <div>'
-              + '    <strong style="color:#475569">' + esc(typeLabel) + '</strong>: '
-              + '    <span style="font-weight:600;color:#0f172a">' + item.remaining + '</span> / ' + item.limit + ' วัน' + adjBadge
-              + '  </div>'
-              + '  <div>'
-              + '    <a href="#" class="adjust-link btn-text" data-uid="' + esc(u.id) + '" data-type="' + type + '" data-name="' + esc(u.full_name) + '" data-base="' + item.base_limit + '" data-adj="' + item.adjustment + '" style="font-size:12px;color:#4f46e5;text-decoration:none;font-weight:600"><i class="bi bi-pencil-square"></i> ปรับปรุงสิทธิ์</a>'
-              + '  </div>'
-              + '</div>';
-          }
-          
-          return '<tr data-id="' + esc(u.id) + '">'
-            + '<td>'
-            + '<div style="font-weight:600;font-size:14px;color:#1e293b">' + esc(u.full_name) + '</div>'
-            + '<div style="font-size:12px;color:#64748b;margin-top:2px">' + esc(u.position || '-') + ' / ' + esc(u.department || '-') + '</div>'
-            + '</td>'
-            + '<td style="padding:12px">'
-            + renderQuotaCell('sick')
-            + renderQuotaCell('personal')
-            + renderQuotaCell('annual')
-            + renderQuotaCell('compensatory')
-            + '</td>'
-            + '</tr>';
+          var initial = (u.full_name || '?').substring(0, 1).toUpperCase();
+          var avatar = u.avatar
+            ? '<img src="' + esc(u.avatar) + '" referrerpolicy="no-referrer">'
+            : initial;
+          var dept = [u.position, u.department].filter(Boolean).join(' / ') || '-';
+          var rows = ['sick', 'personal', 'annual', 'compensatory'].map(function (t) {
+            var item = stats[t] || { limit: 0, used: 0, remaining: 0, adjustment: 0, base_limit: 0 };
+            return renderQuotaRow(u, t, item);
+          }).join('');
+          return '<div class="qt-card">'
+            + '  <div class="qt-card-head">'
+            + '    <div class="qt-avatar">' + avatar + '</div>'
+            + '    <div style="min-width:0">'
+            + '      <div class="qt-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(u.full_name) + '</div>'
+            + '      <div class="qt-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(dept) + '</div>'
+            + '    </div>'
+            + '  </div>'
+            + '  <div class="qt-body">'
+            + '    <div style="display:flex;justify-content:space-between;align-items:center;padding:0 2px;margin-bottom:2px">'
+            + '      <span style="font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.5px">ประเภทลา</span>'
+            + '      <span style="font-size:11px;color:#94a3b8;font-weight:600">เหลือ/ทั้งหมด</span>'
+            + '    </div>'
+            + rows
+            + '  </div>'
+            + '</div>';
         }).join('');
-        
-        var html = '<table class="data-table">'
-          + '<thead><tr><th>พนักงาน</th><th>สิทธิ์วันลาคงเหลือ / ทั้งหมด (ปรับปรุงพิเศษ)</th></tr></thead>'
-          + '<tbody>' + (rows || '<tr><td colspan="2" style="text-align:center;color:#94a3b8;padding:30px">ไม่พบข้อมูลพนักงาน</td></tr>') + '</tbody></table>';
-          
-        $('#qt-list').innerHTML = html;
-        
-        // Wire up adjust links
-        $$('.adjust-link').forEach(function (a) {
-          a.addEventListener('click', function (e) {
-            e.preventDefault();
-            var uid = a.getAttribute('data-uid');
-            var type = a.getAttribute('data-type');
-            var name = a.getAttribute('data-name');
-            var base = Number(a.getAttribute('data-base'));
-            var adj = Number(a.getAttribute('data-adj'));
+
+        grid.innerHTML = cards;
+
+        $$('.adjust-link').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var uid  = btn.getAttribute('data-uid');
+            var type = btn.getAttribute('data-type');
+            var name = btn.getAttribute('data-name');
+            var base = Number(btn.getAttribute('data-base'));
+            var adj  = Number(btn.getAttribute('data-adj'));
             openAdjustModal(uid, type, name, base, adj);
           });
         });
       }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
     }
-    
+
     function openAdjustModal(uid, type, name, base, adj) {
+      var meta = QUOTA_META[type] || { label: type, bg: '#f8fafc', text: '#475569' };
       var typeLabel = (LMS.LEAVE_TYPE_LABEL || {})[type] || type;
-      var html = '<div style="display:flex;flex-direction:column;gap:14px;padding:6px 0">'
-        + '<div><strong>พนักงาน:</strong> ' + esc(name) + '</div>'
-        + '<div><strong>ประเภทการลา:</strong> ' + esc(typeLabel) + '</div>'
-        + '<div><strong>สิทธิ์ตั้งต้นระบบ:</strong> ' + base + ' วัน</div>'
-        + '<div class="form-group" style="margin-top:10px">'
-        + '  <label class="label" style="font-weight:600">จำนวนวันที่จะปรับเพิ่ม/ลด (ปรับปรุงเป็นกรณีพิเศษ)</label>'
-        + '  <input type="number" id="adj-days" class="input" value="' + adj + '" placeholder="ระบุจำนวนวันที่จะปรับปรุง (เช่น +2 หรือ -3)">'
-        + '  <small style="color:#64748b;margin-top:6px;display:block;line-height:1.4">ระบุเป็นตัวเลขบวกเพื่อเพิ่มสิทธิ์ (เช่น 5) หรือตัวเลขลบเพื่อลดสิทธิ์ (เช่น -2) หรือระบุเป็น 0 เพื่อใช้สิทธิ์ตั้งต้นตามปกติ</small>'
-        + '</div>'
+      var html = '<div style="display:flex;flex-direction:column;gap:14px">'
+        + '  <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:#f8fafc;border-radius:10px">'
+        + '    <span class="qt-type-badge" style="background:' + meta.bg + ';color:' + meta.text + ';font-size:13px;padding:4px 12px">' + esc(typeLabel) + '</span>'
+        + '    <div>'
+        + '      <div style="font-weight:700;font-size:14px;color:#0f172a">' + esc(name) + '</div>'
+        + '      <div style="font-size:12px;color:#64748b;margin-top:1px">สิทธิ์ตั้งต้น: <strong>' + base + ' วัน</strong></div>'
+        + '    </div>'
+        + '  </div>'
+        + '  <div class="form-group" style="margin:0">'
+        + '    <label class="label" style="font-weight:600">ปรับสิทธิ์เพิ่ม/ลด (วัน)</label>'
+        + '    <div style="display:flex;align-items:center;gap:10px;margin-top:8px">'
+        + '      <button id="adj-minus" type="button" style="width:36px;height:36px;border-radius:50%;border:1.5px solid #e2e8f0;background:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:700;flex-shrink:0">−</button>'
+        + '      <input type="number" id="adj-days" class="input" value="' + adj + '" style="text-align:center;font-size:22px;font-weight:700;flex:1;min-width:0">'
+        + '      <button id="adj-plus" type="button" style="width:36px;height:36px;border-radius:50%;border:1.5px solid #e2e8f0;background:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:700;flex-shrink:0">+</button>'
+        + '    </div>'
+        + '    <small style="color:#64748b;margin-top:8px;display:block;line-height:1.5">บวก = เพิ่มสิทธิ์, ลบ = ลดสิทธิ์, 0 = ใช้สิทธิ์ตั้งต้น</small>'
+        + '  </div>'
         + '</div>';
-        
+
       var footer = '<button class="btn btn-secondary" data-modal-close>ยกเลิก</button>'
-        + '<button class="btn btn-primary" id="adj-save" style="margin-left:8px">บันทึกข้อมูล</button>';
-        
+        + '<button class="btn btn-primary" id="adj-save" style="margin-left:8px"><i class="bi bi-check-lg"></i> บันทึก</button>';
+
       Modal.open({
-        title: 'ปรับปรุงสิทธิ์วันลาสะสมเป็นกรณีพิเศษ',
+        title: 'ปรับสิทธิ์วันลาพิเศษ',
         html: html,
         footer: footer,
         onOpen: function () {
+          $('#adj-minus').addEventListener('click', function () {
+            var v = Number($('#adj-days').value || 0);
+            $('#adj-days').value = v - 1;
+          });
+          $('#adj-plus').addEventListener('click', function () {
+            var v = Number($('#adj-days').value || 0);
+            $('#adj-days').value = v + 1;
+          });
           $('#adj-save').addEventListener('click', function () {
             var inputVal = $('#adj-days').value.trim();
             var days = Number(inputVal);
-            if (inputVal === '' || isNaN(days)) {
-              toast('กรุณาระบุตัวเลขที่ถูกต้อง', 'warning');
-              return;
-            }
-            Spinner.show('กำลังบันทึกข้อมูล...');
+            if (inputVal === '' || isNaN(days)) return toast('กรุณาระบุตัวเลขที่ถูกต้อง', 'warning');
+            Spinner.show('กำลังบันทึก...');
             call('leave.adjust_quota', {
               user_id: uid,
               leave_type: type,
@@ -7015,35 +7083,27 @@ async function api(req) {
             }).then(function () {
               Spinner.hide();
               Modal.close();
-              toast('ปรับปรุงสิทธิ์วันลาเรียบร้อยแล้ว', 'success');
+              toast('ปรับสิทธิ์เรียบร้อยแล้ว', 'success');
               load();
-            }).catch(function (err) {
-              Spinner.hide();
-              alertError('บันทึกไม่สำเร็จ', err.message);
-            });
+            }).catch(function (err) { Spinner.hide(); alertError('บันทึกไม่สำเร็จ', err.message); });
           });
         }
       });
     }
-    
+
     var t;
     $('#qt-q').addEventListener('input', function () {
       clearTimeout(t);
       t = setTimeout(function () { st.q = $('#qt-q').value; load(); }, 300);
     });
-    $('#qt-dept').addEventListener('change', function () {
-      st.department = $('#qt-dept').value;
-      load();
-    });
-    $('#qt-fy').addEventListener('change', function () {
-      st.fiscal_year = Number($('#qt-fy').value);
-      load();
-    });
-    
+    $('#qt-dept').addEventListener('change', function () { st.department = $('#qt-dept').value; load(); });
+    $('#qt-fy').addEventListener('change', function () { st.fiscal_year = Number($('#qt-fy').value); load(); });
+
     load();
   }
 
   // ── Users (admin) ──────────────────────────────────
+
   Routes['#/users'] = function () {
     if (!hasCap('user.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
     var st = { q: '', role: '', department: '' };
