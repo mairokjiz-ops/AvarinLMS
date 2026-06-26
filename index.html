@@ -7284,6 +7284,7 @@ async function api(req) {
       + '  .schedule-table tr.clickable-row:hover td.sticky-col { background: #f0f5ff !important; }'
       + '  .cell-working { color: #10b981; font-size: 13px; }'
       + '  .cell-off { background: #fff7ed !important; color: #ea580c; font-weight: 700; font-size: 10px; }'
+      + '  .cell-off-no-sub { background: #fff1f2 !important; color: #e11d48; font-weight: 700; font-size: 10px; }'
       + '  .cell-leave { background: #fef2f2 !important; color: #dc2626; font-weight: 700; font-size: 10px; }'
       + '  .cell-substituting { background: #f5f3ff !important; color: #7c3aed; font-weight: 700; font-size: 10px; }'
       + '  .cell-compensatory { background: #eff6ff !important; color: #1d4ed8; font-weight: 700; font-size: 10px; }'
@@ -7355,13 +7356,30 @@ async function api(req) {
       + '  <div class="legend-sec">'
       + '    <div class="legend-sec-title"><i class="bi bi-info-square-fill"></i> คำอธิบายสัญลักษณ์</div>'
       + '    <div class="legend-items">'
-      + '      <div class="legend-item"><span class="legend-box" style="background:#ecfdf5;border-color:#10b981;display:flex;align-items:center;justify-content:center;color:#10b981;font-size:9px;">✔</span> ทำงานปกติ</div>'
-      + '      <div class="legend-item"><span class="legend-box" style="background:#fff7ed;border-color:#fdba74;"></span> วันหยุดประจำสัปดาห์</div>'
-      + '      <div class="legend-item"><span class="legend-box" style="background:#fef2f2;border-color:#fca5a5;"></span> ลางาน (อนุมัติแล้ว)</div>'
-      + '      <div class="legend-item"><span class="legend-box" style="background:#f5f3ff;border-color:#c4b5fd;"></span> ปฏิบัติงานแทน</div>'
-      + '      <div class="legend-item"><span class="legend-box" style="background:#eff6ff;border-color:#93c5fd;"></span> วันหยุดชดเชย</div>'
-      + '      <div class="legend-item"><span class="legend-box" style="background:#ecfdf5;border-color:#6ee7b7;"></span> ทำงานในวันหยุด (ชดเชย)</div>'
-      + '      <div class="legend-item"><span class="badge-swap">🔄</span> มีคนแทนในวันหยุด/ลา</div>'
+      + '      <div class="legend-item"><span class="legend-box" style="background:#ecfdf5;border-color:#10b981;display:flex;align-items:center;justify-content:center;">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>'
+      + '</span> ทำงานปกติ</div>'
+      + '      <div class="legend-item"><span class="legend-box" style="background:#fff7ed;border-color:#fdba74;display:flex;align-items:center;justify-content:center;">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="color:#ea580c;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>'
+      + '</span> วันหยุดประจำสัปดาห์</div>'
+      + '      <div class="legend-item"><span class="legend-box" style="background:#fff1f2;border-color:#fda4af;display:flex;align-items:center;justify-content:center;">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/></svg>'
+      + '</span> หยุดงาน/ลาออก (OFF - ไม่มีคนแทน)</div>'
+      + '      <div class="legend-item"><span class="legend-box" style="background:#fef2f2;border-color:#fca5a5;display:flex;align-items:center;justify-content:center;">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><line x1="8" x2="16" y1="14" y2="14"/></svg>'
+      + '</span> ลางาน (อนุมัติแล้ว)</div>'
+      + '      <div class="legend-item"><span class="legend-box" style="background:#f5f3ff;border-color:#c4b5fd;display:flex;align-items:center;justify-content:center;">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>'
+      + '</span> ปฏิบัติงานแทน</div>'
+      + '      <div class="legend-item"><span class="legend-box" style="background:#eff6ff;border-color:#93c5fd;display:flex;align-items:center;justify-content:center;">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
+      + '</span> วันหยุดชดเชย</div>'
+      + '      <div class="legend-item"><span class="legend-box" style="background:#ecfdf5;border-color:#6ee7b7;display:flex;align-items:center;justify-content:center;">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#065f46" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>'
+      + '</span> ทำงานในวันหยุด (ชดเชย)</div>'
+      + '      <div class="legend-item"><span class="badge-swap" style="margin-left:0; margin-right:4px; display:inline-flex; align-items:center; justify-content:center;">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>'
+      + '</span> มีคนแทนในวันหยุด/ลา</div>'
       + '    </div>'
       + '    <div class="legend-note"><strong>การคำนวณคนแทนอัตโนมัติ:</strong> ระบบวิเคราะห์พนักงานจากกลุ่ม "พนักงานแทน" ที่ไม่ตรงวันหยุดและไม่มีใบลาที่อนุมัติ แล้วมอบหมายให้ปฏิบัติงานแทนพนักงานสาขาหลักโดยสลับกันอย่างทั่วถึง</div>'
       + '  </div>'
@@ -7587,6 +7605,15 @@ async function api(req) {
     function renderTable() {
       var tableWrapper = $('#sched-table-wrapper');
       if (!tableWrapper || !loadedData) return;
+
+      var svgWorking = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; color:#10b981;"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+      var svgWorkedOffday = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:2px; color:#065f46;"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg><span style="font-size: 10px; font-weight: 700; vertical-align: middle;">ทำงาน</span>';
+      var svgOff = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="display:inline-block; vertical-align:middle; margin-right:2px; color:#ea580c;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><span style="font-size: 10px; font-weight: 700; vertical-align: middle;">หยุด</span>';
+      var svgOffNoSub = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:2px; color:#e11d48;"><circle cx="12" cy="12" r="10"/><line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/></svg><span style="font-size: 10px; font-weight: 700; vertical-align: middle;">OFF</span>';
+      var svgLeave = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:2px; color:#dc2626;"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><line x1="8" x2="16" y1="14" y2="14"/></svg><span style="font-size: 10px; font-weight: 700; vertical-align: middle;">ลา</span>';
+      var svgCompensatory = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:2px; color:#1d4ed8;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span style="font-size: 10px; font-weight: 700; vertical-align: middle;">ชดเชย</span>';
+      var svgSubstituting = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:2px; color:#7c3aed;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span style="font-size: 10px; font-weight: 700; vertical-align: middle;">แทน</span>';
+      var svgSwap = '<span class="badge-swap" title="มีคนทำงานแทน"><svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg></span>';
       
       var dates = loadedData.dates;
       if (viewMode === 'week') {
@@ -7683,43 +7710,47 @@ async function api(req) {
             if (dayState.status === 'working') {
               if (dayState.leave_info && dayState.leave_info.leave_type === 'work_offday') {
                 cellClass = 'cell-worked-offday';
-                cellContent = 'ทำงาน';
+                cellContent = svgWorkedOffday;
                 cellTitle = 'มาทำงานในวันหยุดเพื่อรับสิทธิ์สะสมชดเชย';
               } else {
                 cellClass = 'cell-working';
-                cellContent = '✔';
+                cellContent = svgWorking;
                 cellTitle = 'ทำงานปกติ';
               }
             } else if (dayState.status === 'off') {
               cellClass = 'cell-off';
-              cellContent = 'หยุด';
+              cellContent = svgOff;
               cellTitle = 'วันหยุดประจำสัปดาห์';
               if (dayState.substitute_by) {
-                cellContent += '<span class="badge-swap">🔄</span>';
+                cellContent += ' ' + svgSwap;
                 cellTitle += ' (ทดแทนโดย: ' + dayState.substitute_by.full_name + ')';
               }
+            } else if (dayState.status === 'off_no_sub') {
+              cellClass = 'cell-off-no-sub';
+              cellContent = svgOffNoSub;
+              cellTitle = 'หยุดงาน (OFF - ไม่มีคนแทน)';
             } else if (dayState.status === 'leave') {
               var leaveType = dayState.leave_info ? dayState.leave_info.leave_type : 'ลา';
               if (leaveType === 'compensatory') {
                 cellClass = 'cell-compensatory';
-                cellContent = 'หยุดชดเชย';
+                cellContent = svgCompensatory;
                 cellTitle = 'วันหยุดชดเชย (หักสิทธิ์)';
               } else {
                 cellClass = 'cell-leave';
-                cellContent = 'ลา';
+                cellContent = svgLeave;
                 cellTitle = 'ลา (' + ((LMS.LEAVE_TYPE_LABEL||{})[leaveType] || leaveType) + ')';
               }
               if (dayState.substitute_by) {
-                cellContent += '<span class="badge-swap">🔄</span>';
+                cellContent += ' ' + svgSwap;
                 cellTitle += ' (ทดแทนโดย: ' + dayState.substitute_by.full_name + ')';
               }
             } else if (dayState.status === 'substituting') {
               cellClass = 'cell-substituting';
               var subFor = dayState.substituting_for ? dayState.substituting_for.full_name : '';
               var subBranch = dayState.substituting_for ? dayState.substituting_for.branch : '';
-              cellContent = 'แทน';
+              cellContent = svgSubstituting;
               if (subBranch) {
-                cellContent += '<br><span style="font-size: 9px; font-weight: normal; display: block; margin-top: 1px;">' + esc(subBranch) + '</span>';
+                cellContent += '<span style="font-size: 8.5px; font-weight: normal; display: block; margin-top: 1px; color: #6d28d9;">' + esc(subBranch) + '</span>';
               }
               cellTitle = 'ปฏิบัติงานแทน ' + subFor + ' (' + subBranch + ')';
             }
