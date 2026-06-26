@@ -4397,7 +4397,7 @@ async function api(req) {
           { hash: '#/calendar',  icon: 'calendar3',         label: 'ปฏิทินลา',          cap: 'calendar.view_own|calendar.view_department|calendar.view_all' },
           { hash: '#/missions',  icon: 'signpost-2-fill',   label: 'งานออกนอกพื้นที่',   cap: 'mission.create_own|mission.view_own|mission.view_department|mission.view_all' },
           { hash: '#/branches',  icon: 'building',          label: 'ตารางสาขาพนักงาน',   cap: 'user.manage' },
-          { hash: '#/schedule',  icon: 'calendar-week',     label: 'ตารางทำงานสาขา',     cap: '*' }
+          { hash: '#/schedule',  icon: 'calendar-week',     label: 'ตารางทำงานสาขา',     cap: 'schedule.view_all' }
         ]
       },
       {
@@ -5287,20 +5287,36 @@ async function api(req) {
   Routes['#/dashboard'] = function () {
     setPage(skBlocks(1, 180) + '<div class="grid-3">' + skBlocks(3, 120) + '</div>' + skBlocks(2, 220));
     Spinner.show('กำลังโหลดแดชบอร์ด...', { stages: ['อ่านสถิติ','คำนวณยอดคงเหลือ','เตรียมการ์ด'] });
-    call('dashboard.data', {}).then(function (d) {
+    
+    var now = new Date();
+    var curYear = now.getFullYear();
+    var curMonth = now.getMonth() + 1;
+    var u = LMS.Store.user || {};
+    var branches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+    var isBranchEmp = branches.indexOf(u.branch) >= 0;
+    
+    var p1 = call('dashboard.data', {});
+    var p2 = isBranchEmp ? call('schedule.monthly', { year: curYear, month: curMonth }) : Promise.resolve(null);
+    
+    Promise.all([p1, p2]).then(function (results) {
       Spinner.hide();
       if (!page()) return;
-      renderDashboard(d);
-    }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
+      var d = results[0];
+      var sched = results[1];
+      renderDashboard(d, sched);
+    }).catch(function (e) {
+      Spinner.hide();
+      alertError('ผิดพลาด', e.message);
+    });
   };
-  function renderDashboard(d) {
+  function renderDashboard(d, sched) {
     setPage(
-      '<div class="dash-mobile-only">' + renderDashboardMobile(d) + '</div>' +
-      '<div class="dash-desktop-only">' + renderDashboardDesktop(d) + '</div>'
+      '<div class="dash-mobile-only">' + renderDashboardMobile(d, sched) + '</div>' +
+      '<div class="dash-desktop-only">' + renderDashboardDesktop(d, sched) + '</div>'
     );
   }
   // ── Desktop Layout (original) ─────────────────────
-  function renderDashboardDesktop(d) {
+  function renderDashboardDesktop(d, sched) {
     var u = LMS.Store.user || {};
     var hr = greetingFor(new Date());
     var stats = d.me.stats.items || {};
@@ -5397,6 +5413,11 @@ async function api(req) {
         + '<a href="#/leaves/new" class="btn btn-primary btn-lg"><i class="bi bi-plus-lg"></i> ยื่นใบลาใหม่</a>'
         + '</div></div>';
     }
+
+    if (sched) {
+      html += renderMyScheduleCard(sched);
+    }
+
     html += '<div class="card" style="margin-bottom:18px">'
       + '<div class="card-head"><i class="bi bi-clock-history" style="color:#024ad8"></i> <span class="card-title">ใบลาล่าสุดของฉัน</span> <a href="#/leaves/mine" style="margin-left:auto;font-size:12px">ดูทั้งหมด →</a></div>'
       + '<div class="card-body">' + (d.me.recent.length === 0 ? emptyState('inbox', 'ยังไม่มีใบลา') : leaveCardList(d.me.recent)) + '</div>'
@@ -5409,7 +5430,7 @@ async function api(req) {
     return html;
   }
   // ── Mobile App-Style Layout ───────────────────────
-  function renderDashboardMobile(d) {
+  function renderDashboardMobile(d, sched) {
     var u = LMS.Store.user || {};
     var stats = d.me.stats.items || {};
     var warn = Number(d.warn_threshold || 80);
@@ -5427,18 +5448,167 @@ async function api(req) {
       + '</div>';
     // 2) Featured CTA (role-aware)
     var ctaHtml = featuredCtaHtml(d);
-    // 3) Highlight KPIs — 2 อันที่สำคัญที่สุดของ user (ใช้เหลือ vs เกือบเต็ม)
+    // 3) Highlight KPIs — 2 อันที่สำคัญที่สุด of user
     var highlightHtml = highlightKpisHtml(stats, warn);
-    // 4) Quick Stats Strip (3 ตัว — ปีงบประมาณ + รออนุมัติ + ใบลาที่อนุมัติแล้ว)
+    // 4) Quick Stats Strip
     var quickHtml = quickStripHtml(d, stats);
     // 5) App Menu Grid — RBAC filtered
     var menuHtml = appMenuGridHtml();
-    // 6) SLA Alert (conditional — แสดงเฉพาะถ้ามี overdue)
+    
+    var schedHtml = sched ? renderMyScheduleCard(sched) : '';
+    
+    // 6) SLA Alert
     var slaHtml = slaAlertHtml(d);
     // 7) Activity Feed
     var feedHtml = activityFeedHtml(d);
-    return greetHtml + ctaHtml + highlightHtml + quickHtml + menuHtml + slaHtml + feedHtml;
+    return greetHtml + ctaHtml + highlightHtml + quickHtml + menuHtml + schedHtml + slaHtml + feedHtml;
   }
+
+  function renderMyScheduleCard(sched) {
+    if (!sched || !sched.dates || sched.dates.length === 0) return '';
+    
+    var u = LMS.Store.user || {};
+    var dates = sched.dates;
+    var startDayOfWeek = new Date(dates[0].date).getDay();
+    
+    // Count stats
+    var workCount = 0;
+    var offCount = 0;
+    var leaveCount = 0;
+    var subCount = 0;
+    
+    var todayStr = new Date().getFullYear() + '-' + String(new Date().getMonth()+1).padStart(2,'0') + '-' + String(new Date().getDate()).padStart(2,'0');
+    var todayStatusText = '';
+    
+    var daysHtml = '';
+    // Print empty days
+    for (var i = 0; i < startDayOfWeek; i++) {
+      daysHtml += '<div class="mini-cal-day mini-cal-empty"></div>';
+    }
+    
+    dates.forEach(function (dObj) {
+      var dayNum = new Date(dObj.date).getDate();
+      
+      var empState = null;
+      dObj.branch_employees.forEach(function (emp) {
+        if (String(emp.id) === String(u.id)) empState = emp;
+      });
+      if (!empState) {
+        dObj.substitutes.forEach(function (sub) {
+          if (String(sub.id) === String(u.id)) empState = sub;
+        });
+      }
+      
+      var status = empState ? empState.status : 'working';
+      var titleText = 'ทำงานปกติ';
+      var cls = 'cal-working';
+      var icon = 'check-circle-fill';
+      
+      if (status === 'off') {
+        cls = 'cal-off';
+        titleText = 'วันหยุดประจำสัปดาห์';
+        icon = 'moon-fill';
+        offCount++;
+      } else if (status === 'off_no_sub') {
+        cls = 'cal-off_no_sub';
+        titleText = 'หยุดงาน (ไม่มีคนแทน)';
+        icon = 'dash-circle-fill';
+        offCount++;
+      } else if (status === 'leave') {
+        cls = 'cal-leave';
+        titleText = 'ลางาน (อนุมัติแล้ว)';
+        icon = 'calendar-x-fill';
+        leaveCount++;
+      } else if (status === 'substituting') {
+        cls = 'cal-substituting';
+        var branchName = empState.substitute_branch || '';
+        titleText = 'ปฏิบัติงานแทน' + (branchName ? ' ที่สาขา ' + branchName : '');
+        icon = 'arrow-left-right';
+        subCount++;
+      } else if (status === 'compensatory') {
+        cls = 'cal-compensatory';
+        titleText = 'วันหยุดชดเชย';
+        icon = 'clock-fill';
+        offCount++;
+      } else if (status === 'work_offday') {
+        cls = 'cal-work_offday';
+        titleText = 'ทำงานในวันหยุด (ชดเชย)';
+        icon = 'briefcase-fill';
+        workCount++;
+      } else {
+        workCount++;
+      }
+      
+      var isToday = (dObj.date === todayStr);
+      var todayBorder = isToday ? ' border: 2px solid #024ad8; box-shadow: 0 0 8px rgba(2,74,216,0.3);' : '';
+      
+      if (isToday) {
+        todayStatusText = titleText;
+      }
+      
+      daysHtml += '<div class="mini-cal-day ' + cls + '" style="' + todayBorder + '" title="' + esc(titleText) + '">'
+        + '  <span class="mini-cal-day-num">' + dayNum + '</span>'
+        + '  <i class="mini-cal-status-icon bi bi-' + icon + '"></i>'
+        + '</div>';
+    });
+    
+    var monthsTH = [
+      'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+      'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+    ];
+    var currentMonthName = monthsTH[new Date(dates[0].date).getMonth()];
+    
+    var statusAlertHtml = '';
+    if (todayStatusText) {
+      statusAlertHtml = '<div style="margin-bottom:14px; padding:10px 14px; border-radius:10px; background:#f0f5ff; border:1px solid #dbeafe; font-size:12.5px; color:#1e40af; display:flex; align-items:center; gap:8px;">'
+        + '  <i class="bi bi-info-circle-fill" style="font-size:16px;"></i>'
+        + '  <div>สถานะของคุณวันนี้: <strong>' + esc(todayStatusText) + '</strong></div>'
+        + '</div>';
+    }
+    
+    var legendHtml = '<div class="mini-cal-legend" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:6px; margin-top:12px; font-size:11.5px; color:#475569;">'
+      + '  <div style="display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:3px; background:#ecfdf5; border:1px solid #10b981; display:inline-block;"></span> ทำงาน (' + workCount + ' วัน)</div>'
+      + '  <div style="display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:3px; background:#fff7ed; border:1px solid #ea580c; display:inline-block;"></span> วันหยุด (' + offCount + ' วัน)</div>'
+      + '  <div style="display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:3px; background:#fef2f2; border:1px solid #dc2626; display:inline-block;"></span> ลางาน (' + leaveCount + ' วัน)</div>'
+      + '  <div style="display:flex; align-items:center; gap:6px;"><span style="width:10px; height:10px; border-radius:3px; background:#f5f3ff; border:1px solid #7c3aed; display:inline-block;"></span> ทำงานแทน (' + subCount + ' วัน)</div>'
+      + '</div>';
+
+    var calHeaderHtml = '';
+    ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'].forEach(function (dayName) {
+      calHeaderHtml += '<div class="mini-cal-header">' + dayName + '</div>';
+    });
+
+    var styleHtml = '<style>'
+      + '  .mini-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; background: #f8fafc; border-radius: 12px; padding: 8px; border: 1px solid #e8e8e8; }'
+      + '  .mini-cal-header { font-size: 11px; font-weight: 700; color: #64748b; text-align: center; padding: 4px 0; }'
+      + '  .mini-cal-day { aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; position: relative; border: 1px solid transparent; transition: transform 0.15s; }'
+      + '  .mini-cal-day:hover { transform: scale(1.05); }'
+      + '  .mini-cal-day-num { font-size: 12px; }'
+      + '  .mini-cal-status-icon { font-size: 10px; margin-top: 1px; }'
+      + '  .mini-cal-empty { visibility: hidden; }'
+      + '  .cal-working { background: #ecfdf5; color: #10b981; border-color: #a7f3d0; }'
+      + '  .cal-off { background: #fff7ed; color: #ea580c; border-color: #ffedd5; }'
+      + '  .cal-off_no_sub { background: #fff1f2; color: #e11d48; border-color: #ffe4e6; }'
+      + '  .cal-leave { background: #fef2f2; color: #dc2626; border-color: #fecaca; }'
+      + '  .cal-substituting { background: #f5f3ff; color: #7c3aed; border-color: #ddd6fe; }'
+      + '  .cal-compensatory { background: #eff6ff; color: #1d4ed8; border-color: #dbeafe; }'
+      + '  .cal-work_offday { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }'
+      + '</style>';
+
+    return styleHtml
+      + '<div class="card" style="margin-bottom:18px">'
+      + '  <div class="card-head"><i class="bi bi-calendar2-week" style="color:#024ad8"></i> <span class="card-title">ตารางงานของฉันประจำเดือน' + currentMonthName + '</span></div>'
+      + '  <div class="card-body">'
+      + '    ' + statusAlertHtml
+      + '    <div class="mini-cal-grid">'
+      + '      ' + calHeaderHtml
+      + '      ' + daysHtml
+      + '    </div>'
+      + '    ' + legendHtml
+      + '  </div>'
+      + '</div>';
+  }
+
   function greetingFor(now) {
     var h = now.getHours();
     if (h < 12) return 'อรุณสวัสดิ์';
@@ -7260,6 +7430,11 @@ async function api(req) {
 
   // ── Branch Work Schedule Roster ──────────────────────────────────
   Routes['#/schedule'] = function () {
+    if (!hasCap('schedule.view_all')) {
+      toast('ไม่มีสิทธิ์เข้าถึงหน้านี้', 'warning');
+      location.hash = '#/dashboard';
+      return;
+    }
     var now = new Date();
     var curYear = now.getFullYear();
     var curMonth = now.getMonth() + 1; // 1-12

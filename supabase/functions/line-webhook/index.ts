@@ -1267,9 +1267,53 @@ function _getMonthlyCompensatoryQuota_(userId, year, month) {
     worked_offdays: workedOffdays,
     adjusted_quota: adjustedQuota,
     total_quota: totalQuota,
-    used_quota: usedQuota,
-    remaining_quota: remainingQuota
   };
+}
+
+function _checkBranchLeaveConflict_(userId, startISO, endISO, excludeLeaveId) {
+  var targetBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+  var userObj = DB_findById(SHEETS.USERS, userId);
+  if (!userObj || targetBranches.indexOf(userObj.branch) < 0) return null; // not in target branch
+  
+  var branch = userObj.branch;
+  var reqStart = new Date(startISO + 'T00:00:00+07:00').getTime();
+  var reqEnd   = new Date(endISO + 'T23:59:59+07:00').getTime();
+  
+  // Find all active users in the same branch
+  var branchUsers = DB_readAll(SHEETS.USERS).filter(function(u) {
+    return u.branch === branch && String(u.id) !== String(userId) && String(u.is_active).toLowerCase() === 'yes';
+  });
+  var branchUserIds = branchUsers.map(function(u) { return String(u.id); });
+  if (branchUserIds.length === 0) return null;
+  
+  // Check for overlapping leaves among branch users
+  var conflictingStatuses = [STATUS.PENDING, STATUS.CHECKED, STATUS.REVIEWED, STATUS.APPROVED];
+  var conflicts = DB_readAll(SHEETS.LEAVES).filter(function(lv) {
+    if (excludeLeaveId && String(lv.id) === String(excludeLeaveId)) return false;
+    if (branchUserIds.indexOf(String(lv.requester_id)) < 0) return false;
+    if (conflictingStatuses.indexOf(lv.status) < 0) return false;
+    
+    // Skip if it's a work_offday leave (since it's working, not taking time off)
+    if (lv.leave_type === 'work_offday') return false;
+    
+    var lvStart = new Date(lv.start_date + 'T00:00:00+07:00').getTime();
+    var lvEnd   = new Date((lv.end_date || lv.start_date) + 'T23:59:59+07:00').getTime();
+    return lvStart <= reqEnd && lvEnd >= reqStart; // overlap
+  });
+  
+  if (conflicts.length > 0) {
+    var names = conflicts.map(function(lv) {
+      var u = DB_findById(SHEETS.USERS, lv.requester_id);
+      return u ? u.full_name : 'พนักงาน';
+    });
+    // Remove duplicates
+    var uniqueNames = [];
+    names.forEach(function(n) {
+      if (uniqueNames.indexOf(n) < 0) uniqueNames.push(n);
+    });
+    return 'สาขา' + branch + ' มีพนักงานลาในวันที่ขอแล้ว: ' + uniqueNames.join(', ');
+  }
+  return null;
 }
 
 function _leaveStats_(userId, fiscalYear) {
@@ -1420,6 +1464,11 @@ async function Leaves_create(user, p) {
     }
   }
 
+  if (status !== STATUS.DRAFT && data.leave_type !== 'work_offday') {
+    var conflict = _checkBranchLeaveConflict_(user.id, startISO, endISO, null);
+    if (conflict) throw new Error(conflict);
+  }
+
   // pull last leave (ลาครั้งสุดท้าย)
   var last = _findLastLeave_(user.id, startISO);
 
@@ -1491,6 +1540,15 @@ async function Leaves_update(user, p) {
     patch.fiscal_year = cfg_fiscalYear_(new Date(patch.start_date));
   }
   if (typeof data.written_at !== 'undefined') patch.written_at = cfg_dateOnly_(data.written_at);
+
+  var finalStart = patch.start_date || lv.start_date;
+  var finalEnd = patch.end_date || lv.end_date || lv.start_date;
+  var finalType = patch.leave_type || lv.leave_type;
+  if (lv.status !== STATUS.DRAFT && finalType !== 'work_offday') {
+    var conflict = _checkBranchLeaveConflict_(lv.requester_id, finalStart, finalEnd, lv.id);
+    if (conflict) throw new Error(conflict);
+  }
+
   var updated = await DB_update(SHEETS.LEAVES, data.id, patch);
   await Audit_log_(user, 'leave.update', 'leave', lv.id, { fields: Object.keys(patch) });
   return updated;
@@ -1502,6 +1560,12 @@ async function Leaves_submit(user, p) {
   if (!lv) throw new Error('ไม่พบใบลา');
   if (String(lv.requester_id) !== String(user.id)) Auth_requireCap(user, 'leave.manage');
   if (lv.status !== STATUS.DRAFT) throw new Error('ใบลานี้ไม่ใช่ฉบับร่าง');
+
+  if (lv.leave_type !== 'work_offday') {
+    var conflict = _checkBranchLeaveConflict_(lv.requester_id, lv.start_date, lv.end_date || lv.start_date, lv.id);
+    if (conflict) throw new Error(conflict);
+  }
+
   var updated = await DB_update(SHEETS.LEAVES, lv.id, { status: STATUS.PENDING });
   await Audit_log_(user, 'leave.submit', 'leave', lv.id, {});
   // แจ้งเตือน email เมื่อส่งใบลา draft → pending
