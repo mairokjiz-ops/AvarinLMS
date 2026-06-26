@@ -7216,7 +7216,7 @@ async function api(req) {
     };
     
     // Check editing rights
-    var isSalesSupervisor = LMS.Store.user.role === 'supervisor' && LMS.Store.user.department === 'ฝ่ายขาย';
+    var isSalesSupervisor = LMS.Store.user.role === 'supervisor' && (LMS.Store.user.department === 'ฝ่ายขาย' || LMS.Store.user.department === 'ฝ่ายปฏิบัติการ' || LMS.Store.user.department === 'ฝ่ายขายและการตลาด');
     var isAdmin = LMS.Store.user.role === 'admin';
     var canEdit = isAdmin || isSalesSupervisor;
     
@@ -7359,7 +7359,8 @@ async function api(req) {
       + '      <div class="legend-item"><span class="legend-box" style="background:#fff7ed;border-color:#fdba74;"></span> วันหยุดประจำสัปดาห์</div>'
       + '      <div class="legend-item"><span class="legend-box" style="background:#fef2f2;border-color:#fca5a5;"></span> ลางาน (อนุมัติแล้ว)</div>'
       + '      <div class="legend-item"><span class="legend-box" style="background:#f5f3ff;border-color:#c4b5fd;"></span> ปฏิบัติงานแทน</div>'
-      + '      <div class="legend-item"><span class="legend-box" style="background:#ecfdf5;border-color:#6ee7b7;"></span> ทำงานในวันหยุด</div>'
+      + '      <div class="legend-item"><span class="legend-box" style="background:#eff6ff;border-color:#93c5fd;"></span> วันหยุดชดเชย</div>'
+      + '      <div class="legend-item"><span class="legend-box" style="background:#ecfdf5;border-color:#6ee7b7;"></span> ทำงานในวันหยุด (ชดเชย)</div>'
       + '      <div class="legend-item"><span class="badge-swap">🔄</span> มีคนแทนในวันหยุด/ลา</div>'
       + '    </div>'
       + '    <div class="legend-note"><strong>การคำนวณคนแทนอัตโนมัติ:</strong> ระบบวิเคราะห์พนักงานจากกลุ่ม "พนักงานแทน" ที่ไม่ตรงวันหยุดและไม่มีใบลาที่อนุมัติ แล้วมอบหมายให้ปฏิบัติงานแทนพนักงานสาขาหลักโดยสลับกันอย่างทั่วถึง</div>'
@@ -7794,8 +7795,6 @@ async function api(req) {
     }
 
     function handleCellClick(uid, empName, dateStr, currentStatus, leaveType, leaveId) {
-      // Deactivated compensatory leave and holiday work creation
-      return;
       if (currentStatus === 'off') {
         Swal.fire({
           title: 'จัดการตารางงาน',
@@ -7897,7 +7896,7 @@ async function api(req) {
           confirmButtonText: 'ยืนยันยกเลิก',
           cancelButtonText: 'ปิด',
           confirmButtonColor: '#ef4444',
-          confirmButtonColor: '#64748b'
+          cancelButtonColor: '#64748b'
         }).then(function (res) {
           if (res.isConfirmed) {
             Spinner.show('กำลังลบรายการ...');

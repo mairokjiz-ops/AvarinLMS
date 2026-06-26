@@ -968,7 +968,7 @@ function Schedule_monthly(user, p) {
 }
 
 async function Schedule_updateOffDay(user, p) {
-  var isSalesSupervisor = user.role === 'supervisor' && user.department === 'ฝ่ายขาย';
+  var isSalesSupervisor = user.role === 'supervisor' && (user.department === 'ฝ่ายขาย' || user.department === 'ฝ่ายปฏิบัติการ' || user.department === 'ฝ่ายขายและการตลาด');
   var isAdmin = user.role === 'admin';
   if (!isAdmin && !isSalesSupervisor) {
     throw new Error('คุณไม่มีสิทธิ์แก้ไขวันหยุดประจำของพนักงาน');
@@ -1469,7 +1469,7 @@ async function Leaves_create(user, p) {
   var writtenAt = data.written_at ? cfg_dateOnly_(data.written_at) : cfg_dateOnly_(cfg_now_());
   var fy = cfg_fiscalYear_(new Date(startISO));
 
-  var isSalesSupervisor = user.role === 'supervisor' && user.department === 'ฝ่ายขาย';
+  var isSalesSupervisor = user.role === 'supervisor' && (user.department === 'ฝ่ายขาย' || user.department === 'ฝ่ายปฏิบัติการ' || user.department === 'ฝ่ายขายและการตลาด');
   var isAdmin = user.role === 'admin';
   var reqUserId = user.id;
   var targetStatus = data.draft ? STATUS.DRAFT : STATUS.PENDING;
@@ -1482,7 +1482,7 @@ async function Leaves_create(user, p) {
     if (!targetUser) throw new Error('ไม่พบข้อมูลพนักงาน');
     if (isSalesSupervisor) {
       var allowedBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
-      if (allowedBranches.indexOf(targetUser.branch) < 0 || targetUser.department !== 'ฝ่ายขาย') {
+      if (allowedBranches.indexOf(targetUser.branch) < 0 || (targetUser.department !== 'ฝ่ายขาย' && targetUser.department !== 'ฝ่ายปฏิบัติการ' && targetUser.department !== 'ฝ่ายขายและการตลาด')) {
         throw new Error('คุณไม่มีสิทธิ์จัดการข้อมูลพนักงานนอกเหนือจากฝ่ายขายสาขาที่รับผิดชอบ');
       }
     }
@@ -1692,7 +1692,7 @@ async function Leaves_approve(user, p) {
 }
 
 async function Leaves_delete(user, p) {
-  var isSalesSupervisor = user.role === 'supervisor' && user.department === 'ฝ่ายขาย';
+  var isSalesSupervisor = user.role === 'supervisor' && (user.department === 'ฝ่ายขาย' || user.department === 'ฝ่ายปฏิบัติการ' || user.department === 'ฝ่ายขายและการตลาด');
   var isAdmin = user.role === 'admin';
   var lv = DB_findById(SHEETS.LEAVES, p && p.id);
   if (!lv) throw new Error('ไม่พบใบลา');
@@ -1704,7 +1704,7 @@ async function Leaves_delete(user, p) {
     var targetUser = DB_findById(SHEETS.USERS, lv.requester_id);
     var allowedBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
     if (targetUser && 
-        targetUser.department === 'ฝ่ายขาย' && 
+        (targetUser.department === 'ฝ่ายขาย' || targetUser.department === 'ฝ่ายปฏิบัติการ' || targetUser.department === 'ฝ่ายขายและการตลาด') && 
         allowedBranches.indexOf(targetUser.branch) >= 0 && 
         (lv.leave_type === 'work_offday' || lv.leave_type === 'compensatory')) {
       allowed = true;
