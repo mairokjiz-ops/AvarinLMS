@@ -877,6 +877,15 @@ function Schedule_monthly(user, p) {
     quotas[u.id] = _getMonthlyCompensatoryQuota_(u.id, year, month);
   });
 
+  // Fetch overrides from Settings
+  var overrides = DB_readAll(SHEETS.SETTINGS).filter(function (s) {
+    return s.key.indexOf('sched_override_') === 0;
+  });
+  var overrideMap = {};
+  overrides.forEach(function (s) {
+    overrideMap[s.key] = s.value;
+  });
+
   var dates = [];
   
   for (var d = 1; d <= lastDay; d++) {
@@ -904,8 +913,18 @@ function Schedule_monthly(user, p) {
       
       var isOffDay = u.off_day !== null && u.off_day !== undefined && u.off_day !== '' && Number(u.off_day) === dayOfWeek;
       
+      var overrideKey = 'sched_override_' + u.id + '_' + dateStr;
+      var overrideVal = overrideMap[overrideKey] || '';
+      
       var status = 'working';
-      if (activeLeave) {
+      var subBranch = null;
+
+      if (overrideVal === 'off_no_sub') {
+        status = 'off_no_sub';
+      } else if (overrideVal.indexOf('sub_') === 0) {
+        status = 'substituting';
+        subBranch = overrideVal.substring(4);
+      } else if (activeLeave) {
         if (activeLeave.leave_type === 'work_offday') {
           status = 'working';
         } else {
@@ -924,7 +943,9 @@ function Schedule_monthly(user, p) {
         off_day: u.off_day,
         status: status,
         leave_info: leaveInfo,
-        substitute_by: null
+        substitute_by: null,
+        substitute_branch: subBranch,
+        override_value: overrideVal
       };
       
       if (u.branch === 'พนักงานแทน') {
@@ -934,12 +955,29 @@ function Schedule_monthly(user, p) {
       }
     });
 
+    // 1. Process manual substitute assignments first
+    substitutePool.forEach(function (sub) {
+      if (sub.status === 'substituting' && sub.substitute_branch) {
+        // Find a needy employee at the specified branch who is off/leave and has no substitute
+        var match = branchEmployees.find(function (emp) {
+          return emp.branch === sub.substitute_branch && (emp.status === 'off' || emp.status === 'leave') && !emp.substitute_by;
+        });
+        if (match) {
+          match.substitute_by = { id: sub.id, full_name: sub.full_name };
+          sub.substituting_for = { id: match.id, full_name: match.full_name, branch: match.branch };
+        } else {
+          sub.substituting_for = { id: null, full_name: 'สแตนด์บาย', branch: sub.substitute_branch };
+        }
+      }
+    });
+
+    // 2. Process automatic substitutions for remaining needy employees
     var needyEmployees = branchEmployees.filter(function (emp) {
-      return emp.status === 'off' || emp.status === 'leave';
+      return (emp.status === 'off' || emp.status === 'leave') && !emp.substitute_by;
     });
     
     var availableSubstitutes = substitutePool.filter(function (sub) {
-      return sub.status === 'working';
+      return sub.status === 'working'; // working and no override
     });
     
     needyEmployees.forEach(function (emp) {
@@ -965,6 +1003,41 @@ function Schedule_monthly(user, p) {
     dates: dates,
     quotas: quotas
   };
+}
+
+async function Schedule_saveOverride(user, p) {
+  var isSalesSupervisor = user.role === 'supervisor' && (user.department === 'ฝ่ายขาย' || user.department === 'ฝ่ายปฏิบัติการ' || user.department === 'ฝ่ายขายและการตลาด');
+  var isAdmin = user.role === 'admin';
+  if (!isAdmin && !isSalesSupervisor) {
+    throw new Error('คุณไม่มีสิทธิ์แก้ไขตารางงานของพนักงาน');
+  }
+
+  var targetUserId = String(p && p.user_id || '').trim();
+  var dateStr = String(p && p.date || '').trim();
+  var val = String(p && p.value || '').trim();
+
+  if (!targetUserId) throw new Error('ไม่ระบุผู้ใช้');
+  if (!dateStr) throw new Error('ไม่ระบุวันที่');
+
+  var key = 'sched_override_' + targetUserId + '_' + dateStr;
+  
+  if (!val) {
+    var existing = DB_findOne(SHEETS.SETTINGS, function (r) { return r.key === key; });
+    if (existing) {
+      await DB_delete(SHEETS.SETTINGS, existing.key);
+    }
+  } else {
+    var existing = DB_findOne(SHEETS.SETTINGS, function (r) { return r.key === key; });
+    if (existing) {
+      await DB_update(SHEETS.SETTINGS, existing.key, { value: val });
+    } else {
+      await DB_insert(SHEETS.SETTINGS, { key: key, value: val });
+    }
+  }
+
+  await Audit_log_(user, 'schedule.save_override', 'setting', targetUserId, { date: dateStr, value: val });
+
+  return { ok: true };
 }
 
 async function Schedule_updateOffDay(user, p) {
@@ -3110,6 +3183,7 @@ async function api(req) {
       case 'leave.all_users_quotas':  return _ok(Leaves_all_users_quotas(user, p));
       case 'leave.adjust_quota':      return _ok(await Leaves_adjust_quota(user, p));
       case 'schedule.monthly':        return _ok(Schedule_monthly(user, p));
+      case 'schedule.save_override':   return _ok(await Schedule_saveOverride(user, p));
       case 'schedule.update_off_day': return _ok(await Schedule_updateOffDay(user, p));
 
       case 'calendar.month':          return _ok(Calendar_month(user, p));
