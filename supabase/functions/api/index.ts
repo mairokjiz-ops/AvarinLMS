@@ -792,48 +792,59 @@ function Users_branchDirectory(user, p) {
 }
 
 function _getMonthlyCompensatoryQuota_(userId, year, month) {
+  // คำนวณแบบ Carry-Over: สะสมตั้งแต่ต้นปีถึงเดือนที่กำหนด
+  // วันหยุดที่ไม่ได้ใช้ในเดือนก่อนหน้าจะสะสมไปเดือนถัดไปโดยอัตโนมัติ
   var userObj = DB_findById(SHEETS.USERS, userId);
   var targetBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
   var isTargetUser = userObj && targetBranches.indexOf(userObj.branch) >= 0;
   
-  var holidaysInMonth = 0;
-  var lastDay = new Date(year, month, 0).getDate();
+  // นับวันหยุดทั้งหมดตั้งแต่เดือน 1 ถึงเดือนที่ระบุ (cumulative)
+  var holidaysTotal = 0;
   if (isTargetUser) {
     var holidaysMap = cfg_getHolidaysMap_();
-    for (var d = 1; d <= lastDay; d++) {
-      var dateObj = new Date(year, month - 1, d);
-      var dateStr = Utilities.formatDate(dateObj, 'Asia/Bangkok', 'yyyy-MM-dd');
-      if (dateStr in holidaysMap) {
-        holidaysInMonth++;
+    for (var m = 1; m <= month; m++) {
+      var lastDayOfM = new Date(year, m, 0).getDate();
+      for (var d = 1; d <= lastDayOfM; d++) {
+        var dateObj = new Date(year, m - 1, d);
+        var dateStr = Utilities.formatDate(dateObj, 'Asia/Bangkok', 'yyyy-MM-dd');
+        if (dateStr in holidaysMap) {
+          holidaysTotal++;
+        }
       }
     }
   }
   
+  // นับ work_offday ที่ทำตั้งแต่ต้นปีถึงเดือนที่ระบุ (cumulative earned)
   var workedOffdays = 0;
+  // นับ compensatory ที่ใช้ตั้งแต่ต้นปีถึงเดือนที่ระบุ (cumulative used)
   var usedQuota = 0;
   var allLeaves = DB_readAll(SHEETS.LEAVES);
+  
+  // กำหนดช่วงเวลาตั้งแต่ 1 ม.ค. ถึงสิ้นเดือนที่ระบุ
+  var periodStart = new Date(year, 0, 1).getTime();  // 1 Jan of year
+  var periodEnd   = new Date(year, month, 0, 23, 59, 59, 999).getTime(); // end of target month
   
   allLeaves.forEach(function (lv) {
     if (String(lv.requester_id) !== String(userId)) return;
     if (lv.status !== STATUS.APPROVED) return;
-    var lvDate = new Date(lv.start_date);
-    if (lvDate.getFullYear() === year && (lvDate.getMonth() + 1) === month) {
-      if (lv.leave_type === 'work_offday') {
-        workedOffdays += Number(lv.days || 1);
-      } else if (lv.leave_type === 'compensatory') {
-        usedQuota += Number(lv.days || 1);
-      }
+    var lvTime = new Date(lv.start_date).getTime();
+    if (isNaN(lvTime) || lvTime < periodStart || lvTime > periodEnd) return;
+    if (lv.leave_type === 'work_offday') {
+      workedOffdays += Number(lv.days || 1);
+    } else if (lv.leave_type === 'compensatory') {
+      usedQuota += Number(lv.days || 1);
     }
   });
   
   var adjKey = 'quota_adj_' + userId + '_compensatory_' + year;
   var adjustedQuota = Number(_settingsRaw_(adjKey) || 0);
   
-  var totalQuota = holidaysInMonth + workedOffdays + adjustedQuota;
+  // ยอดรวมสะสม (holidays ถึงเดือนนี้ + worked_offday + manual adj)
+  var totalQuota = holidaysTotal + workedOffdays + adjustedQuota;
   var remainingQuota = Math.max(0, totalQuota - usedQuota);
   
   return {
-    holidays_quota: holidaysInMonth,
+    holidays_quota: holidaysTotal,   // วันหยุดสะสมถึงเดือนนี้
     worked_offdays: workedOffdays,
     adjusted_quota: adjustedQuota,
     total_quota: totalQuota,
@@ -1377,36 +1388,45 @@ function _leaveStats_(userId, fiscalYear) {
     var baseLimit = _leaveLimit_(t);
     
     if (t === 'compensatory') {
-      var targetBranches = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
-      var userObj = DB_findById(SHEETS.USERS, userId);
-      var isTargetUser = userObj && targetBranches.indexOf(userObj.branch) >= 0;
-      
-      var holidaysCount = 0;
-      if (isTargetUser) {
-        var holidaysMap = cfg_getHolidaysMap_();
-        Object.keys(holidaysMap).forEach(function (dateStr) {
-          var y = Number(dateStr.substring(0, 4));
-          if (y === fy) {
-            holidaysCount++;
-          }
-        });
-      }
-      
-      var earned = _leaveUsedDays_(userId, 'work_offday', fy);
-      baseLimit = holidaysCount + earned;
+      // ใช้โควตาสะสม (carry-over) ผ่าน _getMonthlyCompensatoryQuota_
+      // โดยคำนวณถึงเดือนปัจจุบัน เพื่อรวมวันหยุดสะสมที่ยังไม่ได้ใช้จากเดือนก่อนหน้า
+      var now = cfg_now_();
+      var curYear = now.getFullYear();
+      var curMonth = now.getMonth() + 1;
+      // ถ้าปีงบประมาณที่ดูไม่ใช่ปีปัจจุบัน ให้ดูถึงเดือน 12
+      var upToMonth = (fy === curYear) ? curMonth : 12;
+      var cq = _getMonthlyCompensatoryQuota_(userId, fy, upToMonth);
+      // ยอด limit = total_quota (ยังไม่หักที่ใช้) = holidays + worked + adj
+      baseLimit = cq.holidays_quota + cq.worked_offdays + cq.adjusted_quota;
+      // Override used ด้วยค่าที่ _getMonthlyCompensatoryQuota_ คำนวณไว้ (cumulative)
+      // เพื่อป้องกันการนับซ้ำ เราจะตั้งค่าใหม่ใน stats ด้านล่าง
+      used = cq.used_quota;
     }
     
-    var adjKey = 'quota_adj_' + userId + '_' + t + '_' + fy;
-    var adj = Number(_settingsRaw_(adjKey) || 0);
-    var limit = Math.max(0, baseLimit + adj);
-    stats[t] = {
-      base_limit: baseLimit,
-      adjustment: adj,
-      used: used,
-      limit: limit,
-      remaining: Math.max(0, limit - used),
-      percent: limit > 0 ? Math.round(used * 100 / limit) : 0
-    };
+    if (t !== 'compensatory') {
+      var adjKey = 'quota_adj_' + userId + '_' + t + '_' + fy;
+      var adj = Number(_settingsRaw_(adjKey) || 0);
+      var limit = Math.max(0, baseLimit + adj);
+      stats[t] = {
+        base_limit: baseLimit,
+        adjustment: adj,
+        used: used,
+        limit: limit,
+        remaining: Math.max(0, limit - used),
+        percent: limit > 0 ? Math.round(used * 100 / limit) : 0
+      };
+    } else {
+      // compensatory: limit และ used มาจาก _getMonthlyCompensatoryQuota_ แบบ carry-over
+      var limit = Math.max(0, baseLimit);
+      stats[t] = {
+        base_limit: baseLimit,
+        adjustment: 0,
+        used: used,
+        limit: limit,
+        remaining: Math.max(0, limit - used),
+        percent: limit > 0 ? Math.round(used * 100 / limit) : 0
+      };
+    }
   });
   return { fiscal_year: fy, fiscal_year_be: fy + 543, items: stats };
 }

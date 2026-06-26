@@ -7679,7 +7679,7 @@ async function api(req) {
           var q = loadedData.quotas && loadedData.quotas[emp.id];
           var quotaText = '';
           if (q) {
-            quotaText = '<div style="font-size:10px;color:#024ad8;font-weight:600;margin-top:3px;">🔄 ชดเชยคงเหลือ: ' + q.remaining_quota + '/' + q.total_quota + ' วัน</div>';
+            quotaText = '<div style="font-size:10px;color:#024ad8;font-weight:600;margin-top:3px;">🔄 ชดเชยสะสมคงเหลือ: ' + q.remaining_quota + '/' + q.total_quota + ' วัน</div>';
           }
           
           var offDayVal = emp.off_day;
