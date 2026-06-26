@@ -2870,6 +2870,26 @@ async function Expense_approve(user, p) {
   return updated;
 }
 
+async function Expense_set_pending(user, p) {
+  Auth_requireCap(user, 'expense.manage');
+  var data = p || {};
+  var id = String(data.id || '').trim();
+  var ex = DB_findById(SHEETS.EXPENSES, id);
+  if (!ex) throw new Error('ไม่พบรายการ');
+  
+  var updated = await DB_update(SHEETS.EXPENSES, id, {
+    status: STATUS.PENDING,
+    approver_id: null,
+    approver_comment: String(data.comment || '').trim(),
+    approver_at: null,
+    approved_amount: null
+  });
+  
+  await Audit_log_(user, 'expense.set_pending', 'expense', id, { comment: data.comment });
+  Notify_onExpenseReturnPending_(updated, user);
+  return updated;
+}
+
 function Holidays_list(user, p) {
   Auth_requireCap(user, 'setting.read');
   var rows = DB_readAll(SHEETS.HOLIDAYS);
@@ -3184,6 +3204,26 @@ function Notify_onExpenseSubmit_(expense, user) {
   }
 }
 
+function Notify_onExpenseReturnPending_(expense, user) {
+  var requester = DB_findById('Users', expense.created_by);
+  if (!requester || !requester.email) return;
+  var expenseName = (expense.expense_type || 'ค่าใช้จ่ายทั่วไป') + ' (' + (expense.expense_no || '-') + ')';
+  var html = '<h2>ใบเบิกค่าใช้จ่ายของท่านถูกส่งกลับแก้ไข</h2>'
+    + '<p>เรียนคุณ ' + esc(requester.full_name) + ',</p>'
+    + '<p>ใบเบิกค่าใช้จ่ายของท่านถูกปรับสถานะกลับเป็น <strong>รอตรวจสอบ (Pending)</strong> เพื่อให้แก้ไขข้อมูล รายละเอียดดังนี้:</p>'
+    + '<ul>'
+    + '<li><strong>เลขที่ใบเบิก:</strong> <code>' + esc(expense.expense_no || '-') + '</code></li>'
+    + '<li><strong>ประเภทค่าใช้จ่าย:</strong> ' + esc(expense.expense_type || '-') + '</li>'
+    + '<li><strong>จำนวนเงินที่ขอเบิก:</strong> ' + (expense.amount || 0) + ' บาท</li>'
+    + '<li><strong>รายละเอียด/เหตุผล:</strong> ' + esc(expense.description || '-') + '</li>'
+    + '<li><strong>เหตุผลที่ส่งกลับแก้ไข:</strong> <strong style="color:#ef4444">' + esc(expense.approver_comment || '-') + '</strong></li>'
+    + '</ul>'
+    + '<p>ท่านสามารถเข้าไปแก้ไขรายละเอียด ยอดเงิน และแนบรูปหลักฐานเพิ่มเติมได้ผ่านระบบ</p>'
+    + '<p><a href="' + REQUEST_ORIGIN + '#/expenses/view?id=' + expense.id + '" style="display:inline-block;background:#6366f1;color:#fff;padding:8px 16px;text-decoration:none;border-radius:6px;font-weight:bold">แก้ไขใบเบิกค่าใช้จ่าย</a></p>'
+    + '<hr><p style="font-size:12px;color:#888">นี่คือข้อความอัตโนมัติจากระบบ AvarinLMS</p>';
+  _sendEmail_(requester.email, 'ใบเบิกค่าใช้จ่ายของท่านถูกส่งกลับแก้ไข: ' + expenseName, html);
+}
+
 // === LINE NO-OPS / WEBHOOK ===
 function LINE_getWebhookUrl() {
   return SUPABASE_URL + '/functions/v1/line-webhook';
@@ -3295,6 +3335,7 @@ async function api(req) {
       case 'expense.cancel':          return _ok(await Expense_cancel(user, p));
       case 'expense.delete':          return _ok(await Expense_delete(user, p));
       case 'expense.approve':         return _ok(await Expense_approve(user, p));
+      case 'expense.set_pending':     return _ok(await Expense_set_pending(user, p));
 
       case 'report.overview':         return _ok(Reports_overview(user, p));
       case 'report.user':             return _ok(Reports_user(user, p));
