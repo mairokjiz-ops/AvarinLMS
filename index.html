@@ -5533,7 +5533,7 @@ async function api(req) {
         leaveCount++;
       } else if (status === 'substituting') {
         cls = 'cal-substituting';
-        var branchName = empState.substitute_branch || '';
+        var branchName = empState.substitute_branch || (empState.substituting_for && empState.substituting_for.branch) || '';
         titleText = 'ปฏิบัติงานแทน' + (branchName ? ' ที่สาขา ' + branchName : '');
         icon = 'arrow-left-right';
         subCount++;
