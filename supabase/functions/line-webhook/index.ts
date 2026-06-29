@@ -4640,7 +4640,7 @@ function LINE_buildExpenseConfirmFlex_(user, state) {
         { type: "text", text: "ประเภท: " + (_LINE_getExpenseTypeLabel_(state.expense_type)), size: "xs", color: "#374151", wrap: true },
         { type: "text", text: "บริษัท: " + (state.company || '-'), size: "xs", color: "#374151", wrap: true },
         { type: "text", text: "วันที่: " + _LINE_formatThaiDate_(state.expense_date), size: "xs", color: "#374151", wrap: true },
-        { type: "text", text: "จำนวน: " + Number(state.amount || 0).toLocaleString('en-US') + " บาท", size: "xs", color: "#374151", wrap: true, weight: "bold" },
+        { type: "text", text: "จำนวน: " + Number(state.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " บาท", size: "xs", color: "#374151", wrap: true, weight: "bold" },
         { type: "text", text: "รายละเอียด: " + String(state.description || '-'), size: "xs", color: "#374151", wrap: true },
         { type: "text", text: "ใบเสร็จ: " + receiptText, size: "xs", color: "#374151", wrap: true },
         { type: "separator", margin: "md" },
@@ -4694,7 +4694,7 @@ function LINE_buildExpenseSuccessFlex_(user, ex) {
         { type: "text", text: "เลขที่: " + ex.expense_no, size: "xs", color: "#374151", wrap: true },
         { type: "text", text: "บริษัท: " + (company || '-'), size: "xs", color: "#374151", wrap: true },
         { type: "text", text: "ประเภท: " + (ex.expense_type || '-'), size: "xs", color: "#374151", wrap: true },
-        { type: "text", text: "จำนวน: " + Number(ex.amount || 0).toLocaleString('en-US') + " บาท", size: "xs", color: "#374151", wrap: true, weight: "bold" },
+        { type: "text", text: "จำนวน: " + Number(ex.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " บาท", size: "xs", color: "#374151", wrap: true, weight: "bold" },
         { type: "text", text: "สถานะ: " + (ex.status_label || ex.status || '-'), size: "xs", color: "#374151", wrap: true }
       ]
     }
@@ -4709,7 +4709,7 @@ function LINE_buildExpenseSuccessFlex_(user, ex) {
 function LINE_buildExpenseListText_(items) {
   if (!items || items.length === 0) return "ℹ️ ยังไม่พบรายการเบิกค่าใช้จ่ายของคุณ";
   var lines = items.slice(0, 5).map(function (ex, i) {
-    return (i + 1) + ") " + ex.expense_no + " · " + (ex.expense_type || '-') + " · " + Number(ex.amount || 0).toLocaleString('en-US') + " บาท · " + (ex.status_label || ex.status || '-');
+    return (i + 1) + ") " + ex.expense_no + " · " + (ex.expense_type || '-') + " · " + Number(ex.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " บาท · " + (ex.status_label || ex.status || '-');
   });
   return "📋 รายการเบิกล่าสุด\n\n" + lines.join("\n");
 }
@@ -4723,7 +4723,7 @@ function LINE_buildExpensePendingFlex_(user, items) {
       margin: "md",
       contents: [
         { type: "text", text: ex.expense_no + " · " + (ex.requester ? ex.requester.full_name : '-') , size: "sm", weight: "bold", wrap: true },
-        { type: "text", text: (ex.expense_type || '-') + " · " + Number(ex.amount || 0).toLocaleString('en-US') + " บาท", size: "xs", color: "#374151", wrap: true },
+        { type: "text", text: (ex.expense_type || '-') + " · " + Number(ex.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " บาท", size: "xs", color: "#374151", wrap: true },
         { type: "text", text: "สถานะ: " + (ex.status_label || ex.status || '-'), size: "xs", color: "#6b7280", wrap: true },
         {
           type: "box",

@@ -6108,7 +6108,7 @@ async function api(req) {
       };
     });
     var expenseItems = (d.me.recent_expenses || []).map(function (ex) {
-      var amount = Number(ex.amount || 0).toLocaleString();
+      var amount = Number(ex.amount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       return {
         kind: 'expense',
         created_at: ex.created_at,
@@ -9459,7 +9459,7 @@ async function api(req) {
           + '<div class="lv-row"><span class="lv-meta"><i class="bi bi-geo-alt-fill"></i> ' + esc(m.destination || '-') + '</span></div>'
           + '<div class="lv-row" style="margin-top:8px;align-items:flex-end;justify-content:space-between">'
           + '  <div style="font-size:12px;color:#475569"><i class="bi bi-calendar3"></i> ' + TH.date(m.start_date) + ' → ' + TH.date(m.end_date) + '</div>'
-          + '  <div class="lv-days">฿' + Number(m.expense_total || 0).toLocaleString() + '</div>'
+          + '  <div class="lv-days">฿' + Number(m.expense_total || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div>'
           + '</div>'
           + '</a>';
       }).join('');
@@ -9499,14 +9499,14 @@ async function api(req) {
       + '<div class="hero-sub">' + esc(m.mission_no) + ' · ' + esc((m.requester && m.requester.full_name) || '-') + '</div>'
       + '<div class="hero-kpi"><div class="hkpi"><div class="hkpi-label"><i class="bi bi-geo-alt-fill"></i> ปลายทาง</div><div class="hkpi-value" style="font-size:18px">' + esc(m.destination || '-') + '</div></div>'
       + '<div class="hkpi"><div class="hkpi-label"><i class="bi bi-calendar-range"></i> ช่วงงาน</div><div class="hkpi-value" style="font-size:18px">' + TH.date(m.start_date) + ' → ' + TH.date(m.end_date) + '</div></div>'
-      + '<div class="hkpi"><div class="hkpi-label"><i class="bi bi-cash-coin"></i> ค่าใช้จ่ายสะสม</div><div class="hkpi-value" style="font-size:18px">฿' + Number(m.expense_total || 0).toLocaleString() + '</div></div></div>'
+      + '<div class="hkpi"><div class="hkpi-label"><i class="bi bi-cash-coin"></i> ค่าใช้จ่ายสะสม</div><div class="hkpi-value" style="font-size:18px">฿' + Number(m.expense_total || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div></div></div>'
       + '</div>'
       + '<div class="card" style="margin-bottom:14px"><div class="card-body">'
       + '<div class="grid-2">'
       + detailField('วัตถุประสงค์', esc(m.purpose || '-'))
       + detailField('สถานะ', '<span class="badge b-' + esc(m.status_tone) + '">' + esc(m.status_label) + '</span>')
       + detailField('การอนุมัติ', esc(m.approver_comment || '-'))
-      + detailField('งบที่อนุมัติ', m.approved_amount ? '฿' + Number(m.approved_amount).toLocaleString() : '-')
+      + detailField('งบที่อนุมัติ', m.approved_amount ? '฿' + Number(m.approved_amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-')
       + '</div>'
       + '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">'
       + (hasCap('expense.create_own') ? '<a class="btn btn-primary" href="#/expenses/new?mission_id=' + encodeURIComponent(m.id) + '"><i class="bi bi-cash-coin"></i> เบิกค่าใช้จ่ายสำหรับงานนี้</a>' : '')
@@ -9620,7 +9620,7 @@ async function api(req) {
         var initial = (requesterName || '?').substring(0, 1).toUpperCase();
         var avatar = requester.avatar ? '<img src="' + esc(requester.avatar) + '" alt="">' : initial;
         var missionLabel = x.mission_no ? '<span class="lv-meta"><i class="bi bi-signpost-2-fill"></i> ' + esc(x.mission_no) + '</span>' : '';
-        var amount = Number(x.amount || 0).toLocaleString();
+        var amount = Number(x.amount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         
         var descText = x.description || '';
         var companyTag = '';
@@ -9928,7 +9928,7 @@ async function api(req) {
           if (isNaN(amt) || amt <= 0) { err = 'รายการที่ ' + (i+1) + ': กรุณาระบุจำนวนเงินที่มากกว่า 0'; return; }
           if (!date) { err = 'รายการที่ ' + (i+1) + ': กรุณาระบุวันที่ใช้จ่าย'; return; }
           totalAmt += amt;
-          descParts.push((i+1) + '. [' + type + '] ' + desc + ' (฿' + amt.toLocaleString('th-TH') + ')');
+          descParts.push((i+1) + '. [' + type + '] ' + desc + ' (฿' + amt.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ')');
           if (!firstDate || date < firstDate) firstDate = date;
           if (!firstType) firstType = type;
         });
@@ -10355,7 +10355,7 @@ async function api(req) {
       + '<div class="hero-kpi">'
       + '<div class="hkpi"><div class="hkpi-label"><i class="bi bi-calendar-event"></i> วันที่ใช้จ่าย</div><div class="hkpi-value" style="font-size:18px">' + TH.date(ex.expense_date) + '</div></div>'
       + '<div class="hkpi"><div class="hkpi-label"><i class="bi bi-tag-fill"></i> ประเภท</div><div class="hkpi-value" style="font-size:18px">' + esc(ex.expense_type) + '</div></div>'
-      + '<div class="hkpi"><div class="hkpi-label"><i class="bi bi-cash"></i> ยอดเบิก</div><div class="hkpi-value" style="font-size:18px;color:#ef4444">฿' + Number(ex.amount || 0).toLocaleString() + '</div></div>'
+      + '<div class="hkpi"><div class="hkpi-label"><i class="bi bi-cash"></i> ยอดเบิก</div><div class="hkpi-value" style="font-size:18px;color:#ef4444">฿' + Number(ex.amount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div></div>'
       + '</div>'
       + '</div>';
 
@@ -10394,7 +10394,7 @@ async function api(req) {
       var commentLabel = ex.status === 'approved' ? 'หมายเหตุการอนุมัติ' : 'เหตุผลที่ปฏิเสธ';
       approvalDetails = '<div class="card" style="margin-bottom:14px"><div class="card-head"><i class="bi bi-shield-check" style="color:#10b981"></i> <span class="card-title">ผลการพิจารณา</span></div>'
         + '<div class="card-body"><div class="grid-2">'
-        + detailField('ยอดเงินที่อนุมัติ', ex.approved_amount != null && ex.approved_amount !== '' ? '<strong style="color:#10b981;font-size:16px;">฿' + Number(ex.approved_amount).toLocaleString() + '</strong>' : '-')
+        + detailField('ยอดเงินที่อนุมัติ', ex.approved_amount != null && ex.approved_amount !== '' ? '<strong style="color:#10b981;font-size:16px;">฿' + Number(ex.approved_amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</strong>' : '-')
         + detailField('วันเวลาที่พิจารณา', ex.approver_at ? TH.dateTime(ex.approver_at) : '-')
         + detailField(commentLabel, esc(ex.approver_comment || '-'))
         + '</div></div></div>';

@@ -268,7 +268,7 @@
     const $ = (s, root = document) => root.querySelector(s);
     const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
     const today = () => new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
-    const money = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 2 });
+    const money = (n) => Number(n || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const dateTH = (v) => v ? new Date(String(v).slice(0, 10) + 'T00:00:00+07:00').toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
     const statusText = (s) => ({ pending: 'รอดำเนินการ', checked: 'ตรวจแล้ว', reviewed: 'รออนุมัติ', approved: 'อนุมัติ', rejected: 'ไม่อนุมัติ', cancelled: 'ยกเลิก', draft: 'ร่าง' }[s] || s || '-');
     const hasCap = (cap) => Store.caps.includes(cap) || Store.caps.includes(cap.split('.')[0] + '.manage');
