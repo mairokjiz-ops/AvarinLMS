@@ -9953,7 +9953,7 @@ async function api(req) {
 
   Routes['#/missions'] = function () {
     if (!hasCap('mission.create_own|mission.view_own|mission.view_department|mission.view_all')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
-    var st = { month: _mkMonthKey(new Date()), q: '', status: 'pending' };
+    var st = { month: '', q: '', status: 'pending' };
     setPage('<div class="card" style="margin-bottom:14px">'
       + '<div class="card-body" style="padding-bottom: 0;">'
       + '  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">'
