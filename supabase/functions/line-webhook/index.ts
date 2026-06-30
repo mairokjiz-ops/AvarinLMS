@@ -3634,11 +3634,11 @@ function LINE_buildPortalFlexForUser_(user) {
     header: {
       type: "box",
       layout: "vertical",
-      backgroundColor: "#4f46e5",
+      backgroundColor: "#0f172a",
       paddingAll: "20px",
       contents: [
-        { type: "text", text: orgName, color: "#c7d2fe", size: "xs", weight: "bold" },
-        { type: "text", text: "เมนูหลักระบบจัดการการลา", color: "#ffffff", size: "lg", weight: "bold", margin: "xs" }
+        { type: "text", text: orgName, color: "#38bdf8", size: "xs", weight: "bold" },
+        { type: "text", text: "ระบบจัดการตารางงานและการลา", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
       ]
     },
     body: {
@@ -3658,7 +3658,7 @@ function LINE_buildPortalFlexForUser_(user) {
               width: "48px",
               height: "48px",
               cornerRadius: "24px",
-              backgroundColor: "#e0e7ff",
+              backgroundColor: "#f1f5f9",
               contents: [
                 { type: "text", text: "👤", size: "xl", align: "center", gravity: "center" }
               ]
@@ -3666,9 +3666,10 @@ function LINE_buildPortalFlexForUser_(user) {
             {
               type: "box",
               layout: "vertical",
+              gravity: "center",
               contents: [
-                { type: "text", text: user.full_name, weight: "bold", size: "md", color: "#111827" },
-                { type: "text", text: user.position + (user.department ? " (" + user.department + ")" : ""), size: "xs", color: "#6b7280" }
+                { type: "text", text: user.full_name, weight: "bold", size: "md", color: "#0f172a" },
+                { type: "text", text: user.position + (user.department ? " (" + user.department + ")" : ""), size: "xs", color: "#64748b" }
               ]
             }
           ]
@@ -3697,7 +3698,7 @@ function LINE_buildPortalFlexForUser_(user) {
             {
               type: "button",
               style: "secondary",
-              color: "#f3f4f6",
+              color: "#f1f5f9",
               height: "sm",
               margin: "sm",
               action: { type: "postback", label: "🔍 ติดตามสถานะใบลาล่าสุด", data: "action=check_status" }
@@ -3710,7 +3711,7 @@ function LINE_buildPortalFlexForUser_(user) {
                 return [{
                   type: "button",
                   style: "primary",
-                  color: "#8b5cf6",
+                  color: "#7c3aed",
                   height: "sm",
                   margin: "sm",
                   action: { type: "postback", label: "📅 เช็คตารางงานของฉัน", data: "action=check_schedule" }
@@ -3721,7 +3722,7 @@ function LINE_buildPortalFlexForUser_(user) {
             {
               type: "button",
               style: "primary",
-              color: "#0f766e",
+              color: "#0d9488",
               height: "sm",
               margin: "sm",
               action: { type: "postback", label: "💰 เบิกค่าใช้จ่าย", data: "action=expense_start" }
@@ -3729,7 +3730,7 @@ function LINE_buildPortalFlexForUser_(user) {
             {
               type: "button",
               style: "secondary",
-              color: "#e0f2fe",
+              color: "#f1f5f9",
               height: "sm",
               margin: "sm",
               action: { type: "postback", label: "📋 รายการเบิกของฉัน", data: "action=expense_my_list" }
@@ -3772,7 +3773,7 @@ function LINE_buildPortalFlexForUser_(user) {
 
   return {
     type: "flex",
-    altText: "เมนูหลักระบบจัดการการลา",
+    altText: "เมนูหลักระบบจัดการตารางงานและการลา",
     contents: bubble
   };
 }
@@ -3789,11 +3790,11 @@ function LINE_buildNotConnectedFlex_() {
     header: {
       type: "box",
       layout: "vertical",
-      backgroundColor: "#ef4444",
+      backgroundColor: "#991b1b",
       paddingAll: "20px",
       contents: [
         { type: "text", text: "ยังไม่ได้เชื่อมต่อบัญชี", color: "#fca5a5", size: "xs", weight: "bold" },
-        { type: "text", text: "โปรดเชื่อมต่อระบบลาก่อนใช้งาน", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
+        { type: "text", text: "โปรดเชื่อมต่อระบบก่อนใช้งาน", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
       ]
     },
     body: {
@@ -3804,23 +3805,23 @@ function LINE_buildNotConnectedFlex_() {
       contents: [
         {
           type: "text",
-          text: "เพื่อส่งการแจ้งเตือนและตรวจสอบสถานะการลาผ่านไลน์ได้ฟรี โปรดดำเนินการดังนี้:",
+          text: "เพื่อส่งการแจ้งเตือนและตรวจสอบสถานะการทำงานผ่านไลน์ โปรดดำเนินการดังนี้:",
           wrap: true,
           size: "sm",
-          color: "#374151"
+          color: "#334155"
         },
         {
           type: "box",
           layout: "vertical",
           spacing: "sm",
-          backgroundColor: "#f9fafb",
-          paddingAll: "12px",
+          backgroundColor: "#f8fafc",
+          paddingAll: "14px",
           cornerRadius: "8px",
           contents: [
-            { type: "text", text: "1. เข้าสู่ระบบเว็บพอร์ทัลของคุณ", size: "xs", color: "#4b5563" },
-            { type: "text", text: "2. ไปที่เมนู 'โปรไฟล์'", size: "xs", color: "#4b5563" },
-            { type: "text", text: "3. คัดลอกรหัสเชื่อมต่อ (เช่น LMS-123456)", size: "xs", color: "#4b5563" },
-            { type: "text", text: "4. ส่งรหัสนั้นมาที่แชต LINE OA นี้", size: "xs", color: "#4b5563" }
+            { type: "text", text: "1️⃣ เข้าสู่ระบบเว็บพอร์ทัลของคุณ", size: "xs", color: "#475569" },
+            { type: "text", text: "2️⃣ ไปที่เมนู 'แก้ไขข้อมูลส่วนตัว' หรือ 'โปรไฟล์'", size: "xs", color: "#475569" },
+            { type: "text", text: "3️⃣ คัดลอกรหัสเชื่อมต่อ (เช่น LMS-XXXX)", size: "xs", color: "#475569" },
+            { type: "text", text: "4️⃣ ส่งรหัสนั้นมาที่แชต LINE OA นี้", size: "xs", color: "#475569" }
           ]
         },
         {
@@ -3828,7 +3829,7 @@ function LINE_buildNotConnectedFlex_() {
           style: "primary",
           color: "#dc2626",
           height: "sm",
-          action: { type: "uri", label: "🌐 เปิดหน้าเว็บบันทึกการลา", uri: webUrl }
+          action: { type: "uri", label: "🌐 เปิดหน้าเว็บพอร์ทัลหลัก", uri: webUrl }
         }
       ]
     }
@@ -3854,11 +3855,11 @@ function LINE_buildConnectSuccessFlex_(user) {
     header: {
       type: "box",
       layout: "vertical",
-      backgroundColor: "#10b981",
+      backgroundColor: "#065f46",
       paddingAll: "20px",
       contents: [
-        { type: "text", text: orgName, color: "#a7f3d0", size: "xs", weight: "bold" },
-        { type: "text", text: "เชื่อมต่อสำเร็จแล้ว! 🎉", color: "#ffffff", size: "lg", weight: "bold", margin: "xs" }
+        { type: "text", text: orgName, color: "#34d399", size: "xs", weight: "bold" },
+        { type: "text", text: "เชื่อมต่อสำเร็จแล้ว! 🎉", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
       ]
     },
     body: {
@@ -3869,10 +3870,10 @@ function LINE_buildConnectSuccessFlex_(user) {
       contents: [
         {
           type: "text",
-          text: "ยินดีต้อนรับสู่ระบบบันทึกการลา บัญชีของคุณถูกจับคู่เรียบร้อยแล้ว:",
+          text: "ยินดีต้อนรับสู่ระบบจับคู่อัตโนมัติ บัญชีของคุณเชื่อมโยงสำเร็จแล้ว:",
           wrap: true,
           size: "sm",
-          color: "#374151"
+          color: "#334155"
         },
         {
           type: "box",
@@ -3889,16 +3890,16 @@ function LINE_buildConnectSuccessFlex_(user) {
         },
         {
           type: "text",
-          text: "คุณสามารถเช็กสิทธิ์และสถานะการลาผ่านปุ่มใน Rich Menu ได้ทันที",
+          text: "คุณสามารถเช็กสิทธิ์และสถานะการทำงานผ่านปุ่มเมนูหลักด้านล่าง",
           wrap: true,
           size: "xs",
-          color: "#6b7280",
+          color: "#64748b",
           align: "center"
         },
         {
           type: "button",
           style: "primary",
-          color: "#059669",
+          color: "#10b981",
           height: "sm",
           action: { type: "postback", label: "📱 ไปยังเมนูหลัก", data: "action=portal" }
         }
@@ -3944,14 +3945,14 @@ function LINE_buildLeaveQuotaFlex_(user) {
           type: "box",
           layout: "horizontal",
           contents: [
-            { type: "text", text: icon + " " + typeLabel, weight: "bold", size: "sm", color: "#1f2937" },
+            { type: "text", text: icon + " " + typeLabel, weight: "bold", size: "sm", color: "#1e293b" },
             { type: "text", text: s.remaining + " / " + s.limit + " วัน", align: "end", size: "sm", weight: "bold", color: color }
           ]
         },
         {
           type: "box",
           layout: "vertical",
-          backgroundColor: "#e5e7eb",
+          backgroundColor: "#e2e8f0",
           height: "8px",
           cornerRadius: "4px",
           margin: "sm",
@@ -3971,7 +3972,7 @@ function LINE_buildLeaveQuotaFlex_(user) {
           type: "text",
           text: "ใช้ไปแล้ว " + s.used + " วัน (" + s.percent + "%) คงเหลือ " + s.remaining + " วัน",
           size: "xxs",
-          color: "#9ca3af",
+          color: "#94a3b8",
           align: "end"
         }
       ]
@@ -3984,11 +3985,11 @@ function LINE_buildLeaveQuotaFlex_(user) {
     header: {
       type: "box",
       layout: "vertical",
-      backgroundColor: "#3b82f6",
+      backgroundColor: "#1e1b4b",
       paddingAll: "20px",
       contents: [
-        { type: "text", text: "Leave Quota Summary", color: "#93c5fd", size: "xs", weight: "bold" },
-        { type: "text", text: "สิทธิ์วันลาคงเหลือ ปี พ.ศ. " + stats.fiscal_year_be, color: "#ffffff", size: "lg", weight: "bold", margin: "xs" }
+        { type: "text", text: "LEAVE QUOTA SUMMARY", color: "#818cf8", size: "xs", weight: "bold" },
+        { type: "text", text: "สิทธิ์วันลาคงเหลือ ปี พ.ศ. " + stats.fiscal_year_be, color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
       ]
     },
     body: {
@@ -3997,7 +3998,7 @@ function LINE_buildLeaveQuotaFlex_(user) {
       paddingAll: "20px",
       spacing: "md",
       contents: [
-        { type: "text", text: "ยอดสรุปประวัติการใช้งานจริงสะสมในปีงบประมาณนี้:", size: "xs", color: "#6b7280" },
+        { type: "text", text: "ยอดสรุปประวัติการใช้งานจริงสะสมในปีงบประมาณนี้:", size: "xs", color: "#64748b" },
         {
           type: "box",
           layout: "vertical",
@@ -4014,7 +4015,7 @@ function LINE_buildLeaveQuotaFlex_(user) {
             {
               type: "button",
               style: "secondary",
-              color: "#f3f4f6",
+              color: "#f1f5f9",
               height: "sm",
               action: { type: "postback", label: "⬅️ กลับเมนูหลัก", data: "action=portal" }
             }
@@ -4081,8 +4082,8 @@ function LINE_buildLeaveStatusFlex_(user, lv) {
       layout: "horizontal",
       margin: "xs",
       contents: [
-        { type: "text", text: row.label, size: "xs", color: "#6b7280", flex: 3 },
-        { type: "text", text: row.val, size: "xs", color: "#1f2937", flex: 5, wrap: true }
+        { type: "text", text: row.label, size: "xs", color: "#64748b", flex: 3 },
+        { type: "text", text: row.val, size: "xs", color: "#1e293b", flex: 5, wrap: true }
       ]
     };
   });
@@ -4090,13 +4091,13 @@ function LINE_buildLeaveStatusFlex_(user, lv) {
   // ส่วนแสดงความคิดเห็นผู้อนุมัติ/ตรวจ
   var feedbackList = [];
   if (lv.checker_comment) {
-    feedbackList.push({ type: "text", text: "💬 ตรวจสอบ: " + lv.checker_comment, size: "xxs", color: "#4b5563", wrap: true, margin: "xs" });
+    feedbackList.push({ type: "text", text: "💬 ตรวจสอบ: " + lv.checker_comment, size: "xxs", color: "#475569", wrap: true, margin: "xs" });
   }
   if (lv.supervisor_comment) {
-    feedbackList.push({ type: "text", text: "💬 ความเห็นหัวหน้า: " + lv.supervisor_comment, size: "xxs", color: "#4b5563", wrap: true, margin: "xs" });
+    feedbackList.push({ type: "text", text: "💬 ความเห็นหัวหน้า: " + lv.supervisor_comment, size: "xxs", color: "#475569", wrap: true, margin: "xs" });
   }
   if (lv.approver_comment) {
-    feedbackList.push({ type: "text", text: "💬 ความเห็นฝ่ายบุคคล: " + lv.approver_comment, size: "xxs", color: "#4b5563", wrap: true, margin: "xs" });
+    feedbackList.push({ type: "text", text: "💬 ความเห็นฝ่ายบุคคล: " + lv.approver_comment, size: "xxs", color: "#475569", wrap: true, margin: "xs" });
   }
 
   var bodyContents = [
@@ -4104,16 +4105,16 @@ function LINE_buildLeaveStatusFlex_(user, lv) {
       type: "box",
       layout: "horizontal",
       contents: [
-        { type: "text", text: "สถานะปัจจุบัน", size: "sm", color: "#374151", gravity: "center" },
+        { type: "text", text: "สถานะปัจจุบัน", size: "sm", color: "#334155", gravity: "center", weight: "bold" },
         {
           type: "box",
           layout: "vertical",
           backgroundColor: statusColor + "1a", // transparency 10%
           paddingTop: "4px",
           paddingBottom: "4px",
-          paddingStart: "8px",
-          paddingEnd: "8px",
-          cornerRadius: "6px",
+          paddingStart: "12px",
+          paddingEnd: "12px",
+          cornerRadius: "12px",
           contents: [
             { type: "text", text: statusLabel, color: statusColor, size: "xs", weight: "bold", align: "center" }
           ]
@@ -4137,7 +4138,7 @@ function LINE_buildLeaveStatusFlex_(user, lv) {
       layout: "vertical",
       margin: "md",
       contents: [
-        { type: "text", text: "บันทึกความเห็น:", size: "xs", color: "#9ca3af", weight: "bold" }
+        { type: "text", text: "บันทึกความเห็น:", size: "xs", color: "#94a3b8", weight: "bold" }
       ].concat(feedbackList)
     });
   }
@@ -4148,11 +4149,11 @@ function LINE_buildLeaveStatusFlex_(user, lv) {
     header: {
       type: "box",
       layout: "vertical",
-      backgroundColor: "#1e293b",
+      backgroundColor: "#0f172a",
       paddingAll: "20px",
       contents: [
-        { type: "text", text: "LATEST LEAVE STATUS", color: "#94a3b8", size: "xs", weight: "bold" },
-        { type: "text", text: "ติดตามสถานะใบลาล่าสุด", color: "#ffffff", size: "lg", weight: "bold", margin: "xs" }
+        { type: "text", text: "LATEST LEAVE STATUS", color: "#64748b", size: "xs", weight: "bold" },
+        { type: "text", text: "ติดตามสถานะใบลาล่าสุด", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
       ]
     },
     body: {
@@ -4170,7 +4171,7 @@ function LINE_buildLeaveStatusFlex_(user, lv) {
         {
           type: "button",
           style: "secondary",
-          color: "#f3f4f6",
+          color: "#f1f5f9",
           height: "sm",
           action: { type: "postback", label: "⬅️ กลับเมนูหลัก", data: "action=portal" }
         }
@@ -4219,10 +4220,10 @@ function LINE_buildPendingLeavesFlex_(user, pendingLeaves) {
       header: {
         type: "box",
         layout: "vertical",
-        backgroundColor: "#10b981",
+        backgroundColor: "#b45309",
         paddingAll: "16px",
         contents: [
-          { type: "text", text: "รอการตรวจสอบ/อนุมัติ", color: "#a7f3d0", size: "xs", weight: "bold" },
+          { type: "text", text: "รอการพิจารณาอนุมัติ", color: "#fde68a", size: "xs", weight: "bold" },
           { type: "text", text: "ผู้ยื่น: " + requesterName, color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
         ]
       },
@@ -4236,32 +4237,32 @@ function LINE_buildPendingLeavesFlex_(user, pendingLeaves) {
             type: "box",
             layout: "horizontal",
             contents: [
-              { type: "text", text: "ประเภท", size: "xs", color: "#6b7280", flex: 3 },
-              { type: "text", text: typeLabel, size: "xs", color: "#1f2937", flex: 5, weight: "bold" }
+              { type: "text", text: "ประเภท", size: "xs", color: "#64748b", flex: 3 },
+              { type: "text", text: typeLabel, size: "xs", color: "#1e293b", flex: 5, weight: "bold" }
             ]
           },
           {
             type: "box",
             layout: "horizontal",
             contents: [
-              { type: "text", text: "วันที่ลา", size: "xs", color: "#6b7280", flex: 3 },
-              { type: "text", text: dateText, size: "xs", color: "#1f2937", flex: 5 }
+              { type: "text", text: "วันที่ลา", size: "xs", color: "#64748b", flex: 3 },
+              { type: "text", text: dateText, size: "xs", color: "#1e293b", flex: 5 }
             ]
           },
           {
             type: "box",
             layout: "horizontal",
             contents: [
-              { type: "text", text: "จำนวน", size: "xs", color: "#6b7280", flex: 3 },
-              { type: "text", text: durationText, size: "xs", flex: 5, weight: "bold", color: "#10b981" }
+              { type: "text", text: "จำนวน", size: "xs", color: "#64748b", flex: 3 },
+              { type: "text", text: durationText, size: "xs", flex: 5, weight: "bold", color: "#d97706" }
             ]
           },
           {
             type: "box",
             layout: "horizontal",
             contents: [
-              { type: "text", text: "เหตุผล", size: "xs", color: "#6b7280", flex: 3 },
-              { type: "text", text: lv.reason || "-", size: "xs", color: "#1f2937", flex: 5, wrap: true }
+              { type: "text", text: "เหตุผล", size: "xs", color: "#64748b", flex: 3 },
+              { type: "text", text: lv.reason || "-", size: "xs", color: "#1e293b", flex: 5, wrap: true }
             ]
           },
           { type: "separator", margin: "md" },
@@ -4283,10 +4284,10 @@ function LINE_buildPendingLeavesFlex_(user, pendingLeaves) {
           {
             type: "button",
             style: "secondary",
-            color: "#6366f1",
+            color: "#f1f5f9",
             height: "sm",
             margin: "sm",
-            action: { type: "uri", label: "📝 ดำเนินการบนเว็บบอร์ด", uri: webUrl }
+            action: { type: "uri", label: "📝 ดำเนินการบนเว็บพอร์ทัล", uri: webUrl }
           }
         ]
       }
@@ -4300,10 +4301,10 @@ function LINE_buildPendingLeavesFlex_(user, pendingLeaves) {
     header: {
       type: "box",
       layout: "vertical",
-      backgroundColor: "#1e293b",
+      backgroundColor: "#0f172a",
       paddingAll: "16px",
       contents: [
-        { type: "text", text: "การดำเนินการ", color: "#94a3b8", size: "xs", weight: "bold" },
+        { type: "text", text: "การดำเนินการ", color: "#64748b", size: "xs", weight: "bold" },
         { type: "text", text: "การพิจารณาใบลา", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
       ]
     },
@@ -4324,7 +4325,7 @@ function LINE_buildPendingLeavesFlex_(user, pendingLeaves) {
         {
           type: "button",
           style: "primary",
-          color: "#6366f1",
+          color: "#4f46e5",
           height: "sm",
           action: { type: "postback", label: "📱 กลับหน้าพอร์ทัล LINE", data: "action=portal" }
         }
@@ -4630,10 +4631,10 @@ function LINE_buildExpenseConfirmFlex_(user, state) {
     header: {
       type: "box",
       layout: "vertical",
-      backgroundColor: "#111827",
+      backgroundColor: "#0f172a",
       paddingAll: "20px",
       contents: [
-        { type: "text", text: "CONFIRM EXPENSE", color: "#93c5fd", size: "xs", weight: "bold" },
+        { type: "text", text: "CONFIRM EXPENSE", color: "#38bdf8", size: "xs", weight: "bold" },
         { type: "text", text: "โปรดตรวจสอบข้อมูลก่อนบันทึก", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
       ]
     },
@@ -4643,12 +4644,22 @@ function LINE_buildExpenseConfirmFlex_(user, state) {
       paddingAll: "20px",
       spacing: "sm",
       contents: [
-        { type: "text", text: "ประเภท: " + (_LINE_getExpenseTypeLabel_(state.expense_type)), size: "xs", color: "#374151", wrap: true },
-        { type: "text", text: "บริษัท: " + (state.company || '-'), size: "xs", color: "#374151", wrap: true },
-        { type: "text", text: "วันที่: " + _LINE_formatThaiDate_(state.expense_date), size: "xs", color: "#374151", wrap: true },
-        { type: "text", text: "จำนวน: " + Number(state.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " บาท", size: "xs", color: "#374151", wrap: true, weight: "bold" },
-        { type: "text", text: "รายละเอียด: " + String(state.description || '-'), size: "xs", color: "#374151", wrap: true },
-        { type: "text", text: "ใบเสร็จ: " + receiptText, size: "xs", color: "#374151", wrap: true },
+        {
+          type: "box",
+          layout: "vertical",
+          spacing: "xs",
+          backgroundColor: "#f8fafc",
+          paddingAll: "14px",
+          cornerRadius: "8px",
+          contents: [
+            { type: "text", text: "📂 ประเภท: " + (_LINE_getExpenseTypeLabel_(state.expense_type)), size: "xs", color: "#334155", wrap: true },
+            { type: "text", text: "🏢 บริษัท: " + (state.company || '-'), size: "xs", color: "#334155", wrap: true, margin: "xs" },
+            { type: "text", text: "📅 วันที่จ่าย: " + _LINE_formatThaiDate_(state.expense_date), size: "xs", color: "#334155", wrap: true, margin: "xs" },
+            { type: "text", text: "💰 ยอดเงิน: " + Number(state.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " บาท", size: "xs", color: "#0d9488", wrap: true, weight: "bold", margin: "xs" },
+            { type: "text", text: "📝 รายละเอียด: " + String(state.description || '-'), size: "xs", color: "#334155", wrap: true, margin: "xs" },
+            { type: "text", text: "🖼️ เอกสาร/ใบเสร็จ: " + receiptText, size: "xs", color: "#334155", wrap: true, margin: "xs" }
+          ]
+        },
         { type: "separator", margin: "md" },
         {
           type: "box",
@@ -4656,7 +4667,7 @@ function LINE_buildExpenseConfirmFlex_(user, state) {
           spacing: "sm",
           contents: [
             { type: "button", style: "primary", color: "#10b981", height: "sm", action: { type: "postback", label: "✅ ยืนยันบันทึก", data: "action=expense_confirm_yes" } },
-            { type: "button", style: "secondary", color: "#f3f4f6", height: "sm", action: { type: "postback", label: "❌ ยกเลิก", data: "action=expense_cancel" } }
+            { type: "button", style: "secondary", color: "#f1f5f9", height: "sm", action: { type: "postback", label: "❌ ยกเลิก", data: "action=expense_cancel" } }
           ]
         }
       ]
@@ -4684,11 +4695,11 @@ function LINE_buildExpenseSuccessFlex_(user, ex) {
     header: {
       type: "box",
       layout: "vertical",
-      backgroundColor: "#059669",
+      backgroundColor: "#065f46",
       paddingAll: "20px",
       contents: [
-        { type: "text", text: "บันทึกค่าใช้จ่ายแล้ว", color: "#d1fae5", size: "xs", weight: "bold" },
-        { type: "text", text: "ส่งเข้าระบบเรียบร้อย", color: "#ffffff", size: "lg", weight: "bold", margin: "xs" }
+        { type: "text", text: "บันทึกค่าใช้จ่ายแล้ว", color: "#34d399", size: "xs", weight: "bold" },
+        { type: "text", text: "ส่งเข้าระบบเรียบร้อย! 🎉", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
       ]
     },
     body: {
@@ -4697,11 +4708,28 @@ function LINE_buildExpenseSuccessFlex_(user, ex) {
       paddingAll: "20px",
       spacing: "sm",
       contents: [
-        { type: "text", text: "เลขที่: " + ex.expense_no, size: "xs", color: "#374151", wrap: true },
-        { type: "text", text: "บริษัท: " + (company || '-'), size: "xs", color: "#374151", wrap: true },
-        { type: "text", text: "ประเภท: " + (ex.expense_type || '-'), size: "xs", color: "#374151", wrap: true },
-        { type: "text", text: "จำนวน: " + Number(ex.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " บาท", size: "xs", color: "#374151", wrap: true, weight: "bold" },
-        { type: "text", text: "สถานะ: " + (ex.status_label || ex.status || '-'), size: "xs", color: "#374151", wrap: true }
+        {
+          type: "box",
+          layout: "vertical",
+          backgroundColor: "#f0fdf4",
+          paddingAll: "14px",
+          cornerRadius: "10px",
+          contents: [
+            { type: "text", text: "📝 เลขที่ใบเบิก: " + ex.expense_no, size: "xs", color: "#065f46", weight: "bold" },
+            { type: "text", text: "🏢 บริษัท: " + (company || '-'), size: "xs", color: "#047857", margin: "xs" },
+            { type: "text", text: "📂 ประเภท: " + (ex.expense_type || '-'), size: "xs", color: "#047857", margin: "xs" },
+            { type: "text", text: "💰 ยอดเงิน: " + Number(ex.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " บาท", size: "xs", color: "#065f46", wrap: true, weight: "bold", margin: "xs" },
+            { type: "text", text: "🔑 สถานะ: " + (ex.status_label || ex.status || '-'), size: "xs", color: "#047857", margin: "xs" }
+          ]
+        },
+        {
+          type: "button",
+          style: "primary",
+          color: "#10b981",
+          height: "sm",
+          margin: "sm",
+          action: { type: "postback", label: "📱 กลับหน้าพอร์ทัลหลัก", data: "action=portal" }
+        }
       ]
     }
   };
@@ -4729,15 +4757,16 @@ function LINE_buildExpensePendingFlex_(user, items) {
       margin: "md",
       contents: [
         { type: "text", text: ex.expense_no + " · " + (ex.requester ? ex.requester.full_name : '-') , size: "sm", weight: "bold", wrap: true },
-        { type: "text", text: (ex.expense_type || '-') + " · " + Number(ex.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " บาท", size: "xs", color: "#374151", wrap: true },
-        { type: "text", text: "สถานะ: " + (ex.status_label || ex.status || '-'), size: "xs", color: "#6b7280", wrap: true },
+        { type: "text", text: (ex.expense_type || '-') + " · " + Number(ex.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " บาท", size: "xs", color: "#334155", wrap: true },
+        { type: "text", text: "สถานะ: " + (ex.status_label || ex.status || '-'), size: "xs", color: "#64748b", wrap: true },
         {
           type: "box",
           layout: "horizontal",
           spacing: "sm",
+          margin: "xs",
           contents: [
-            { type: "button", style: "primary", color: "#059669", height: "sm", action: { type: "postback", label: "✅ อนุมัติ", data: "action=expense_decision&id=" + encodeURIComponent(ex.id) + "&decision=approved" } },
-            { type: "button", style: "secondary", color: "#ef4444", height: "sm", action: { type: "postback", label: "❌ ไม่อนุมัติ", data: "action=expense_decision&id=" + encodeURIComponent(ex.id) + "&decision=rejected" } }
+            { type: "button", style: "primary", color: "#10b981", height: "sm", action: { type: "postback", label: "✅ อนุมัติ", data: "action=expense_decision&id=" + encodeURIComponent(ex.id) + "&decision=approved" } },
+            { type: "button", style: "secondary", color: "#fee2e2", height: "sm", action: { type: "postback", label: "❌ ไม่อนุมัติ", data: "action=expense_decision&id=" + encodeURIComponent(ex.id) + "&decision=rejected" } }
           ]
         }
       ]
@@ -4756,7 +4785,7 @@ function LINE_buildExpensePendingFlex_(user, items) {
         backgroundColor: "#0f172a",
         paddingAll: "20px",
         contents: [
-          { type: "text", text: "EXPENSE APPROVAL", color: "#93c5fd", size: "xs", weight: "bold" },
+          { type: "text", text: "EXPENSE APPROVAL", color: "#38bdf8", size: "xs", weight: "bold" },
           { type: "text", text: "รายการค่าใช้จ่ายรออนุมัติ", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
         ]
       },
@@ -4766,7 +4795,7 @@ function LINE_buildExpensePendingFlex_(user, items) {
         paddingAll: "20px",
         spacing: "sm",
         contents: rows.length ? rows : [
-          { type: "text", text: "✅ ไม่มีรายการรออนุมัติ", size: "sm", color: "#374151", wrap: true }
+          { type: "text", text: "✅ ไม่มีรายการรออนุมัติ", size: "sm", color: "#64748b", wrap: true }
         ]
       }
     }
@@ -4999,10 +5028,10 @@ function LINE_buildLeaveConfirmFlex_(user, state) {
     header: {
       type: "box",
       layout: "vertical",
-      backgroundColor: "#1e293b",
+      backgroundColor: "#0f172a",
       paddingAll: "20px",
       contents: [
-        { type: "text", text: "CONFIRM LEAVE REQUEST", color: "#94a3b8", size: "xs", weight: "bold" },
+        { type: "text", text: "CONFIRM LEAVE REQUEST", color: "#38bdf8", size: "xs", weight: "bold" },
         { type: "text", text: "โปรดตรวจสอบข้อมูลเพื่อยืนยัน", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
       ]
     },
@@ -5014,34 +5043,47 @@ function LINE_buildLeaveConfirmFlex_(user, state) {
       contents: [
         {
           type: "box",
-          layout: "horizontal",
+          layout: "vertical",
+          spacing: "xs",
+          backgroundColor: "#f8fafc",
+          paddingAll: "14px",
+          cornerRadius: "8px",
           contents: [
-            { type: "text", text: "ประเภท", size: "xs", color: "#6b7280", flex: 3 },
-            { type: "text", text: typeLabel, size: "xs", color: "#1f2937", flex: 5, weight: "bold" }
-          ]
-        },
-        {
-          type: "box",
-          layout: "horizontal",
-          contents: [
-            { type: "text", text: "วันที่ลา", size: "xs", color: "#6b7280", flex: 3 },
-            { type: "text", text: dateText, size: "xs", color: "#1f2937", flex: 5 }
-          ]
-        },
-        {
-          type: "box",
-          layout: "horizontal",
-          contents: [
-            { type: "text", text: "จำนวน", size: "xs", color: "#6b7280", flex: 3 },
-            { type: "text", text: durationText, size: "xs", color: "#1f2937", flex: 5, weight: "bold" }
-          ]
-        },
-        {
-          type: "box",
-          layout: "horizontal",
-          contents: [
-            { type: "text", text: "เหตุผล", size: "xs", color: "#6b7280", flex: 3 },
-            { type: "text", text: state.reason, size: "xs", color: "#1f2937", flex: 5, wrap: true }
+            {
+              type: "box",
+              layout: "horizontal",
+              contents: [
+                { type: "text", text: "🤒 ประเภทการลา", size: "xs", color: "#64748b", flex: 3 },
+                { type: "text", text: typeLabel, size: "xs", color: "#1e293b", flex: 5, weight: "bold" }
+              ]
+            },
+            {
+              type: "box",
+              layout: "horizontal",
+              margin: "xs",
+              contents: [
+                { type: "text", text: "📅 วันที่ขอลา", size: "xs", color: "#64748b", flex: 3 },
+                { type: "text", text: dateText, size: "xs", color: "#1e293b", flex: 5 }
+              ]
+            },
+            {
+              type: "box",
+              layout: "horizontal",
+              margin: "xs",
+              contents: [
+                { type: "text", text: "⏳ จำนวนวันลา", size: "xs", color: "#64748b", flex: 3 },
+                { type: "text", text: durationText, size: "xs", color: "#1e293b", flex: 5, weight: "bold" }
+              ]
+            },
+            {
+              type: "box",
+              layout: "horizontal",
+              margin: "xs",
+              contents: [
+                { type: "text", text: "📝 เหตุผลการลา", size: "xs", color: "#64748b", flex: 3 },
+                { type: "text", text: state.reason, size: "xs", color: "#1e293b", flex: 5, wrap: true }
+              ]
+            }
           ]
         },
         { type: "separator", margin: "md" },
@@ -5049,7 +5091,6 @@ function LINE_buildLeaveConfirmFlex_(user, state) {
           type: "box",
           layout: "vertical",
           spacing: "sm",
-          margin: "md",
           contents: [
             {
               type: "button",
@@ -5061,7 +5102,7 @@ function LINE_buildLeaveConfirmFlex_(user, state) {
             {
               type: "button",
               style: "secondary",
-              color: "#f3f4f6",
+              color: "#f1f5f9",
               height: "sm",
               action: { type: "postback", label: "❌ ยกเลิก", data: "action=submit_cancel" }
             }
@@ -5105,11 +5146,11 @@ function LINE_buildSubmitSuccessFlex_(user, lv) {
     header: {
       type: "box",
       layout: "vertical",
-      backgroundColor: "#10b981",
+      backgroundColor: "#065f46",
       paddingAll: "20px",
       contents: [
-        { type: "text", text: "SUCCESS", color: "#a7f3d0", size: "xs", weight: "bold" },
-        { type: "text", text: "ยื่นใบลาเรียบร้อยแล้ว! 🎉", color: "#ffffff", size: "lg", weight: "bold", margin: "xs" }
+        { type: "text", text: "SUCCESS", color: "#34d399", size: "xs", weight: "bold" },
+        { type: "text", text: "ยื่นใบลาเรียบร้อยแล้ว! 🎉", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
       ]
     },
     body: {
@@ -5123,7 +5164,7 @@ function LINE_buildSubmitSuccessFlex_(user, lv) {
           text: "คำขอของคุณเข้าระบบและส่งไปยังผู้มีอำนาจตรวจสอบเรียบร้อยแล้ว:",
           wrap: true,
           size: "sm",
-          color: "#374151"
+          color: "#334155"
         },
         {
           type: "box",
@@ -5142,7 +5183,7 @@ function LINE_buildSubmitSuccessFlex_(user, lv) {
         {
           type: "button",
           style: "primary",
-          color: "#059669",
+          color: "#10b981",
           height: "sm",
           margin: "sm",
           action: { type: "postback", label: "📱 กลับหน้าพอร์ทัลหลัก", data: "action=portal" }
@@ -5342,7 +5383,7 @@ function LINE_buildScheduleFlex_(user) {
     
     var dayData = getDaySchedule(dateStr);
     var statusText = 'ไม่พบตารางงาน';
-    var statusColor = '#6b7280';
+    var statusColor = '#64748b';
     var noteText = '';
     
     if (dayData) {
@@ -5392,13 +5433,14 @@ function LINE_buildScheduleFlex_(user) {
         layout: "vertical",
         width: "60px",
         contents: [
-          { type: "text", text: dayLabel, size: "sm", weight: "bold", color: "#1f2937" },
-          { type: "text", text: dateLabel, size: "xs", color: "#6b7280", margin: "xs" }
+          { type: "text", text: dayLabel, size: "sm", weight: "bold", color: "#1e293b" },
+          { type: "text", text: dateLabel, size: "xs", color: "#64748b", margin: "xs" }
         ]
       },
       {
         type: "box",
         layout: "vertical",
+        gravity: "center",
         contents: [
           { type: "text", text: statusText, size: "sm", weight: "bold", color: statusColor, wrap: true }
         ]
@@ -5410,7 +5452,7 @@ function LINE_buildScheduleFlex_(user) {
         type: "text",
         text: noteText,
         size: "xs",
-        color: "#4b5563",
+        color: "#475569",
         margin: "xs",
         wrap: true
       });
@@ -5436,11 +5478,11 @@ function LINE_buildScheduleFlex_(user) {
     header: {
       type: "box",
       layout: "vertical",
-      backgroundColor: "#6366f1",
+      backgroundColor: "#1e1b4b",
       paddingAll: "20px",
       contents: [
-        { type: "text", text: "WORK SCHEDULE", color: "#e0e7ff", size: "xs", weight: "bold" },
-        { type: "text", text: "ตารางทำงานพนักงานสาขา", color: "#ffffff", size: "lg", weight: "bold", margin: "xs" }
+        { type: "text", text: "WORK SCHEDULE", color: "#818cf8", size: "xs", weight: "bold" },
+        { type: "text", text: "ตารางทำงานพนักงานสาขา", color: "#ffffff", size: "md", weight: "bold", margin: "xs" }
       ]
     },
     body: {
@@ -5467,7 +5509,7 @@ function LINE_buildScheduleFlex_(user) {
           text: "🗓️ แผนงาน 7 วันล่วงหน้า:",
           weight: "bold",
           size: "sm",
-          color: "#1f2937",
+          color: "#0f172a",
           margin: "md"
         },
         {

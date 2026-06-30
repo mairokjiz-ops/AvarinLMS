@@ -78,7 +78,8 @@ const SHEETS = Object.freeze({
   CHECKINS:  'Checkins',
   COURSES:   'Courses',
   QUIZZES:   'Quizzes',
-  PROGRESS:  'UserProgress'
+  PROGRESS:  'UserProgress',
+  COURSE_CHUNKS: 'CourseChunks'
 });
 
 // ── Schemas ─────────────────────────────────────────────────
@@ -92,16 +93,17 @@ const SCHEMAS = Object.freeze({
   Expenses: ['id','expense_no','mission_id','expense_date','expense_type','description','amount','receipt_url','status','approver_id','approver_comment','approver_at','approved_amount','created_by','created_at','updated_at'],
   Holidays: ['id','holiday_date','name','created_at','updated_at'],
   Checkins: ['id','user_id','check_in_at','check_out_at','check_in_lat','check_in_lng','check_out_lat','check_out_lng','check_in_loc','check_out_loc','status','created_at','updated_at','check_in_img','check_out_img'],
-  Courses: ['id','title','description','thumbnail_url','content','video_url','status','created_at','updated_at'],
+  Courses: ['id','title','description','thumbnail_url','content','video_url','status','category','duration_hours','pass_score','instructor','ai_summary','ai_modules','ai_quiz','ai_flashcards','ai_key_points','ai_checklist','created_at','updated_at'],
   Quizzes: ['id','course_id','question','options','correct_option','created_at','updated_at'],
-  UserProgress: ['id','user_id','course_id','quiz_score','quiz_total','is_passed','created_at','updated_at']
+  UserProgress: ['id','user_id','course_id','quiz_score','quiz_total','is_passed','created_at','updated_at'],
+  CourseChunks: ['id','course_id','chunk_index','content','metadata','embedding','created_at','updated_at']
 });
 
 // ── TEXT_COLUMNS — บังคับ Sheet เก็บเป็น text กัน auto-coercion ─
 const TEXT_COLUMNS = Object.freeze([
   'phone','contact_phone','leave_no','token','password_hash','salt','attachment_url','avatar',
   'mission_no','title','purpose','destination','transport_type','expense_type','description','receipt_url',
-  'holiday_date','expense_no','line_user_id','line_connect_code','question','options','content'
+  'holiday_date','expense_no','line_user_id','line_connect_code','question','options','content','ai_summary','ai_modules','ai_quiz','ai_flashcards','ai_key_points','ai_checklist'
 ]);
 
 // ── Roles ────────────────────────────────────────────────────
@@ -230,7 +232,10 @@ const SETTINGS_DEFAULTS = Object.freeze({
   web_url: 'http://localhost:8000',
   email_from_alias: '',
   google_apps_script_url: '',
-  google_gemini_api_key: ''
+  google_gemini_api_key: '',
+  openai_api_key: '',
+  openai_generation_model: 'gpt-5.5',
+  openai_embedding_model: 'text-embedding-3-small'
 });
 const SETTINGS_SENSITIVE = Object.freeze([]);
 
@@ -429,6 +434,25 @@ async function sbFetch(method, table, params, body) {
   };
   if (body) opts.body = JSON.stringify(body);
   var r = await fetch(url, opts);
+  if (!r.ok) {
+    var err = await r.json().catch(function(){ return {}; });
+    throw new Error(err.message || err.hint || ('HTTP ' + r.status));
+  }
+  if (r.status === 204) return null;
+  return r.json();
+}
+
+async function sbRpc(fn, body) {
+  var url = SUPABASE_URL + '/rest/v1/rpc/' + fn;
+  var r = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body || {})
+  });
   if (!r.ok) {
     var err = await r.json().catch(function(){ return {}; });
     throw new Error(err.message || err.hint || ('HTTP ' + r.status));
@@ -3425,6 +3449,10 @@ async function api(req) {
       case 'quiz.get_questions':      return _ok(Quizzes_getQuestions(user, p));
       case 'quiz.submit':             return _ok(await Quizzes_submit(user, p));
       case 'course.progress_list':    return _ok(Courses_progressList(user, p));
+      case 'ai.website_extract':      return _ok(await AI_websiteExtract(user, p));
+      case 'ai.course_generate':      return _ok(await AI_courseGenerate(user, p));
+      case 'ai.course_index':         return _ok(await AI_courseIndex(user, p));
+      case 'ai.tutor_ask':            return _ok(await AI_tutorAsk(user, p));
 
       case 'audit.list':              return _ok(Audit_list(user, p));
     }
@@ -3552,6 +3580,10 @@ function Courses_list(user, p) {
       title: c.title,
       description: c.description,
       thumbnail_url: c.thumbnail_url,
+      category: c.category,
+      duration_hours: c.duration_hours,
+      pass_score: c.pass_score,
+      instructor: c.instructor,
       status: c.status,
       created_at: c.created_at,
       progress: prog ? { quiz_score: Number(prog.quiz_score), quiz_total: Number(prog.quiz_total), is_passed: prog.is_passed } : null
@@ -3591,6 +3623,16 @@ async function Courses_create(user, p) {
     thumbnail_url: String(data.thumbnail_url || '').trim(),
     content: content,
     video_url: String(data.video_url || '').trim(),
+    category: String(data.category || '').trim(),
+    duration_hours: data.duration_hours ? Number(data.duration_hours) : 0,
+    pass_score: data.pass_score ? Number(data.pass_score) : 80,
+    instructor: String(data.instructor || '').trim(),
+    ai_summary: String(data.ai_summary || '').trim(),
+    ai_modules: String(data.ai_modules || '').trim(),
+    ai_quiz: String(data.ai_quiz || '').trim(),
+    ai_flashcards: String(data.ai_flashcards || '').trim(),
+    ai_key_points: String(data.ai_key_points || '').trim(),
+    ai_checklist: String(data.ai_checklist || '').trim(),
     status: String(data.status || 'active').trim()
   });
 
@@ -3626,6 +3668,16 @@ async function Courses_update(user, p) {
   if ('thumbnail_url' in data) patch.thumbnail_url = String(data.thumbnail_url || '').trim();
   if ('content' in data) patch.content = String(data.content || '').trim();
   if ('video_url' in data) patch.video_url = String(data.video_url || '').trim();
+  if ('category' in data) patch.category = String(data.category || '').trim();
+  if ('duration_hours' in data) patch.duration_hours = data.duration_hours ? Number(data.duration_hours) : 0;
+  if ('pass_score' in data) patch.pass_score = data.pass_score ? Number(data.pass_score) : 80;
+  if ('instructor' in data) patch.instructor = String(data.instructor || '').trim();
+  if ('ai_summary' in data) patch.ai_summary = String(data.ai_summary || '').trim();
+  if ('ai_modules' in data) patch.ai_modules = String(data.ai_modules || '').trim();
+  if ('ai_quiz' in data) patch.ai_quiz = String(data.ai_quiz || '').trim();
+  if ('ai_flashcards' in data) patch.ai_flashcards = String(data.ai_flashcards || '').trim();
+  if ('ai_key_points' in data) patch.ai_key_points = String(data.ai_key_points || '').trim();
+  if ('ai_checklist' in data) patch.ai_checklist = String(data.ai_checklist || '').trim();
   if ('status' in data) patch.status = String(data.status || 'active').trim();
 
   var updated = await DB_update(SHEETS.COURSES, id, patch);
@@ -3770,6 +3822,452 @@ function Courses_progressList(user, p) {
   });
 
   return { items: items };
+}
+
+function AI_decodeHtml_(text) {
+  return String(text || '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&#(\d+);/g, function (_, n) {
+      try { return String.fromCharCode(Number(n)); } catch (e) { return ''; }
+    })
+    .replace(/&#x([0-9a-f]+);/gi, function (_, n) {
+      try { return String.fromCharCode(parseInt(n, 16)); } catch (e) { return ''; }
+    });
+}
+
+function AI_cleanText_(text) {
+  return AI_decodeHtml_(text).replace(/\s+/g, ' ').replace(/\u0000/g, '').trim();
+}
+
+function AI_attr_(tag, name) {
+  var re = new RegExp(name + "\\s*=\\s*([\"'])(.*?)\\1", "i");
+  var m = String(tag || '').match(re);
+  return m ? AI_cleanText_(m[2]) : '';
+}
+
+function AI_meta_(html, key, attrName) {
+  attrName = attrName || 'property';
+  var re = /<meta\b[^>]*>/gi;
+  var m;
+  while ((m = re.exec(html))) {
+    var tag = m[0];
+    var prop = AI_attr_(tag, attrName) || AI_attr_(tag, attrName === 'property' ? 'name' : 'property');
+    if (String(prop).toLowerCase() === String(key).toLowerCase()) return AI_attr_(tag, 'content');
+  }
+  return '';
+}
+
+function AI_extractHeadings_(html) {
+  var items = [];
+  var re = /<h([1-3])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
+  var m;
+  while ((m = re.exec(html)) && items.length < 18) {
+    var text = AI_cleanText_(String(m[2]).replace(/<[^>]+>/g, ' '));
+    if (text && items.indexOf(text) < 0) items.push(text);
+  }
+  return items;
+}
+
+function AI_extractPageText_(html) {
+  var body = String(html || '')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, ' ');
+  body = body.replace(/<(br|p|div|li|tr|td|section|article)\b[^>]*>/gi, '\n');
+  body = body.replace(/<[^>]+>/g, ' ');
+  var lines = AI_decodeHtml_(body).split(/\n+/).map(AI_cleanText_).filter(function (x) {
+    return x && x.length > 25 && !/^Skip|^Menu|^Copyright/i.test(x);
+  });
+  var unique = [];
+  lines.forEach(function (line) {
+    if (unique.length < 80 && unique.indexOf(line) < 0) unique.push(line);
+  });
+  return unique.join('\n').substring(0, 12000);
+}
+
+function AI_assertFetchableUrl_(rawUrl) {
+  var url = String(rawUrl || '').trim();
+  if (!url) throw new Error('กรุณาระบุ Website URL');
+  var u;
+  try { u = new URL(url); } catch (e) { throw new Error('รูปแบบ Website URL ไม่ถูกต้อง'); }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new Error('รองรับเฉพาะ http/https');
+  var host = u.hostname.toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host.endsWith('.local')) throw new Error('ไม่อนุญาตให้ดึง URL ภายในระบบ');
+  if (/^(10|127|169\.254|172\.(1[6-9]|2\d|3[0-1])|192\.168)\./.test(host)) throw new Error('ไม่อนุญาตให้ดึง private network URL');
+  return u.toString();
+}
+
+async function AI_websiteExtract(user, p) {
+  Auth_requireCap(user, 'setting.manage');
+  var url = AI_assertFetchableUrl_((p && p.url) || '');
+  var controller = new AbortController();
+  var timer = setTimeout(function () { try { controller.abort(); } catch (e) {} }, 15000);
+  try {
+    var res = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'user-agent': 'Mozilla/5.0 (compatible; AvarinLMS/1.1; +https://averintshop.com)'
+      }
+    });
+    if (!res.ok) throw new Error('ดึง Website ไม่สำเร็จ (HTTP ' + res.status + ')');
+    var ct = String(res.headers.get('content-type') || '');
+    if (ct && ct.indexOf('text/html') < 0 && ct.indexOf('application/xhtml') < 0) throw new Error('URL นี้ไม่ใช่หน้า HTML ที่อ่านได้');
+    var html = await res.text();
+    var titleMatch = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+    var title = titleMatch ? AI_cleanText_(titleMatch[1]) : '';
+    var ogTitle = AI_meta_(html, 'og:title');
+    var description = AI_meta_(html, 'description', 'name') || AI_meta_(html, 'og:description');
+    var image = AI_meta_(html, 'og:image');
+    var headings = AI_extractHeadings_(html);
+    var text = AI_extractPageText_(html);
+    if (!title && !description && headings.length === 0 && !text) throw new Error('อ่านเนื้อหาจาก Website ไม่ได้');
+    return {
+      url: url,
+      title: ogTitle || title,
+      description: description,
+      image: image,
+      headings: headings,
+      text: text,
+      text_sample: text.substring(0, 1800)
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function AI_extractJson_(text) {
+  var raw = String(text || '').trim();
+  if (raw.indexOf('```') === 0) raw = raw.replace(/^```(?:json)?\s*|```\s*$/g, '').trim();
+  var first = raw.indexOf('{');
+  var last = raw.lastIndexOf('}');
+  if (first >= 0 && last > first) raw = raw.substring(first, last + 1);
+  return JSON.parse(raw);
+}
+
+function AI_courseFallback_(title, sourceText) {
+  var clean = AI_cleanText_(sourceText).substring(0, 900);
+  return {
+    course_title: title || 'คอร์สฝึกอบรมจากเอกสาร',
+    objectives: ['เข้าใจเนื้อหาหลักจากเอกสาร', 'นำความรู้ไปใช้ในงานจริง', 'ผ่านการประเมินหลังเรียน'],
+    difficulty: 'Beginner',
+    duration_minutes: 60,
+    passing_score: 80,
+    lessons: [
+      {
+        title: 'บทที่ 1 ภาพรวมจากเอกสาร',
+        summary: clean || 'สรุปเนื้อหาจากเอกสารที่แนบ',
+        key_points: ['อ่านและเข้าใจเนื้อหาหลัก', 'จับประเด็นสำคัญ', 'เตรียมตอบคำถามหลังเรียน'],
+        checklist: ['อ่านบทเรียนครบ', 'ทบทวน Key Point', 'ทำ Quiz']
+      }
+    ],
+    flashcards: [
+      { front: 'คอร์สนี้สร้างจากอะไร?', back: 'สร้างจากเอกสารหรือเว็บไซต์ที่ผู้ใช้แนบ' }
+    ],
+    quiz: [],
+    final_exam: [],
+    answer_key: [],
+    certificate_requirement: 'เรียนครบทุกบทและสอบผ่านอย่างน้อย 80%',
+    ai_tutor_seed: clean
+  };
+}
+
+function AI_courseJsonSchema_() {
+  return {
+    type: 'object',
+    additionalProperties: true,
+    required: ['course_title','objectives','difficulty','duration_minutes','lessons','flashcards','quiz','final_exam','answer_key','passing_score','certificate_requirement','ai_tutor_seed'],
+    properties: {
+      course_title: { type: 'string' },
+      objectives: { type: 'array', items: { type: 'string' } },
+      difficulty: { type: 'string' },
+      duration_minutes: { type: 'number' },
+      lessons: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            title: { type: 'string' },
+            summary: { type: 'string' },
+            key_points: { type: 'array', items: { type: 'string' } },
+            checklist: { type: 'array', items: { type: 'string' } }
+          }
+        }
+      },
+      flashcards: { type: 'array', items: { type: 'object', additionalProperties: true, properties: { front: { type: 'string' }, back: { type: 'string' } } } },
+      quiz: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      final_exam: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      answer_key: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      passing_score: { type: 'number' },
+      certificate_requirement: { type: 'string' },
+      ai_tutor_seed: { type: 'string' }
+    }
+  };
+}
+
+function AI_chunkText_(text, maxLen) {
+  maxLen = maxLen || 1800;
+  var src = String(text || '').replace(/\r/g, '').trim();
+  var parts = src.split(/\n{2,}/);
+  var chunks = [];
+  var buf = '';
+  parts.forEach(function (p) {
+    p = AI_cleanText_(p);
+    if (!p) return;
+    if ((buf + '\n' + p).length > maxLen && buf) {
+      chunks.push(buf);
+      buf = p;
+    } else {
+      buf = buf ? (buf + '\n' + p) : p;
+    }
+  });
+  if (buf) chunks.push(buf);
+  if (chunks.length === 0 && src) {
+    for (var i = 0; i < src.length; i += maxLen) chunks.push(src.substring(i, i + maxLen));
+  }
+  return chunks.slice(0, 80);
+}
+
+async function AI_openaiEmbedding_(apiKey, model, input) {
+  var res = await fetch('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + apiKey,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ model: model || 'text-embedding-3-small', input: input })
+  });
+  if (!res.ok) {
+    var errText = await res.text();
+    throw new Error('OpenAI Embeddings HTTP ' + res.status + ': ' + errText.substring(0, 500));
+  }
+  var json = await res.json();
+  if (!json.data || !json.data[0] || !json.data[0].embedding) throw new Error('OpenAI ไม่ส่ง embedding กลับมา');
+  return json.data[0].embedding;
+}
+
+async function AI_courseIndex(user, p) {
+  Auth_requireCap(user, 'setting.manage');
+  var courseId = String((p && p.course_id) || '').trim();
+  if (!courseId) throw new Error('ระบุ course_id');
+  var c = DB_findById(SHEETS.COURSES, courseId);
+  if (!c) throw new Error('ไม่พบคอร์สเรียน');
+  var openaiKey = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.openai_api_key) || '').trim();
+  if (!openaiKey) throw new Error('กรุณาระบุ OpenAI API Key ก่อนสร้าง RAG index');
+  var embModel = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.openai_embedding_model) || 'text-embedding-3-small').trim();
+  var source = [
+    c.title || '',
+    c.description || '',
+    c.content || '',
+    c.ai_summary || '',
+    c.ai_key_points || '',
+    c.ai_flashcards || '',
+    c.ai_checklist || '',
+    c.ai_modules || '',
+    c.ai_quiz || ''
+  ].join('\n\n');
+  var chunks = AI_chunkText_(source, 1800);
+  var existing = DB_readAll(SHEETS.COURSE_CHUNKS).filter(function (x) { return String(x.course_id) === String(courseId); });
+  for (var i = 0; i < existing.length; i++) await DB_delete(SHEETS.COURSE_CHUNKS, existing[i].id);
+  for (var j = 0; j < chunks.length; j++) {
+    var emb = await AI_openaiEmbedding_(openaiKey, embModel, chunks[j]);
+    await DB_insert(SHEETS.COURSE_CHUNKS, {
+      course_id: courseId,
+      chunk_index: j,
+      content: chunks[j],
+      metadata: JSON.stringify({ title: c.title || '', model: embModel }),
+      embedding: '[' + emb.join(',') + ']'
+    });
+  }
+  await Audit_log_(user, 'ai.course_index', 'course', courseId, { chunks: chunks.length });
+  return { course_id: courseId, chunks: chunks.length, embedding_model: embModel };
+}
+
+async function AI_tutorAsk(user, p) {
+  var courseId = String((p && p.course_id) || '').trim();
+  var question = String((p && p.question) || '').trim();
+  if (!courseId) throw new Error('ระบุ course_id');
+  if (!question) throw new Error('กรุณาระบุคำถาม');
+  var c = DB_findById(SHEETS.COURSES, courseId);
+  if (!c) throw new Error('ไม่พบคอร์สเรียน');
+  var openaiKey = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.openai_api_key) || '').trim();
+  if (!openaiKey) throw new Error('กรุณาระบุ OpenAI API Key ก่อนใช้ AI Tutor');
+  var embModel = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.openai_embedding_model) || 'text-embedding-3-small').trim();
+  var generationModel = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.openai_generation_model) || 'gpt-5.5').trim();
+  var qEmb = await AI_openaiEmbedding_(openaiKey, embModel, question);
+  var rows = await sbRpc('match_course_chunks', {
+    query_embedding: '[' + qEmb.join(',') + ']',
+    match_course_id: courseId,
+    match_count: 6
+  });
+  var context = (rows || []).map(function (r, i) { return '[' + (i + 1) + '] ' + r.content; }).join('\n\n');
+  if (!context) context = [c.content || '', c.ai_summary || '', c.ai_key_points || ''].join('\n\n').substring(0, 5000);
+  var prompt = 'ตอบคำถามผู้เรียนโดยอ้างอิงเฉพาะบริบทของคอร์สนี้ ถ้าไม่มีข้อมูลให้บอกว่าไม่มีข้อมูลในเอกสารคอร์ส\n'
+    + 'คอร์ส: ' + (c.title || '') + '\n'
+    + 'คำถาม: ' + question + '\n\n'
+    + 'บริบท:\n' + context;
+  var res = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + openaiKey,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: generationModel,
+      input: [
+        { role: 'system', content: 'You are an LMS AI Tutor. Answer in Thai, grounded only in the provided course context.' },
+        { role: 'user', content: prompt }
+      ]
+    })
+  });
+  if (!res.ok) {
+    var errText = await res.text();
+    throw new Error('OpenAI Tutor HTTP ' + res.status + ': ' + errText.substring(0, 500));
+  }
+  var json = await res.json();
+  var answer = json.output_text || '';
+  if (!answer && Array.isArray(json.output)) {
+    json.output.forEach(function (item) {
+      if (Array.isArray(item.content)) item.content.forEach(function (x) { if (x.text) answer += x.text; });
+    });
+  }
+  return { answer: answer, sources: rows || [] };
+}
+
+async function AI_openaiResponsesJson_(apiKey, model, prompt) {
+  var res = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + apiKey,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: model || 'gpt-5.5',
+      input: [
+        { role: 'system', content: 'You are an expert instructional designer. Return only valid JSON.' },
+        { role: 'user', content: prompt }
+      ],
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'lms_course',
+          strict: false,
+          schema: AI_courseJsonSchema_()
+        }
+      }
+    })
+  });
+  if (!res.ok) {
+    var errText = await res.text();
+    throw new Error('OpenAI HTTP ' + res.status + ': ' + errText.substring(0, 500));
+  }
+  var json = await res.json();
+  var text = '';
+  if (json.output_text) {
+    text = json.output_text;
+  } else if (Array.isArray(json.output)) {
+    json.output.forEach(function (item) {
+      if (Array.isArray(item.content)) {
+        item.content.forEach(function (c) {
+          if (c.text) text += c.text;
+        });
+      }
+    });
+  }
+  if (!text) throw new Error('OpenAI ไม่ส่ง JSON text กลับมา');
+  return AI_extractJson_(text);
+}
+
+async function AI_courseGenerate(user, p) {
+  Auth_requireCap(user, 'setting.manage');
+  var data = p || {};
+  var title = String(data.title || '').trim();
+  var sourceText = String(data.source_text || '').trim();
+  var sourceName = String(data.source_name || '').trim();
+  if (!sourceText || sourceText.length < 80) throw new Error('เนื้อหาจากเอกสาร/เว็บไซต์น้อยเกินไปสำหรับสร้างคอร์ส');
+
+  var prompt = 'คุณคือผู้เชี่ยวชาญด้าน Instructional Design\n'
+    + 'สร้างคอร์สฝึกอบรมจากเอกสารนี้\n'
+    + 'ตอบเป็น JSON object เท่านั้น ห้ามใส่ markdown หรือคำอธิบายนอก JSON\n'
+    + 'ผลลัพธ์ต้องมี keys ต่อไปนี้:\n'
+    + 'course_title, objectives, difficulty, duration_minutes, lessons, flashcards, quiz, final_exam, answer_key, passing_score, certificate_requirement, ai_tutor_seed\n'
+    + 'ข้อกำหนด:\n'
+    + '1. ชื่อคอร์ส\n'
+    + '2. วัตถุประสงค์\n'
+    + '3. ระดับความยาก\n'
+    + '4. ระยะเวลาเรียน\n'
+    + '5. แบ่งเป็นบท\n'
+    + '6. สรุปแต่ละบท\n'
+    + '7. Key Point\n'
+    + '8. Checklist\n'
+    + '9. Flash Card\n'
+    + '10. Quiz 10 ข้อ\n'
+    + '11. Final Exam 30 ข้อ\n'
+    + '12. เฉลยพร้อมเหตุผล\n'
+    + '13. เกณฑ์ผ่าน\n'
+    + '14. Certificate Requirement\n'
+    + 'โครงสร้าง lessons เป็น array ของ {title, summary, key_points, checklist}\n'
+    + 'flashcards เป็น array ของ {front, back}\n'
+    + 'quiz และ final_exam เป็น array ของ {type, question, options, answer, explanation}\n'
+    + 'answer_key รวมเฉลยทั้งหมดพร้อมเหตุผล\n'
+    + 'ถ้าเอกสารเป็นสินค้า ให้เน้น training สำหรับพนักงานขายหน้าร้าน\n\n'
+    + 'หัวข้อที่ผู้ใช้กรอก: ' + title + '\n'
+    + 'แหล่งข้อมูล: ' + sourceName + '\n'
+    + 'เอกสาร:\n' + sourceText.substring(0, 50000);
+
+  var openaiKey = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.openai_api_key) || '').trim();
+  if (openaiKey) {
+    var openaiModel = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.openai_generation_model) || 'gpt-5.5').trim();
+    var openaiCourse = await AI_openaiResponsesJson_(openaiKey, openaiModel, prompt);
+    if (!openaiCourse.course_title) openaiCourse.course_title = title || 'คอร์สฝึกอบรมจากเอกสาร';
+    return { provider: 'openai', model: openaiModel, course: openaiCourse, raw: JSON.stringify(openaiCourse) };
+  }
+
+  var apiKey = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.google_gemini_api_key) || '').trim();
+  if (!apiKey) throw new Error('กรุณาระบุ OpenAI API Key หรือ Google Gemini API Key ในหน้าตั้งค่าระบบก่อนใช้งาน AI Generate');
+
+  var models = [
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey,
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey,
+    'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=' + apiKey
+  ];
+  var lastErr = null;
+  for (var i = 0; i < models.length; i++) {
+    try {
+      var payload = {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: models[i].indexOf('/v1beta/') >= 0
+          ? { response_mime_type: 'application/json', temperature: 0.3 }
+          : { responseMimeType: 'application/json', temperature: 0.3 }
+      };
+      var res = await fetch(models[i], {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        var errText = await res.text();
+        throw new Error('Gemini HTTP ' + res.status + ': ' + errText.substring(0, 300));
+      }
+      var json = await res.json();
+      var text = json && json.candidates && json.candidates[0] && json.candidates[0].content && json.candidates[0].content.parts && json.candidates[0].content.parts[0] && json.candidates[0].content.parts[0].text;
+      if (!text) throw new Error('Gemini ไม่ส่งข้อความ JSON กลับมา');
+      var course = AI_extractJson_(text);
+      if (!course.course_title) course.course_title = title || 'คอร์สฝึกอบรมจากเอกสาร';
+      return { course: course, raw: text };
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('สร้างคอร์สด้วย AI ไม่สำเร็จ');
 }
 
 // === SERVE HANDLER ===
