@@ -4488,20 +4488,6 @@ async function api(req) {
   }
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
 
-  function getDirectImageUrl(url) {
-    if (!url) return '';
-    if (typeof url !== 'string') return url;
-    var match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-    if (match && match[1]) {
-      return 'https://lh3.googleusercontent.com/d/' + match[1];
-    }
-    var idMatch = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-    if (idMatch && idMatch[1]) {
-      return 'https://lh3.googleusercontent.com/d/' + idMatch[1];
-    }
-    return url;
-  }
-
   // ── Thai date module ────────────────────────────────
   var TH = {
     MONTHS: ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'],
@@ -10111,9 +10097,6 @@ async function api(req) {
     if (!hasCap('expense.create_own|expense.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
     
     var chosenReceipts = [];
-    var settings = {};
-    call('setting.get', {}).then(function (s) { settings = s || {}; }).catch(function() {});
-    
     var params = {};
     if (hash.indexOf('?') >= 0) {
       hash.split('?')[1].split('&').forEach(function (pair) {
@@ -10250,7 +10233,7 @@ async function api(req) {
         wrapper.style.background = '#f8fafc';
         
         var img = document.createElement('img');
-        img.src = getDirectImageUrl(url);
+        img.src = url;
         img.style.width = '100%';
         img.style.height = '100%';
         img.style.objectFit = 'cover';
@@ -10418,31 +10401,39 @@ async function api(req) {
             reader.onload = function (e) {
               var img = new Image();
               img.onload = function () {
-                var max_size = 1200;
-                var quality = 0.6;
-                var canvas = document.createElement('canvas');
-                var w = img.width;
-                var h = img.height;
-                if (w > h) {
-                  if (w > max_size) { h *= max_size / w; w = max_size; }
-                } else {
-                  if (h > max_size) { w *= max_size / h; h = max_size; }
-                }
-                canvas.width = w; canvas.height = h;
-                var ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, w, h);
+                var max_size = 600;
+                var quality = 0.5;
                 var dataUrl = '';
-                try {
-                  dataUrl = canvas.toDataURL('image/jpeg', quality);
-                } catch (err) {
-                  dataUrl = e.target.result;
+                var attempt = 0;
+                while (attempt < 5) {
+                  var canvas = document.createElement('canvas');
+                  var w = img.width;
+                  var h = img.height;
+                  if (w > h) {
+                    if (w > max_size) { h *= max_size / w; w = max_size; }
+                  } else {
+                    if (h > max_size) { w *= max_size / h; h = max_size; }
+                  }
+                  canvas.width = w; canvas.height = h;
+                  var ctx = canvas.getContext('2d');
+                  ctx.drawImage(img, 0, 0, w, h);
+                  try {
+                    dataUrl = canvas.toDataURL('image/jpeg', quality);
+                  } catch (err) {
+                    dataUrl = e.target.result;
+                    break;
+                  }
+                  if (dataUrl.length <= 48000) break;
+                  max_size = Math.round(max_size * 0.8);
+                  quality = Math.max(0.2, quality - 0.1);
+                  attempt++;
                 }
                 
                 chosenReceipts.push(dataUrl || e.target.result);
                 loadedCount++;
                 if (loadedCount === toAdd) {
                   updateReceiptsPreview();
-                  if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> เพิ่มรูปภาพเรียบร้อย (' + chosenReceipts.length + '/4 รูป)</span>';
+                  if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> อัปโหลดรูปภาพสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
                   fi.value = '';
                 }
               };
@@ -10451,7 +10442,7 @@ async function api(req) {
                 loadedCount++;
                 if (loadedCount === toAdd) {
                   updateReceiptsPreview();
-                  if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> เพิ่มรูปภาพเรียบร้อย (' + chosenReceipts.length + '/4 รูป)</span>';
+                  if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> อัปโหลดรูปภาพสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
                   fi.value = '';
                 }
               };
@@ -10523,54 +10514,15 @@ async function api(req) {
       });
     }
 
-    function uploadNewReceipts(receiptsArray, settings) {
-      if (!settings.google_apps_script_url || receiptsArray.length === 0) {
-        return Promise.resolve(receiptsArray);
-      }
-      
-      var hasBase64 = receiptsArray.some(function (item) {
-        return typeof item === 'string' && item.startsWith('data:');
-      });
-      if (!hasBase64) return Promise.resolve(receiptsArray);
-      
-      Spinner.show('กำลังอัปโหลดรูปภาพไปยัง Google Drive...');
-      
-      var promises = receiptsArray.map(function (item, index) {
-        if (typeof item === 'string' && item.startsWith('data:')) {
-          return call('file.upload_gdrive', {
-            name: 'receipt-' + Date.now() + '-' + index + '.jpg',
-            type: 'image/jpeg',
-            base64: item
-          }).then(function (res) {
-            return res.url || item;
-          }).catch(function (err) {
-            console.warn('Google Drive upload failed for item ' + index + ', saving as base64 fallback:', err);
-            return item;
-          });
-        }
-        return Promise.resolve(item);
-      });
-      
-      return Promise.all(promises).then(function (updated) {
-        return updated;
-      });
-    }
-
     function saveExpense(payload, isEdit, onDone) {
-      uploadNewReceipts(chosenReceipts, settings).then(function (updatedReceipts) {
-        payload.receipt_url = updatedReceipts.length > 0 ? JSON.stringify(updatedReceipts) : '';
-        Spinner.show('กำลังบันทึกใบเบิก...');
-        call(isEdit ? 'expense.update' : 'expense.create', payload).then(function (r) {
-          Spinner.hide();
-          toast('บันทึกใบเบิกเรียบร้อย', 'success');
-          if (onDone) onDone(r);
-        }).catch(function (err) {
-          Spinner.hide();
-          alertError('ผิดพลาด', err.message);
-        });
+      Spinner.show('กำลังบันทึกใบเบิก...');
+      call(isEdit ? 'expense.update' : 'expense.create', payload).then(function (r) {
+        Spinner.hide();
+        toast('บันทึกใบเบิกเรียบร้อย', 'success');
+        if (onDone) onDone(r);
       }).catch(function (err) {
         Spinner.hide();
-        alertError('อัปโหลดล้มเหลว', err.message);
+        alertError('ผิดพลาด', err.message);
       });
     }
 
@@ -10776,17 +10728,23 @@ async function api(req) {
         bindExpenseItems();
         $('#exp-submit').addEventListener('click', function () {
           collectExpensePayload({}).then(function (payload) {
-            saveExpense(payload, false, function () {
+            Spinner.show('กำลังบันทึกใบเบิก...');
+            call('expense.create', payload).then(function() {
+              Spinner.hide();
+              toast('บันทึกใบเบิกเรียบร้อย', 'success');
               location.hash = '#/expenses';
-            });
+            }).catch(function(err) { Spinner.hide(); alertError('ผิดพลาด', err.message); });
           }).catch(function (err) { alertError('ตรวจสอบข้อมูล', err.message); });
         });
         $('#exp-draft').addEventListener('click', function () {
           collectExpensePayload({}).then(function (payload) {
             payload.draft = true;
-            saveExpense(payload, false, function () {
+            Spinner.show('กำลังบันทึก...');
+            call('expense.create', payload).then(function() {
+              Spinner.hide();
+              toast('บันทึกร่างเรียบร้อย', 'success');
               location.hash = '#/expenses';
-            });
+            }).catch(function(err) { Spinner.hide(); alertError('ผิดพลาด', err.message); });
           }).catch(function (err) { alertError('ตรวจสอบข้อมูล', err.message); });
         });
       }).catch(function (e) {
@@ -10928,7 +10886,7 @@ async function api(req) {
         + '<div style="font-weight:600;font-size:13px;color:#475569;margin-bottom:6px;">หลักฐานการจ่ายเงิน (' + receipts.length + ' รูป)</div>'
         + '<div style="display:flex;gap:10px;flex-wrap:wrap;">';
       receipts.forEach(function (url, idx) {
-        receiptHtml += '<img src="' + esc(getDirectImageUrl(url)) + '" class="receipt-preview-item" data-idx="' + idx + '" style="width:110px;height:110px;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer;object-fit:cover;box-shadow:0 2px 6px rgba(0,0,0,0.05);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.05)\'" onmouseout="this.style.transform=\'scale(1)\'">';
+        receiptHtml += '<img src="' + esc(url) + '" class="receipt-preview-item" data-idx="' + idx + '" style="width:110px;height:110px;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer;object-fit:cover;box-shadow:0 2px 6px rgba(0,0,0,0.05);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.05)\'" onmouseout="this.style.transform=\'scale(1)\'">';
       });
       receiptHtml += '</div>'
         + '<div style="font-size:11px;color:#94a3b8;margin-top:6px;"><i class="bi bi-zoom-in"></i> คลิกที่รูปเพื่อขยายใหญ่</div></div>';
@@ -11055,7 +11013,7 @@ async function api(req) {
           var idx = parseInt(this.getAttribute('data-idx'));
           var url = receipts[idx];
           Swal.fire({
-            imageUrl: getDirectImageUrl(url),
+            imageUrl: url,
             imageAlt: 'หลักฐานการจ่ายเงิน รูปที่ ' + (idx + 1),
             showConfirmButton: false,
             showCloseButton: true,
