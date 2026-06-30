@@ -229,7 +229,8 @@ const SETTINGS_DEFAULTS = Object.freeze({
   line_channel_secret: '',
   web_url: 'http://localhost:8000',
   email_from_alias: '',
-  google_apps_script_url: ''
+  google_apps_script_url: '',
+  google_gemini_api_key: ''
 });
 const SETTINGS_SENSITIVE = Object.freeze([]);
 

@@ -7461,9 +7461,12 @@ async function api(req) {
       + '  '
       + '  <!-- Quiz Section -->'
       + '  <div style="border-top:1px solid #e2e8f0;padding-top:20px;margin-top:10px">'
-      + '    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
+      + '    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">'
       + '      <h4 style="margin:0;font-size:16px;font-weight:700;color:#1e293b"><i class="bi bi-question-circle-fill" style="color:#024ad8"></i> แบบทดสอบข้อเขียน (ผ่านเกณฑ์ที่ 80% ขึ้นไป)</h4>'
-      + '      <button class="btn btn-outline" style="font-size:12.5px;padding:6px 12px" type="button" onclick="addQuestion()"><i class="bi bi-plus-lg"></i> เพิ่มข้อสอบ</button>'
+      + '      <div style="display:flex;gap:8px">'
+      + '        <button class="btn btn-outline" style="font-size:12.5px;padding:6px 12px;color:#10b981;border-color:#a7f3d0" type="button" onclick="generateQuizWithAI()"><i class="bi bi-robot"></i> ให้ AI ออกข้อสอบให้อัตโนมัติ</button>'
+      + '        <button class="btn btn-outline" style="font-size:12.5px;padding:6px 12px" type="button" onclick="addQuestion()"><i class="bi bi-plus-lg"></i> เพิ่มข้อสอบ</button>'
+      + '      </div>'
       + '    </div>'
       + '    <div id="quiz-builder-list" style="display:flex;flex-direction:column;gap:16px"></div>'
       + '  </div>'
@@ -7488,6 +7491,78 @@ async function api(req) {
     window.deleteQuestion = function (qId) {
       questions = questions.filter(function (x) { return x.id !== qId; });
       renderQuestions();
+    };
+
+    window.generateQuizWithAI = function () {
+      call('setting.get', {}).then(function (s) {
+        var apiKey = s.google_gemini_api_key;
+        if (!apiKey) {
+          alertError('ไม่พบ API Key', 'กรุณาระบุ Gemini API Key ในหน้าตั้งค่าระบบก่อนใช้งานระบบออกข้อสอบด้วย AI');
+          return;
+        }
+
+        var title = $('#c-title').value.trim();
+        var content = $('#c-content').value.trim();
+        if (!title || !content) {
+          toast('กรุณากรอกชื่อคอร์สและเนื้อหาบทเรียนอย่างละเอียด เพื่อให้ AI วิเคราะห์ก่อนออกข้อสอบ', 'warning');
+          return;
+        }
+
+        Spinner.show('AI กำลังวิเคราะห์เนื้อหาและออกข้อสอบสไตล์วิเคราะห์สินค้า...');
+        var prompt = "คุณคือผู้เชี่ยวชาญการออกข้อสอบสำหรับการเรียนรู้อบรมพนักงานสาขาหน้าร้าน\n"
+          + "จงออกข้อสอบปรนัย 4 ตัวเลือก จำนวน 5 ข้อ จากเนื้อหาต่อไปนี้:\n"
+          + "ชื่อคอร์ส: " + title + "\n"
+          + "เนื้อหา: " + content + "\n\n"
+          + "กติกา:\n"
+          + "1. ออกข้อสอบ 5 ข้อ แต่ละข้อมี 4 ตัวเลือก\n"
+          + "2. กำหนด correct_option เป็นดัชนีของตัวเลือกที่ถูกต้อง (0, 1, 2, หรือ 3)\n"
+          + "3. ส่งผลลัพธ์กลับมาเป็น JSON Array รูปแบบนี้เท่านั้น ห้ามใส่ markdown block (เช่น ```json) หรือข้อความอธิบายใดๆ ทั้งก่อนและหลัง JSON โดยเด็ดขาด:\n"
+          + "[\n"
+          + "  {\n"
+          + "    \"question\": \"คำถาม...\",\n"
+          + "    \"options\": [\"ตัวเลือก 0\", \"ตัวเลือก 1\", \"ตัวเลือก 2\", \"ตัวเลือก 3\"],\n"
+          + "    \"correct_option\": 0\n"
+          + "  }\n"
+          + "]";
+
+        fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: "application/json" }
+          })
+        })
+        .then(function (res) {
+          if (!res.ok) throw new Error('Gemini API returned status ' + res.status);
+          return res.json();
+        })
+        .then(function (json) {
+          Spinner.hide();
+          if (!json.candidates || !json.candidates[0] || !json.candidates[0].content || !json.candidates[0].content.parts[0].text) {
+            throw new Error('ไม่ได้รับข้อมูลตอบกลับที่ถูกต้องจาก AI');
+          }
+          var text = json.candidates[0].content.parts[0].text.trim();
+          var qList = JSON.parse(text);
+          if (!Array.isArray(qList)) throw new Error('รูปแบบข้อมูลจาก AI ไม่ถูกต้อง');
+          
+          questions = [];
+          qList.forEach(function (q) {
+            addQuestion({
+              question: q.question,
+              options: q.options,
+              correct_option: q.correct_option
+            });
+          });
+          toast('AI ออกข้อสอบเสร็จสิ้นจำนวน ' + qList.length + ' ข้อ', 'success');
+        })
+        .catch(function (err) {
+          Spinner.hide();
+          alertError('ผิดพลาด', 'ไม่สามารถเชื่อมต่อกับ Gemini API หรือวิเคราะห์ข้อมูลได้: ' + err.message);
+        });
+      }).catch(function (e) {
+        alertError('ผิดพลาด', 'โหลดการตั้งค่าไม่สำเร็จ: ' + e.message);
+      });
     };
 
     function renderQuestions() {
@@ -9328,6 +9403,13 @@ async function api(req) {
       + '  <p style="font-size:12.5px;color:#64748b;margin-bottom:12px">ย้ายการอัปโหลดไฟล์ขนาดใหญ่จากฐานข้อมูล Supabase ไปยัง Google Drive เพื่อเลี่ยงข้อจำกัดพื้นที่เก็บข้อมูลฟรี</p>'
       + '  <div class="grid-2">'
       +      field('google_apps_script_url', 'Google Apps Script Web App URL', s.google_apps_script_url, 'เช่น https://script.google.com/macros/s/.../exec')
+      + '  </div>'
+      + '</div></div>'
+      + '<div class="card" style="grid-column: span 2"><div class="card-head"><i class="bi bi-robot" style="color:#10b981"></i> <span class="card-title">การตั้งค่า AI (Google Gemini API)</span></div>'
+      + '<div class="card-body">'
+      + '  <p style="font-size:12.5px;color:#64748b;margin-bottom:12px">เชื่อมต่อบริการ Gemini API เพื่อเปิดใช้งานฟังก์ชัน AI ออกข้อสอบจากเนื้อหาบทเรียนโดยอัตโนมัติ</p>'
+      + '  <div class="grid-2">'
+      +      field('google_gemini_api_key', 'Google Gemini API Key', s.google_gemini_api_key, 'สร้างคีย์ฟรีได้ที่ Google AI Studio (aistudio.google.com)', 'password')
       + '  </div>'
       + '</div></div>'
       + '<div class="card" style="grid-column: span 2"><div class="card-head"><i class="bi bi-line" style="color:#06c755"></i> <span class="card-title">เชื่อมต่อ LINE Official Account (LINE OA)</span></div>'
