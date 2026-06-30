@@ -7495,7 +7495,7 @@ async function api(req) {
 
     window.generateQuizWithAI = function () {
       call('setting.get', {}).then(function (s) {
-        var apiKey = s.google_gemini_api_key;
+        var apiKey = String(s.google_gemini_api_key || '').trim();
         if (!apiKey) {
           alertError('ไม่พบ API Key', 'กรุณาระบุ Gemini API Key ในหน้าตั้งค่าระบบก่อนใช้งานระบบออกข้อสอบด้วย AI');
           return;
@@ -7525,41 +7525,55 @@ async function api(req) {
           + "  }\n"
           + "]";
 
-        fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: "application/json" }
+        var url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" + apiKey;
+        
+        function tryFetch(targetUrl, isFallback) {
+          fetch(targetUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { responseMimeType: "application/json" }
+            })
           })
-        })
-        .then(function (res) {
-          if (!res.ok) throw new Error('Gemini API returned status ' + res.status);
-          return res.json();
-        })
-        .then(function (json) {
-          Spinner.hide();
-          if (!json.candidates || !json.candidates[0] || !json.candidates[0].content || !json.candidates[0].content.parts[0].text) {
-            throw new Error('ไม่ได้รับข้อมูลตอบกลับที่ถูกต้องจาก AI');
-          }
-          var text = json.candidates[0].content.parts[0].text.trim();
-          var qList = JSON.parse(text);
-          if (!Array.isArray(qList)) throw new Error('รูปแบบข้อมูลจาก AI ไม่ถูกต้อง');
-          
-          questions = [];
-          qList.forEach(function (q) {
-            addQuestion({
-              question: q.question,
-              options: q.options,
-              correct_option: q.correct_option
+          .then(function (res) {
+            if (!res.ok) {
+              if (res.status === 404 && !isFallback) {
+                var fallbackUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey;
+                tryFetch(fallbackUrl, true);
+                return;
+              }
+              throw new Error('Gemini API returned status ' + res.status);
+            }
+            return res.json();
+          })
+          .then(function (json) {
+            if (!json) return;
+            Spinner.hide();
+            if (!json.candidates || !json.candidates[0] || !json.candidates[0].content || !json.candidates[0].content.parts[0].text) {
+              throw new Error('ไม่ได้รับข้อมูลตอบกลับที่ถูกต้องจาก AI');
+            }
+            var text = json.candidates[0].content.parts[0].text.trim();
+            var qList = JSON.parse(text);
+            if (!Array.isArray(qList)) throw new Error('รูปแบบข้อมูลจาก AI ไม่ถูกต้อง');
+            
+            questions = [];
+            qList.forEach(function (q) {
+              addQuestion({
+                question: q.question,
+                options: q.options,
+                correct_option: q.correct_option
+              });
             });
+            toast('AI ออกข้อสอบเสร็จสิ้นจำนวน ' + qList.length + ' ข้อ', 'success');
+          })
+          .catch(function (err) {
+            Spinner.hide();
+            alertError('ผิดพลาด', 'ไม่สามารถเชื่อมต่อกับ Gemini API หรือวิเคราะห์ข้อมูลได้: ' + err.message);
           });
-          toast('AI ออกข้อสอบเสร็จสิ้นจำนวน ' + qList.length + ' ข้อ', 'success');
-        })
-        .catch(function (err) {
-          Spinner.hide();
-          alertError('ผิดพลาด', 'ไม่สามารถเชื่อมต่อกับ Gemini API หรือวิเคราะห์ข้อมูลได้: ' + err.message);
-        });
+        }
+
+        tryFetch(url, false);
       }).catch(function (e) {
         alertError('ผิดพลาด', 'โหลดการตั้งค่าไม่สำเร็จ: ' + e.message);
       });
