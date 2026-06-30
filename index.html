@@ -10097,6 +10097,9 @@ async function api(req) {
     if (!hasCap('expense.create_own|expense.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
     
     var chosenReceipts = [];
+    var settings = {};
+    call('setting.get', {}).then(function (s) { settings = s || {}; }).catch(function() {});
+    
     var params = {};
     if (hash.indexOf('?') >= 0) {
       hash.split('?')[1].split('&').forEach(function (pair) {
@@ -10429,27 +10432,69 @@ async function api(req) {
                   attempt++;
                 }
                 
-                chosenReceipts.push(dataUrl || e.target.result);
-                loadedCount++;
-                if (loadedCount === toAdd) {
-                  updateReceiptsPreview();
-                  if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> อัปโหลดรูปภาพสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
-                  fi.value = '';
+                var base64 = dataUrl || e.target.result;
+                
+                if (settings.google_apps_script_url) {
+                  if (note) note.innerHTML = '<span style="color:#3b82f6"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="width:12px;height:12px;margin-right:4px;"></span> กำลังอัปโหลดไฟล์ไป Google Drive...</span>';
+                  call('file.upload_gdrive', {
+                    name: String(file.name || 'receipt.jpg').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, ''),
+                    type: file.type || 'image/jpeg',
+                    base64: base64
+                  }).then(function (res) {
+                    if (res && res.url) {
+                      chosenReceipts.push(res.url);
+                    } else {
+                      chosenReceipts.push(base64);
+                    }
+                    afterFileProcessed();
+                  }).catch(function (err) {
+                    console.warn('GDrive upload failed, falling back to base64:', err);
+                    chosenReceipts.push(base64);
+                    afterFileProcessed();
+                  });
+                } else {
+                  chosenReceipts.push(base64);
+                  afterFileProcessed();
                 }
               };
               img.onerror = function () {
-                chosenReceipts.push(e.target.result);
-                loadedCount++;
-                if (loadedCount === toAdd) {
-                  updateReceiptsPreview();
-                  if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> อัปโหลดรูปภาพสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
-                  fi.value = '';
+                var base64 = e.target.result;
+                if (settings.google_apps_script_url) {
+                  if (note) note.innerHTML = '<span style="color:#3b82f6"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="width:12px;height:12px;margin-right:4px;"></span> กำลังอัปโหลดไฟล์ไป Google Drive...</span>';
+                  call('file.upload_gdrive', {
+                    name: String(file.name || 'receipt.jpg').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, ''),
+                    type: file.type || 'image/jpeg',
+                    base64: base64
+                  }).then(function (res) {
+                    if (res && res.url) {
+                      chosenReceipts.push(res.url);
+                    } else {
+                      chosenReceipts.push(base64);
+                    }
+                    afterFileProcessed();
+                  }).catch(function (err) {
+                    console.warn('GDrive upload failed, falling back to base64:', err);
+                    chosenReceipts.push(base64);
+                    afterFileProcessed();
+                  });
+                } else {
+                  chosenReceipts.push(base64);
+                  afterFileProcessed();
                 }
               };
               img.src = e.target.result;
             };
             reader.readAsDataURL(file);
           })(files[i]);
+        }
+        
+        function afterFileProcessed() {
+          loadedCount++;
+          if (loadedCount === toAdd) {
+            updateReceiptsPreview();
+            if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> อัปโหลดรูปภาพสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
+            fi.value = '';
+          }
         }
       });
     }
