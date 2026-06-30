@@ -337,6 +337,11 @@
       const data = await api('auth.line_login', { line_user_id: Store.liffProfile.userId }, '');
       setSession(data);
       renderShell();
+      try {
+        Store.settings = await api('setting.get');
+      } catch (e) {
+        Store.settings = {};
+      }
       await route('dashboard');
       show('app');
     }
@@ -773,6 +778,30 @@
 
     async function uploadReceiptFile(file) {
       if (!file) return '';
+      
+      const scriptUrl = Store.settings?.google_apps_script_url;
+      if (scriptUrl) {
+        try {
+          const base64 = await readFileAsDataUrl(file);
+          const res = await fetch(scriptUrl, {
+            method: 'POST',
+            body: JSON.stringify({
+              name: safeFileName(file.name),
+              type: file.type || 'application/octet-stream',
+              base64: base64
+            })
+          });
+          if (!res.ok) throw new Error('Google Apps Script response error');
+          const json = await res.json();
+          if (json.ok && json.url) {
+            return json.url;
+          }
+          throw new Error(json.error || 'Google Apps Script returned failed status');
+        } catch (err) {
+          console.warn('Google Drive upload failed, falling back to Supabase:', err);
+        }
+      }
+
       const path = `liff/${Store.user?.id || 'user'}/${Date.now()}-${crypto.randomUUID()}-${safeFileName(file.name)}`;
       const uploadUrl = `${CONFIG.SUPABASE_URL}/storage/v1/object/receipts/${path.split('/').map(encodeURIComponent).join('/')}`;
       try {

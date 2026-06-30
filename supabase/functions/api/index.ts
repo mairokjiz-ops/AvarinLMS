@@ -228,7 +228,8 @@ const SETTINGS_DEFAULTS = Object.freeze({
   line_channel_access_token: '',
   line_channel_secret: '',
   web_url: 'http://localhost:8000',
-  email_from_alias: ''
+  email_from_alias: '',
+  google_apps_script_url: ''
 });
 const SETTINGS_SENSITIVE = Object.freeze([]);
 
