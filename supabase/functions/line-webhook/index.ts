@@ -3668,7 +3668,7 @@ function LINE_buildPortalFlexForUser_(user) {
             {
               type: "box",
               layout: "vertical",
-              gravity: "center",
+              justifyContent: "center",
               contents: [
                 { type: "text", text: user.full_name, weight: "bold", size: "md", color: "#0f172a" },
                 { type: "text", text: user.position + (user.department ? " (" + user.department + ")" : ""), size: "xs", color: "#64748b" }
@@ -5442,7 +5442,7 @@ function LINE_buildScheduleFlex_(user) {
       {
         type: "box",
         layout: "vertical",
-        gravity: "center",
+        justifyContent: "center",
         contents: [
           { type: "text", text: statusText, size: "sm", weight: "bold", color: statusColor, wrap: true }
         ]
