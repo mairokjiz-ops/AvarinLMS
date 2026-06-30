@@ -7525,29 +7525,42 @@ async function api(req) {
           + "  }\n"
           + "]";
 
-        var url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" + apiKey;
+        var models = [
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey,
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey,
+          "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" + apiKey
+        ];
         
-        function tryFetch(targetUrl, isFallback) {
+        function tryFetch(index) {
+          if (index >= models.length) {
+            Spinner.hide();
+            alertError('ผิดพลาด', 'ไม่สามารถเชื่อมต่อกับ Gemini API ได้ หรือโควต้าของคีย์คุณหมดแล้ว กรุณาตรวจสอบการตั้งค่าคีย์ของคุณ');
+            return;
+          }
+          
+          var targetUrl = models[index];
+          var payload = {
+            contents: [{ parts: [{ text: prompt }] }]
+          };
+          
+          if (targetUrl.indexOf('v1beta') >= 0) {
+            payload.generationConfig = { response_mime_type: "application/json" };
+          } else {
+            payload.generationConfig = { responseMimeType: "application/json" };
+          }
+          
           fetch(targetUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { responseMimeType: "application/json" }
-            })
+            body: JSON.stringify(payload)
           })
           .then(function (res) {
             if (!res.ok) {
-              if (res.status === 404 && !isFallback) {
-                var fallbackUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey;
-                tryFetch(fallbackUrl, true);
-                return;
-              }
               return res.json().then(function (errJson) {
                 var msg = errJson && errJson.error && errJson.error.message ? errJson.error.message : ('Status ' + res.status);
                 return Promise.reject(new Error(msg));
               }).catch(function () {
-                return Promise.reject(new Error('Gemini API returned status ' + res.status));
+                return Promise.reject(new Error('Status ' + res.status));
               });
             }
             return res.json();
@@ -7559,6 +7572,9 @@ async function api(req) {
               throw new Error('ไม่ได้รับข้อมูลตอบกลับที่ถูกต้องจาก AI');
             }
             var text = json.candidates[0].content.parts[0].text.trim();
+            if (text.indexOf('```') === 0) {
+              text = text.replace(/^```(?:json)?\s*|```\s*$/g, '').trim();
+            }
             var qList = JSON.parse(text);
             if (!Array.isArray(qList)) throw new Error('รูปแบบข้อมูลจาก AI ไม่ถูกต้อง');
             
@@ -7573,12 +7589,12 @@ async function api(req) {
             toast('AI ออกข้อสอบเสร็จสิ้นจำนวน ' + qList.length + ' ข้อ', 'success');
           })
           .catch(function (err) {
-            Spinner.hide();
-            alertError('ผิดพลาด', 'ไม่สามารถเชื่อมต่อกับ Gemini API หรือวิเคราะห์ข้อมูลได้: ' + err.message);
+            console.warn('Gemini API call failed for ' + targetUrl + ':', err.message);
+            tryFetch(index + 1);
           });
         }
-
-        tryFetch(url, false);
+        
+        tryFetch(0);
       }).catch(function (e) {
         alertError('ผิดพลาด', 'โหลดการตั้งค่าไม่สำเร็จ: ' + e.message);
       });
