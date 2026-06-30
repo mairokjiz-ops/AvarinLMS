@@ -4488,6 +4488,20 @@ async function api(req) {
   }
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
 
+  function getDirectImageUrl(url) {
+    if (!url) return '';
+    if (typeof url !== 'string') return url;
+    var match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return 'https://lh3.googleusercontent.com/d/' + match[1];
+    }
+    var idMatch = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (idMatch && idMatch[1]) {
+      return 'https://lh3.googleusercontent.com/d/' + idMatch[1];
+    }
+    return url;
+  }
+
   // ── Thai date module ────────────────────────────────
   var TH = {
     MONTHS: ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'],
@@ -10236,7 +10250,7 @@ async function api(req) {
         wrapper.style.background = '#f8fafc';
         
         var img = document.createElement('img');
-        img.src = url;
+        img.src = getDirectImageUrl(url);
         img.style.width = '100%';
         img.style.height = '100%';
         img.style.objectFit = 'cover';
@@ -10404,32 +10418,24 @@ async function api(req) {
             reader.onload = function (e) {
               var img = new Image();
               img.onload = function () {
-                var max_size = 600;
-                var quality = 0.5;
+                var max_size = 1200;
+                var quality = 0.6;
+                var canvas = document.createElement('canvas');
+                var w = img.width;
+                var h = img.height;
+                if (w > h) {
+                  if (w > max_size) { h *= max_size / w; w = max_size; }
+                } else {
+                  if (h > max_size) { w *= max_size / h; h = max_size; }
+                }
+                canvas.width = w; canvas.height = h;
+                var ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, w, h);
                 var dataUrl = '';
-                var attempt = 0;
-                while (attempt < 5) {
-                  var canvas = document.createElement('canvas');
-                  var w = img.width;
-                  var h = img.height;
-                  if (w > h) {
-                    if (w > max_size) { h *= max_size / w; w = max_size; }
-                  } else {
-                    if (h > max_size) { w *= max_size / h; h = max_size; }
-                  }
-                  canvas.width = w; canvas.height = h;
-                  var ctx = canvas.getContext('2d');
-                  ctx.drawImage(img, 0, 0, w, h);
-                  try {
-                    dataUrl = canvas.toDataURL('image/jpeg', quality);
-                  } catch (err) {
-                    dataUrl = e.target.result;
-                    break;
-                  }
-                  if (dataUrl.length <= 48000) break;
-                  max_size = Math.round(max_size * 0.8);
-                  quality = Math.max(0.2, quality - 0.1);
-                  attempt++;
+                try {
+                  dataUrl = canvas.toDataURL('image/jpeg', quality);
+                } catch (err) {
+                  dataUrl = e.target.result;
                 }
                 
                 chosenReceipts.push(dataUrl || e.target.result);
@@ -10922,7 +10928,7 @@ async function api(req) {
         + '<div style="font-weight:600;font-size:13px;color:#475569;margin-bottom:6px;">หลักฐานการจ่ายเงิน (' + receipts.length + ' รูป)</div>'
         + '<div style="display:flex;gap:10px;flex-wrap:wrap;">';
       receipts.forEach(function (url, idx) {
-        receiptHtml += '<img src="' + esc(url) + '" class="receipt-preview-item" data-idx="' + idx + '" style="width:110px;height:110px;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer;object-fit:cover;box-shadow:0 2px 6px rgba(0,0,0,0.05);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.05)\'" onmouseout="this.style.transform=\'scale(1)\'">';
+        receiptHtml += '<img src="' + esc(getDirectImageUrl(url)) + '" class="receipt-preview-item" data-idx="' + idx + '" style="width:110px;height:110px;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer;object-fit:cover;box-shadow:0 2px 6px rgba(0,0,0,0.05);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.05)\'" onmouseout="this.style.transform=\'scale(1)\'">';
       });
       receiptHtml += '</div>'
         + '<div style="font-size:11px;color:#94a3b8;margin-top:6px;"><i class="bi bi-zoom-in"></i> คลิกที่รูปเพื่อขยายใหญ่</div></div>';
@@ -11049,7 +11055,7 @@ async function api(req) {
           var idx = parseInt(this.getAttribute('data-idx'));
           var url = receipts[idx];
           Swal.fire({
-            imageUrl: url,
+            imageUrl: getDirectImageUrl(url),
             imageAlt: 'หลักฐานการจ่ายเงิน รูปที่ ' + (idx + 1),
             showConfirmButton: false,
             showCloseButton: true,
