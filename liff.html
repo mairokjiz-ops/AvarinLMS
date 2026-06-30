@@ -783,20 +783,15 @@
       if (scriptUrl) {
         try {
           const base64 = await readFileAsDataUrl(file);
-          const res = await fetch(scriptUrl, {
-            method: 'POST',
-            body: JSON.stringify({
-              name: safeFileName(file.name),
-              type: file.type || 'application/octet-stream',
-              base64: base64
-            })
+          const res = await api('file.upload_gdrive', {
+            name: safeFileName(file.name),
+            type: file.type || 'application/octet-stream',
+            base64: base64
           });
-          if (!res.ok) throw new Error('Google Apps Script response error');
-          const json = await res.json();
-          if (json.ok && json.url) {
-            return json.url;
+          if (res && res.url) {
+            return res.url;
           }
-          throw new Error(json.error || 'Google Apps Script returned failed status');
+          throw new Error('Upload returned empty URL');
         } catch (err) {
           console.warn('Google Drive upload failed, falling back to Supabase:', err);
         }

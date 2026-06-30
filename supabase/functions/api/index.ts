@@ -3425,6 +3425,7 @@ async function api(req) {
       case 'quiz.get_questions':      return _ok(Quizzes_getQuestions(user, p));
       case 'quiz.submit':             return _ok(await Quizzes_submit(user, p));
       case 'course.progress_list':    return _ok(Courses_progressList(user, p));
+      case 'file.upload_gdrive':      return _ok(await File_uploadGDrive(user, p));
 
       case 'audit.list':              return _ok(Audit_list(user, p));
     }
@@ -3770,6 +3771,32 @@ function Courses_progressList(user, p) {
   });
 
   return { items: items };
+}
+
+async function File_uploadGDrive(user, p) {
+  Auth_requireCap(user, 'file.upload');
+  var data = p || {};
+  var scriptUrl = GLOBAL_SETTINGS.google_apps_script_url || '';
+  if (!scriptUrl) {
+    throw new Error('Google Apps Script URL is not configured');
+  }
+  var name = data.name || 'file';
+  var type = data.type || 'application/octet-stream';
+  var base64 = data.base64;
+  if (!base64) throw new Error('Missing base64 file data');
+  
+  var response = await fetch(scriptUrl, {
+    method: 'POST',
+    body: JSON.stringify({ name: name, type: type, base64: base64 })
+  });
+  if (!response.ok) {
+    throw new Error('Google Apps Script responded with error: ' + response.status);
+  }
+  var json = await response.json();
+  if (!json.ok) {
+    throw new Error(json.error || 'Google Apps Script failed to save file');
+  }
+  return { url: json.url };
 }
 
 // === SERVE HANDLER ===
