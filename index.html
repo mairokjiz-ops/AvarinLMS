@@ -10432,69 +10432,27 @@ async function api(req) {
                   attempt++;
                 }
                 
-                var base64 = dataUrl || e.target.result;
-                
-                if (settings.google_apps_script_url) {
-                  if (note) note.innerHTML = '<span style="color:#3b82f6"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="width:12px;height:12px;margin-right:4px;"></span> กำลังอัปโหลดไฟล์ไป Google Drive...</span>';
-                  call('file.upload_gdrive', {
-                    name: String(file.name || 'receipt.jpg').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, ''),
-                    type: file.type || 'image/jpeg',
-                    base64: base64
-                  }).then(function (res) {
-                    if (res && res.url) {
-                      chosenReceipts.push(res.url);
-                    } else {
-                      chosenReceipts.push(base64);
-                    }
-                    afterFileProcessed();
-                  }).catch(function (err) {
-                    console.warn('GDrive upload failed, falling back to base64:', err);
-                    chosenReceipts.push(base64);
-                    afterFileProcessed();
-                  });
-                } else {
-                  chosenReceipts.push(base64);
-                  afterFileProcessed();
+                chosenReceipts.push(dataUrl || e.target.result);
+                loadedCount++;
+                if (loadedCount === toAdd) {
+                  updateReceiptsPreview();
+                  if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> เพิ่มรูปภาพเรียบร้อย (' + chosenReceipts.length + '/4 รูป)</span>';
+                  fi.value = '';
                 }
               };
               img.onerror = function () {
-                var base64 = e.target.result;
-                if (settings.google_apps_script_url) {
-                  if (note) note.innerHTML = '<span style="color:#3b82f6"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="width:12px;height:12px;margin-right:4px;"></span> กำลังอัปโหลดไฟล์ไป Google Drive...</span>';
-                  call('file.upload_gdrive', {
-                    name: String(file.name || 'receipt.jpg').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, ''),
-                    type: file.type || 'image/jpeg',
-                    base64: base64
-                  }).then(function (res) {
-                    if (res && res.url) {
-                      chosenReceipts.push(res.url);
-                    } else {
-                      chosenReceipts.push(base64);
-                    }
-                    afterFileProcessed();
-                  }).catch(function (err) {
-                    console.warn('GDrive upload failed, falling back to base64:', err);
-                    chosenReceipts.push(base64);
-                    afterFileProcessed();
-                  });
-                } else {
-                  chosenReceipts.push(base64);
-                  afterFileProcessed();
+                chosenReceipts.push(e.target.result);
+                loadedCount++;
+                if (loadedCount === toAdd) {
+                  updateReceiptsPreview();
+                  if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> เพิ่มรูปภาพเรียบร้อย (' + chosenReceipts.length + '/4 รูป)</span>';
+                  fi.value = '';
                 }
               };
               img.src = e.target.result;
             };
             reader.readAsDataURL(file);
           })(files[i]);
-        }
-        
-        function afterFileProcessed() {
-          loadedCount++;
-          if (loadedCount === toAdd) {
-            updateReceiptsPreview();
-            if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> อัปโหลดรูปภาพสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
-            fi.value = '';
-          }
         }
       });
     }
@@ -10559,15 +10517,54 @@ async function api(req) {
       });
     }
 
+    function uploadNewReceipts(receiptsArray, settings) {
+      if (!settings.google_apps_script_url || receiptsArray.length === 0) {
+        return Promise.resolve(receiptsArray);
+      }
+      
+      var hasBase64 = receiptsArray.some(function (item) {
+        return typeof item === 'string' && item.startsWith('data:');
+      });
+      if (!hasBase64) return Promise.resolve(receiptsArray);
+      
+      Spinner.show('กำลังอัปโหลดรูปภาพไปยัง Google Drive...');
+      
+      var promises = receiptsArray.map(function (item, index) {
+        if (typeof item === 'string' && item.startsWith('data:')) {
+          return call('file.upload_gdrive', {
+            name: 'receipt-' + Date.now() + '-' + index + '.jpg',
+            type: 'image/jpeg',
+            base64: item
+          }).then(function (res) {
+            return res.url || item;
+          }).catch(function (err) {
+            console.warn('Google Drive upload failed for item ' + index + ', saving as base64 fallback:', err);
+            return item;
+          });
+        }
+        return Promise.resolve(item);
+      });
+      
+      return Promise.all(promises).then(function (updated) {
+        return updated;
+      });
+    }
+
     function saveExpense(payload, isEdit, onDone) {
-      Spinner.show('กำลังบันทึกใบเบิก...');
-      call(isEdit ? 'expense.update' : 'expense.create', payload).then(function (r) {
-        Spinner.hide();
-        toast('บันทึกใบเบิกเรียบร้อย', 'success');
-        if (onDone) onDone(r);
+      uploadNewReceipts(chosenReceipts, settings).then(function (updatedReceipts) {
+        payload.receipt_url = updatedReceipts.length > 0 ? JSON.stringify(updatedReceipts) : '';
+        Spinner.show('กำลังบันทึกใบเบิก...');
+        call(isEdit ? 'expense.update' : 'expense.create', payload).then(function (r) {
+          Spinner.hide();
+          toast('บันทึกใบเบิกเรียบร้อย', 'success');
+          if (onDone) onDone(r);
+        }).catch(function (err) {
+          Spinner.hide();
+          alertError('ผิดพลาด', err.message);
+        });
       }).catch(function (err) {
         Spinner.hide();
-        alertError('ผิดพลาด', err.message);
+        alertError('อัปโหลดล้มเหลว', err.message);
       });
     }
 
@@ -10773,23 +10770,17 @@ async function api(req) {
         bindExpenseItems();
         $('#exp-submit').addEventListener('click', function () {
           collectExpensePayload({}).then(function (payload) {
-            Spinner.show('กำลังบันทึกใบเบิก...');
-            call('expense.create', payload).then(function() {
-              Spinner.hide();
-              toast('บันทึกใบเบิกเรียบร้อย', 'success');
+            saveExpense(payload, false, function () {
               location.hash = '#/expenses';
-            }).catch(function(err) { Spinner.hide(); alertError('ผิดพลาด', err.message); });
+            });
           }).catch(function (err) { alertError('ตรวจสอบข้อมูล', err.message); });
         });
         $('#exp-draft').addEventListener('click', function () {
           collectExpensePayload({}).then(function (payload) {
             payload.draft = true;
-            Spinner.show('กำลังบันทึก...');
-            call('expense.create', payload).then(function() {
-              Spinner.hide();
-              toast('บันทึกร่างเรียบร้อย', 'success');
+            saveExpense(payload, false, function () {
               location.hash = '#/expenses';
-            }).catch(function(err) { Spinner.hide(); alertError('ผิดพลาด', err.message); });
+            });
           }).catch(function (err) { alertError('ตรวจสอบข้อมูล', err.message); });
         });
       }).catch(function (e) {
