@@ -2042,7 +2042,7 @@ function Reports_overview(user, p) {
   var topUsers = Object.keys(byUser).map(function (uid) {
     var u = users[uid] || {};
     return Object.assign({
-      full_name: u.full_name, position: u.position, department: u.department, role: u.role
+      full_name: u.full_name, position: u.position, department: u.department, role: u.role, avatar: u.avatar
     }, byUser[uid]);
   }).sort(function (a, b) { return b.total_days - a.total_days; }).slice(0, 20);
 
