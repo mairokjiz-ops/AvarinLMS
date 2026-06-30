@@ -165,14 +165,14 @@ const SCHEMAS = Object.freeze({
   Sessions: ['token','user_id','created_at','expires_at','user_agent'],
   Settings: ['key','value','updated_at'],
   AuditLog: ['id','user_id','action','entity','entity_id','meta','created_at'],
-  Missions: ['id','mission_no','requester_id','title','purpose','destination','start_date','end_date','transport_type','requested_amount','status','approver_id','approver_comment','approver_at','approved_amount','created_at','updated_at'],
+  Missions: ['id','mission_no','requester_id','title','purpose','destination','start_date','end_date','transport_type','requested_amount','status','approver_id','approver_comment','approver_at','approved_amount','created_at','updated_at','work_type'],
   Expenses: ['id','expense_no','mission_id','expense_date','expense_type','description','amount','receipt_url','status','approver_id','approver_comment','approver_at','approved_amount','created_by','created_at','updated_at'],
   Holidays: ['id','holiday_date','name','created_at','updated_at']
 });
 // ── TEXT_COLUMNS — บังคับ Sheet เก็บเป็น text กัน auto-coercion ─
 const TEXT_COLUMNS = Object.freeze([
   'phone','contact_phone','leave_no','token','password_hash','salt','attachment_url','avatar',
-  'mission_no','title','purpose','destination','transport_type','expense_type','description','receipt_url',
+  'mission_no','title','purpose','destination','transport_type','expense_type','description','receipt_url','work_type',
   'holiday_date','expense_no','line_user_id','line_connect_code'
 ]);
 // ── Roles ────────────────────────────────────────────────────
@@ -2338,7 +2338,8 @@ function _wf_enrichMission_(m, users) {
     transport_type: m.transport_type || '', requested_amount: m.requested_amount || '',
     status: m.status, status_label: STATUS_LABEL[m.status] || m.status, status_tone: STATUS_TONE[m.status] || 'slate',
     approver_id: m.approver_id, approver_comment: m.approver_comment, approver_at: m.approver_at, approved_amount: m.approved_amount,
-    expense_total: _wf_missionExpenseTotal_(m.id), expense_count: ex.length, created_at: m.created_at, updated_at: m.updated_at
+    expense_total: _wf_missionExpenseTotal_(m.id), expense_count: ex.length, created_at: m.created_at, updated_at: m.updated_at,
+    work_type: m.work_type || 'offsite'
   };
 }
 function _wf_visibleMissionRows_(user, p) {

@@ -9954,43 +9954,92 @@ async function api(req) {
   Routes['#/missions'] = function () {
     if (!hasCap('mission.create_own|mission.view_own|mission.view_department|mission.view_all')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
     var st = { month: _mkMonthKey(new Date()), q: '', status: 'pending' };
-    setPage('<div class="card" style="margin-bottom:14px"><div class="card-body" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
-      + '<div style="flex:1;min-width:220px"><div style="font-weight:800;font-size:18px">งานออกนอกพื้นที่</div><div style="font-size:12px;color:#64748b">เบิกค่าเดินทาง</div></div>'
-      + '<input class="input" id="mis-q" style="max-width:240px" placeholder="ค้นหาเรื่อง / ปลายทาง">'
-      + '<select class="select" id="mis-status" style="max-width:180px"><option value="">ทุกสถานะ</option></select>'
-      + '<button class="btn btn-primary" id="mis-add"><i class="bi bi-plus-lg"></i> สร้างรายการ</button>'
-      + '</div></div>'
-      + '<div id="mis-box">' + skBlocks(5, 92) + '</div>');
+    setPage('<div class="card" style="margin-bottom:14px">'
+      + '<div class="card-body" style="padding-bottom: 0;">'
+      + '  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">'
+      + '    <div>'
+      + '      <div style="font-weight:800;font-size:18px">งานนอกสถานที่ & WFH</div>'
+      + '      <div style="font-size:12px;color:#64748b">บันทึกและตรวจสอบคำขอปฏิบัติงานนอกสถานที่ / WFH</div>'
+      + '    </div>'
+      + '    <button class="btn btn-primary" id="mis-add"><i class="bi bi-plus-lg"></i> สร้างรายการใหม่</button>'
+      + '  </div>'
+      + '  <div class="tab-container" style="display:flex;gap:20px;border-bottom:1px solid #e2e8f0;margin-bottom:0;">'
+      + '    <a href="javascript:void(0)" class="tab-link active" id="tab-pending" style="padding:10px 0;font-weight:700;color:#4f46e5;border-bottom:2px solid #4f46e5;text-decoration:none;">คำขอรอดำเนินการ</a>'
+      + '    <a href="javascript:void(0)" class="tab-link" id="tab-all" style="padding:10px 0;font-weight:500;color:#64748b;text-decoration:none;">ใบงานทั้งหมด</a>'
+      + '  </div>'
+      + '</div>'
+      + '<div class="card-body" style="background:#f8fafc;border-top:1px solid #f1f5f9;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 20px;margin-bottom:14px;border-radius:0 0 8px 8px;">'
+      + '  <input class="input" id="mis-q" style="max-width:240px;background:#ffffff;" placeholder="ค้นหาเรื่อง / รายละเอียด">'
+      + '  <select class="select" id="mis-status" style="max-width:180px;background:#ffffff;display:none;"><option value="">ทุกสถานะ</option></select>'
+      + '</div>'
+      + '</div>'
+      + '<div id="mis-box" class="card-list">' + skBlocks(5, 92) + '</div>');
+      
     function renderStatusOptions() {
       var statuses = LMS.Store.boot.statuses || {};
       var sel = $('#mis-status');
-      sel.innerHTML = '<option value="">ทุกสถานะ</option>' + Object.keys(statuses).map(function (s) { return '<option value="' + s + '"' + (st.status === s ? ' selected' : '') + '>' + esc(statuses[s]) + '</option>'; }).join('');
+      sel.innerHTML = '<option value="">ทุกสถานะ (แสดงทั้งหมด)</option>' + Object.keys(statuses).map(function (s) { return '<option value="' + s + '"' + (st.status === s ? ' selected' : '') + '>' + esc(statuses[s]) + '</option>'; }).join('');
     }
+    
     function createMission() {
       var html = ''
         + '<div style="display:grid;gap:10px;text-align:left">'
-        + '<label>เรื่อง (หัวข้อ)</label><input id="m-title" class="input" placeholder="เช่น เดินทางไปพบลูกค้า">'
-        + '<label>วัตถุประสงค์ (ระบุงานที่ไปทำ)</label><textarea id="m-purpose" class="textarea" rows="3"></textarea>'
-        + '<label>สถานที่ปฏิบัติงาน (ปลายทาง)</label><input id="m-destination" class="input" placeholder="ระบุสถานที่">'
+        + '<label style="font-weight:700;font-size:14px;color:#1e293b;">ประเภทงาน</label>'
+        + '<select id="m-type" class="select" style="background:#ffffff;border:1px solid #cbd5e1;">'
+        + '  <option value="offsite">ออกนอกสถานที่ (Offsite Work)</option>'
+        + '  <option value="wfh">ปฏิบัติงานที่บ้าน (Work From Home - WFH)</option>'
+        + '</select>'
+        + '<label style="font-weight:700;font-size:14px;color:#1e293b;">เรื่อง / หัวข้อการปฏิบัติงาน</label>'
+        + '<input id="m-title" class="input" placeholder="เช่น เดินทางไปพบลูกค้า หรือ ปฏิบัติงาน WFH">'
+        + '<label style="font-weight:700;font-size:14px;color:#1e293b;">วัตถุประสงค์ (ระบุงานที่ทำ)</label>'
+        + '<textarea id="m-purpose" class="textarea" rows="3" placeholder="ระบุงานหรือวัตถุประสงค์โดยละเอียด"></textarea>'
+        + '<div id="destination-block">'
+        + '  <label style="font-weight:700;font-size:14px;color:#1e293b;">สถานที่ปฏิบัติงาน (ปลายทาง)</label>'
+        + '  <input id="m-destination" class="input" placeholder="ระบุสถานที่ปลายทาง เช่น บริษัทลูกค้า">'
+        + '</div>'
         + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
-        + '  <div><label>วันที่เริ่ม</label><input id="m-start" type="date" class="input" value="' + TH.iso(new Date()) + '"></div>'
-        + '  <div><label>วันที่สิ้นสุด</label><input id="m-end" type="date" class="input" value="' + TH.iso(new Date()) + '"></div>'
+        + '  <div><label style="font-weight:700;font-size:14px;color:#1e293b;">วันที่เริ่ม</label><input id="m-start" type="date" class="input" value="' + TH.iso(new Date()) + '"></div>'
+        + '  <div><label style="font-weight:700;font-size:14px;color:#1e293b;">วันที่สิ้นสุด</label><input id="m-end" type="date" class="input" value="' + TH.iso(new Date()) + '"></div>'
         + '</div>'
         + '</div>';
       Swal.fire({
-        title: 'สร้างงานออกนอกพื้นที่',
+        title: 'สร้างรายการใหม่',
         html: html,
         showCancelButton: true,
-        confirmButtonText: 'สร้าง',
+        confirmButtonText: 'สร้างรายการ',
         cancelButtonText: 'ยกเลิก',
         focusConfirm: false,
+        didOpen: function () {
+          var typeSel = document.getElementById('m-type');
+          var destBlock = document.getElementById('destination-block');
+          typeSel.addEventListener('change', function () {
+            if (this.value === 'wfh') {
+              destBlock.style.display = 'none';
+            } else {
+              destBlock.style.display = 'block';
+            }
+          });
+        },
         preConfirm: function () {
+          var workType = document.getElementById('m-type').value;
+          var title = document.getElementById('m-title').value;
+          var purpose = document.getElementById('m-purpose').value;
+          var start = document.getElementById('m-start').value;
+          var end = document.getElementById('m-end').value;
+          
+          if (!title || title.trim().length < 3) { Swal.showValidationMessage('กรุณากรอกหัวข้ออย่างน้อย 3 ตัวอักษร'); return false; }
+          if (!purpose || purpose.trim().length < 3) { Swal.showValidationMessage('กรุณากรอกวัตถุประสงค์'); return false; }
+          
+          var destination = workType === 'wfh' ? 'Work From Home' : document.getElementById('m-destination').value;
+          if (workType !== 'wfh' && (!destination || destination.trim().length === 0)) { Swal.showValidationMessage('กรุณากรอกสถานที่ปฏิบัติงาน (ปลายทาง)'); return false; }
+
           return {
-            title: document.getElementById('m-title').value,
-            purpose: document.getElementById('m-purpose').value,
-            destination: document.getElementById('m-destination').value,
-            start_date: document.getElementById('m-start').value,
-            end_date: document.getElementById('m-end').value
+            work_type: workType,
+            title: title,
+            purpose: purpose,
+            destination: destination,
+            start_date: start,
+            end_date: end
           };
         }
       }).then(function (r) {
@@ -9998,72 +10047,135 @@ async function api(req) {
         Spinner.show('กำลังบันทึก...');
         call('mission.create', r.value).then(function (res) {
           Spinner.hide();
-          toast('สร้างรายการแล้ว', 'success');
+          toast('สร้างรายการสำเร็จแล้ว', 'success');
           location.hash = '#/missions/view?id=' + res.id;
         }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
       });
     }
+    
     function render(items) {
       var rows = items.map(function (m) {
         var req = m.requester || {};
         var initial = (req.full_name || '?').substring(0, 1).toUpperCase();
         var avatar = req.avatar ? '<img src="' + esc(req.avatar) + '" alt="" referrerpolicy="no-referrer">' : initial;
+        
+        var isWfh = m.work_type === 'wfh';
+        var typeBadge = isWfh 
+          ? '<span class="badge" style="background:#e0e7ff;color:#4f46e5;font-weight:700;font-size:11px;">WFH</span>' 
+          : '<span class="badge" style="background:#f1f5f9;color:#475569;font-weight:700;font-size:11px;">นอกสถานที่</span>';
+        
+        var locationIcon = isWfh ? 'bi-house-fill' : 'bi-geo-alt-fill';
+        var locationText = isWfh ? 'Work From Home' : (m.destination || '-');
+        
         return '<a class="lv-card" href="#/missions/view?id=' + esc(m.id) + '" style="display:block">'
           + '<div class="lv-card-head">'
           + '  <div class="lv-avatar">' + avatar + '</div>'
           + '  <div style="flex:1;min-width:0">'
-          + '    <div class="lv-name">' + esc(m.title || '-') + '</div>'
+          + '    <div class="lv-name" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' 
+          + esc(m.title || '-') + ' ' + typeBadge + '</div>'
           + '    <div class="lv-no">' + esc(m.mission_no) + ' · ' + esc(req.full_name || '-') + '</div>'
           + '  </div>'
           + '  <span class="badge b-' + esc(m.status_tone || 'slate') + '">' + esc(m.status_label || m.status) + '</span>'
           + '</div>'
-          + '<div class="lv-row"><span class="lv-meta"><i class="bi bi-geo-alt-fill"></i> ' + esc(m.destination || '-') + '</span></div>'
+          + '<div class="lv-row"><span class="lv-meta"><i class="bi ' + locationIcon + '"></i> ' + esc(locationText) + '</span></div>'
           + '<div class="lv-row" style="margin-top:8px;align-items:flex-end;justify-content:space-between">'
           + '  <div style="font-size:12px;color:#475569"><i class="bi bi-calendar3"></i> ' + TH.date(m.start_date) + ' → ' + TH.date(m.end_date) + '</div>'
-          + '  <div class="lv-days">฿' + Number(m.expense_total || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div>'
+          + '  <div class="lv-days">' + (isWfh ? '' : '฿' + Number(m.expense_total || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) + '</div>'
           + '</div>'
           + '</a>';
       }).join('');
       $('#mis-box').innerHTML = rows || '<div class="empty-state"><i class="bi bi-inbox"></i><p>ไม่พบรายการ</p></div>';
     }
+    
     function load() {
-      Spinner.show('กำลังโหลดงานออกนอกพื้นที่...', { stages: ['อ่านรายการ','คำนวณค่าใช้จ่าย','จัดเรียง'] });
+      Spinner.show('กำลังโหลดข้อมูล...', { stages: ['อ่านรายการ','จัดเรียง'] });
       call('mission.list', st).then(function (r) { Spinner.hide(); render(r.items || []); }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
     }
+    
     $('#mis-add').addEventListener('click', function () { createMission(); });
     $('#mis-q').addEventListener('input', function () { st.q = this.value; load(); });
     $('#mis-status').addEventListener('change', function () { st.status = this.value; load(); });
+    
+    var tabPending = $('#tab-pending');
+    var tabAll = $('#tab-all');
+    var statusSelect = $('#mis-status');
+
+    tabPending.addEventListener('click', function () {
+      tabPending.classList.add('active');
+      tabPending.style.color = '#4f46e5';
+      tabPending.style.borderBottom = '2px solid #4f46e5';
+      tabPending.style.fontWeight = '700';
+
+      tabAll.classList.remove('active');
+      tabAll.style.color = '#64748b';
+      tabAll.style.borderBottom = 'none';
+      tabAll.style.fontWeight = '500';
+
+      statusSelect.style.display = 'none';
+      st.status = 'pending';
+      load();
+    });
+
+    tabAll.addEventListener('click', function () {
+      tabAll.classList.add('active');
+      tabAll.style.color = '#4f46e5';
+      tabAll.style.borderBottom = '2px solid #4f46e5';
+      tabAll.style.fontWeight = '700';
+
+      tabPending.classList.remove('active');
+      tabPending.style.color = '#64748b';
+      tabPending.style.borderBottom = 'none';
+      tabPending.style.fontWeight = '500';
+
+      statusSelect.style.display = 'block';
+      statusSelect.value = '';
+      st.status = '';
+      load();
+    });
+    
     renderStatusOptions();
     load();
   };
+  
   Routes['#/missions/view'] = function (hash) {
     var id = (hash || location.hash).split('?id=')[1] || '';
     if (!id) { toast('ไม่พบรายการ', 'error'); location.hash = '#/missions'; return; }
     setPage(skBlocks(1, 180) + skBlocks(2, 100));
-    Spinner.show('กำลังโหลดรายการ...');
+    Spinner.show('กำลังโหลดรายละเอียด...');
     call('mission.get', { id: id }).then(function (d) {
       Spinner.hide();
       renderMissionDetail(d);
     }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
   };
+  
   function renderMissionDetail(d) {
     var m = d.mission;
     var req = m.requester || {};
     var initial = (req.full_name || '?').substring(0, 1).toUpperCase();
     var avatar = req.avatar ? '<img src="' + esc(req.avatar) + '" alt="" referrerpolicy="no-referrer">' : initial;
     var canApprove = hasCap('mission.approve');
+    
+    var isWfh = m.work_type === 'wfh';
+    var workTypeLabel = isWfh ? 'Work From Home (WFH)' : 'งานออกนอกพื้นที่';
+    
     function refreshMission() {
       try { history.replaceState(null, '', location.pathname + location.search + '#/missions/view?id=' + encodeURIComponent(m.id)); } catch (e) { location.hash = '#/missions/view?id=' + encodeURIComponent(m.id); }
       if (window.LMS && typeof LMS.dispatch === 'function') LMS.dispatch();
       else location.reload();
     }
+    
+    var heroPillIcon = isWfh ? 'bi-house-fill' : 'bi-signpost-2-fill';
+    var heroPillText = isWfh ? 'Work From Home (WFH)' : 'งานออกนอกพื้นที่';
+    var kpiLocationLabel = isWfh ? 'รูปแบบการปฏิบัติงาน' : 'สถานที่ปลายทาง';
+    var kpiLocationValue = isWfh ? 'Work From Home' : esc(m.destination || '-');
+
     var html = '<div class="hero" style="margin-bottom:14px">'
-      + '<span class="hero-pill"><i class="bi bi-signpost-2-fill"></i> งานออกนอกพื้นที่</span>'
+      + '<span class="hero-pill"><i class="bi ' + heroPillIcon + '"></i> ' + heroPillText + '</span>'
       + '<div class="hero-greet">' + esc(m.title || '-') + '</div>'
       + '<div class="hero-sub">' + esc(m.mission_no) + ' · ' + esc(req.full_name || '-') + '</div>'
-      + '<div class="hero-kpi"><div class="hkpi"><div class="hkpi-label"><i class="bi bi-geo-alt-fill"></i> ปลายทาง</div><div class="hkpi-value" style="font-size:18px">' + esc(m.destination || '-') + '</div></div>'
-      + '<div class="hkpi"><div class="hkpi-label"><i class="bi bi-calendar-range"></i> ช่วงงาน</div><div class="hkpi-value" style="font-size:18px">' + TH.date(m.start_date) + ' → ' + TH.date(m.end_date) + '</div></div>'
-      + '<div class="hkpi"><div class="hkpi-label"><i class="bi bi-cash-coin"></i> ค่าใช้จ่ายสะสม</div><div class="hkpi-value" style="font-size:18px">฿' + Number(m.expense_total || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div></div></div>'
+      + '<div class="hero-kpi"><div class="hkpi"><div class="hkpi-label"><i class="bi ' + (isWfh ? 'bi-house' : 'bi-geo-alt-fill') + '"></i> ' + kpiLocationLabel + '</div><div class="hkpi-value" style="font-size:18px">' + kpiLocationValue + '</div></div>'
+      + '<div class="hkpi"><div class="hkpi-label"><i class="bi bi-calendar-range"></i> ช่วงเวลาปฏิบัติงาน</div><div class="hkpi-value" style="font-size:18px">' + TH.date(m.start_date) + ' → ' + TH.date(m.end_date) + '</div></div>'
+      + (isWfh ? '' : '<div class="hkpi"><div class="hkpi-label"><i class="bi bi-cash-coin"></i> ค่าใช้จ่ายสะสม</div><div class="hkpi-value" style="font-size:18px">฿' + Number(m.expense_total || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div></div>') + '</div>'
       + '</div>'
       + '<div class="card" style="margin-bottom:14px"><div class="card-body">'
       + '<div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #e2e8f0">'
@@ -10075,40 +10187,53 @@ async function api(req) {
       + '  </div>'
       + '</div>'
       + '<div class="grid-2">'
+      + detailField('ประเภทงาน', esc(workTypeLabel))
       + detailField('วัตถุประสงค์', esc(m.purpose || '-'))
       + detailField('สถานะ', '<span class="badge b-' + esc(m.status_tone) + '">' + esc(m.status_label) + '</span>')
-      + detailField('การอนุมัติ', esc(m.approver_comment || '-'))
-      + detailField('งบที่อนุมัติ', m.approved_amount ? '฿' + Number(m.approved_amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-')
+      + detailField('การอนุมัติ / ความเห็น', esc(m.approver_comment || '-'))
+      + (isWfh ? '' : detailField('งบประมาณที่อนุมัติ', m.approved_amount ? '฿' + Number(m.approved_amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'))
       + '</div>'
       + '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">'
-      + (hasCap('expense.create_own') ? '<a class="btn btn-primary" href="#/expenses/new?mission_id=' + encodeURIComponent(m.id) + '"><i class="bi bi-cash-coin"></i> เบิกค่าใช้จ่ายสำหรับงานนี้</a>' : '')
+      + (hasCap('expense.create_own') && !isWfh ? '<a class="btn btn-primary" href="#/expenses/new?mission_id=' + encodeURIComponent(m.id) + '"><i class="bi bi-cash-coin"></i> เบิกค่าใช้จ่ายสำหรับงานนี้</a>' : '')
       + (canApprove && m.status === 'pending' ? '<button class="btn btn-success" id="mis-approve"><i class="bi bi-check2-circle"></i> อนุมัติ</button><button class="btn btn-danger" id="mis-reject"><i class="bi bi-x-circle"></i> ไม่อนุมัติ</button>' : '')
-      + (canApprove ? '<button class="btn btn-ghost" id="mis-delete" style="color:#dc2626"><i class="bi bi-trash-fill"></i> ลบใบเดินทาง</button>' : '')
+      + (canApprove ? '<button class="btn btn-ghost" id="mis-delete" style="color:#dc2626"><i class="bi bi-trash-fill"></i> ลบใบคำขอนี้</button>' : '')
       + '<a class="btn btn-ghost" href="#/missions"><i class="bi bi-arrow-left"></i> กลับรายการ</a>'
       + '</div></div></div>';
     setPage(html);
 
     if ($('#mis-approve')) $('#mis-approve').addEventListener('click', function () {
-      Swal.fire({ title: 'อนุมัติรายการ?', input: 'number', inputPlaceholder: 'งบที่อนุมัติ (ถ้ามี)', showCancelButton: true, confirmButtonText: 'อนุมัติ' })
+      var dialogTitle = isWfh ? 'อนุมัติใบคำขอ WFH?' : 'อนุมัติรายการ?';
+      var dialogPlaceholder = isWfh ? 'ข้อความถึงผู้ขอ (ถ้ามี)' : 'งบที่อนุมัติ (ถ้ามี)';
+      var dialogInput = isWfh ? 'text' : 'number';
+      Swal.fire({ title: dialogTitle, input: dialogInput, inputPlaceholder: dialogPlaceholder, showCancelButton: true, confirmButtonText: 'อนุมัติ' })
         .then(function (r) {
           if (!r.isConfirmed) return;
           Spinner.show('กำลังอนุมัติ...');
-          call('mission.approve', { id: m.id, decision: 'approved', approved_amount: r.value || '' }).then(function () { Spinner.hide(); toast('อนุมัติแล้ว', 'success'); refreshMission(); }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
+          var payload = { id: m.id, decision: 'approved' };
+          if (isWfh) {
+            payload.comment = r.value || '';
+          } else {
+            payload.approved_amount = r.value || '';
+          }
+          call('mission.approve', payload).then(function () { Spinner.hide(); toast('อนุมัติเรียบร้อยแล้ว', 'success'); refreshMission(); }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
         });
     });
+    
     if ($('#mis-reject')) $('#mis-reject').addEventListener('click', function () {
-      Swal.fire({ title: 'ไม่อนุมัติ?', input: 'textarea', inputPlaceholder: 'ระบุเหตุผล', showCancelButton: true, confirmButtonText: 'ยืนยัน' })
+      Swal.fire({ title: 'ไม่อนุมัติ?', input: 'textarea', inputPlaceholder: 'ระบุเหตุผลไม่อนุมัติ', showCancelButton: true, confirmButtonText: 'ยืนยัน' })
         .then(function (r) {
           if (!r.isConfirmed) return;
           Spinner.show('กำลังบันทึก...');
-          call('mission.approve', { id: m.id, decision: 'rejected', comment: r.value || '' }).then(function () { Spinner.hide(); toast('บันทึกแล้ว', 'success'); refreshMission(); }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
+          call('mission.approve', { id: m.id, decision: 'rejected', comment: r.value || '' }).then(function () { Spinner.hide(); toast('ปฏิเสธคำขอแล้ว', 'success'); refreshMission(); }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
         });
     });
+    
     if ($('#mis-delete')) $('#mis-delete').addEventListener('click', function () {
-      confirmModal({ title: 'ลบใบเดินทาง?', message: 'การลบจะยกเลิกการเชื่อมโยงกับค่าใช้จ่ายที่แนบด้วย และไม่สามารถย้อนกลับได้', okText: 'ลบ', danger: true }).then(function (ok) {
+      var confirmMsg = isWfh ? 'ต้องการลบคำขอ WFH นี้หรือไม่?' : 'การลบจะยกเลิกการเชื่อมโยงกับค่าใช้จ่ายที่แนบด้วย และไม่สามารถย้อนกลับได้';
+      confirmModal({ title: 'ลบรายการ?', message: confirmMsg, okText: 'ลบ', danger: true }).then(function (ok) {
         if (!ok) return;
-        Spinner.show('กำลังลบใบเดินทาง...');
-        call('mission.delete', { id: m.id }).then(function () { Spinner.hide(); toast('ลบใบเดินทางแล้ว', 'success'); location.hash = '#/missions'; }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
+        Spinner.show('กำลังลบรายการ...');
+        call('mission.delete', { id: m.id }).then(function () { Spinner.hide(); toast('ลบรายการเรียบร้อยแล้ว', 'success'); location.hash = '#/missions'; }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
       });
     });
   }

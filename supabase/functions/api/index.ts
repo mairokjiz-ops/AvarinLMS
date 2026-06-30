@@ -89,7 +89,7 @@ const SCHEMAS = Object.freeze({
   Sessions: ['token','user_id','created_at','expires_at','user_agent'],
   Settings: ['key','value','updated_at'],
   AuditLog: ['id','user_id','action','entity','entity_id','meta','created_at'],
-  Missions: ['id','mission_no','requester_id','title','purpose','destination','start_date','end_date','transport_type','requested_amount','status','approver_id','approver_comment','approver_at','approved_amount','created_at','updated_at'],
+  Missions: ['id','mission_no','requester_id','title','purpose','destination','start_date','end_date','transport_type','requested_amount','status','approver_id','approver_comment','approver_at','approved_amount','created_at','updated_at','work_type'],
   Expenses: ['id','expense_no','mission_id','expense_date','expense_type','description','amount','receipt_url','status','approver_id','approver_comment','approver_at','approved_amount','created_by','created_at','updated_at'],
   Holidays: ['id','holiday_date','name','created_at','updated_at'],
   Checkins: ['id','user_id','check_in_at','check_out_at','check_in_lat','check_in_lng','check_out_lat','check_out_lng','check_in_loc','check_out_loc','status','created_at','updated_at','check_in_img','check_out_img'],
@@ -102,7 +102,7 @@ const SCHEMAS = Object.freeze({
 // ── TEXT_COLUMNS — บังคับ Sheet เก็บเป็น text กัน auto-coercion ─
 const TEXT_COLUMNS = Object.freeze([
   'phone','contact_phone','leave_no','token','password_hash','salt','attachment_url','avatar',
-  'mission_no','title','purpose','destination','transport_type','expense_type','description','receipt_url',
+  'mission_no','title','purpose','destination','transport_type','expense_type','description','receipt_url','work_type',
   'holiday_date','expense_no','line_user_id','line_connect_code','question','options','content','ai_summary','ai_modules','ai_quiz','ai_flashcards','ai_key_points','ai_checklist'
 ]);
 
@@ -2572,7 +2572,8 @@ function _wf_enrichMission_(m, users) {
     transport_type: m.transport_type || '', requested_amount: m.requested_amount || '',
     status: m.status, status_label: STATUS_LABEL[m.status] || m.status, status_tone: STATUS_TONE[m.status] || 'slate',
     approver_id: m.approver_id, approver_comment: m.approver_comment, approver_at: m.approver_at, approved_amount: m.approved_amount,
-    expense_total: _wf_missionExpenseTotal_(m.id), expense_count: ex.length, created_at: m.created_at, updated_at: m.updated_at
+    expense_total: _wf_missionExpenseTotal_(m.id), expense_count: ex.length, created_at: m.created_at, updated_at: m.updated_at,
+    work_type: m.work_type || 'offsite'
   };
 }
 function _wf_visibleMissionRows_(user, p) {
@@ -2653,14 +2654,19 @@ async function Mission_create(user, p) {
   Auth_requireCap(user, 'mission.create_own');
   var data = p || {};
   if (!data.title || String(data.title).trim().length < 3) throw new Error('ระบุหัวข้อ/เรื่องอย่างน้อย 3 ตัวอักษร');
-  if (!data.destination) throw new Error('ระบุปลายทาง');
+  var workType = String(data.work_type || 'offsite').trim().toLowerCase();
+  if (workType !== 'wfh') {
+    if (!data.destination) throw new Error('ระบุสถานที่ปฏิบัติงาน (ปลายทาง)');
+  } else {
+    data.destination = 'Work From Home';
+  }
   if (!data.purpose) throw new Error('ระบุวัตถุประสงค์');
   if (!data.start_date) throw new Error('ระบุวันที่เริ่ม');
   if (!data.end_date) data.end_date = data.start_date;
   var start = cfg_dateOnly_(data.start_date);
   var end = cfg_dateOnly_(data.end_date);
   if (!start || !end) throw new Error('วันที่ไม่ถูกต้อง');
-  var m = await DB_insert(SHEETS.MISSIONS, { mission_no: _wf_missionNo_(), requester_id: user.id, title: String(data.title || '').trim(), purpose: String(data.purpose || '').trim(), destination: String(data.destination || '').trim(), start_date: start, end_date: end, transport_type: String(data.transport_type || '').trim(), requested_amount: data.requested_amount ? Number(data.requested_amount) : null, status: STATUS.PENDING, approver_id: null, approver_comment: '', approver_at: null, approved_amount: null });
+  var m = await DB_insert(SHEETS.MISSIONS, { mission_no: _wf_missionNo_(), requester_id: user.id, title: String(data.title || '').trim(), purpose: String(data.purpose || '').trim(), destination: String(data.destination || '').trim(), start_date: start, end_date: end, transport_type: String(data.transport_type || '').trim(), requested_amount: data.requested_amount ? Number(data.requested_amount) : null, status: STATUS.PENDING, approver_id: null, approver_comment: '', approver_at: null, approved_amount: null, work_type: workType });
   await Audit_log_(user, 'mission.create', 'mission', m.id, { mission_no: m.mission_no });
   return _wf_enrichMission_(m, DB_buildIndex(SHEETS.USERS));
 }
@@ -2673,7 +2679,7 @@ async function Mission_update(user, p) {
   if (String(m.requester_id) !== String(user.id) && !hasCap_(user.role, 'expense.manage')) throw new Error('คุณไม่มีสิทธิ์แก้ไข');
   if (m.status !== STATUS.DRAFT && m.status !== STATUS.PENDING && !hasCap_(user.role, 'expense.manage')) throw new Error('รายการนี้แก้ไขไม่ได้');
   var patch = {};
-  ['title','purpose','destination','transport_type'].forEach(function (k) { if (typeof data[k] !== 'undefined') patch[k] = String(data[k] || '').trim(); });
+  ['title','purpose','destination','transport_type','work_type'].forEach(function (k) { if (typeof data[k] !== 'undefined') patch[k] = String(data[k] || '').trim(); });
   if (typeof data.requested_amount !== 'undefined') patch.requested_amount = data.requested_amount ? Number(data.requested_amount) : null;
   if (data.start_date || data.end_date) { patch.start_date = cfg_dateOnly_(data.start_date || m.start_date); patch.end_date = cfg_dateOnly_(data.end_date || m.end_date); }
   var updated = await DB_update(SHEETS.MISSIONS, id, patch);
