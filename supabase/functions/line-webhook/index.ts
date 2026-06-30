@@ -2940,6 +2940,7 @@ function _LINE_verifySignature_(e, channelSecret) {
  */
 async function _LINE_handleTextMessage_(event, replyToken, lineUserId) {
   var txt = String(event.message.text || '').trim();
+  console.log("LINE Webhook: Received message from user: " + lineUserId + ", Text: " + txt);
   
   // ตรวจหาแพทเทิร์นการผูกบัญชี เช่น LMS-123456
   var match = txt.match(/^LMS-(\d{6})$/i);
@@ -5546,6 +5547,9 @@ serve(async (req) => {
   }
 
   try {
+    // Reset cache to prevent cross-request leakage and ensure real-time sync with database
+    DB_CACHE = {};
+
     const bodyText = await req.text();
     const signature = req.headers.get('x-line-signature') || '';
 
