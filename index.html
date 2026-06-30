@@ -4697,7 +4697,7 @@ async function api(req) {
     '#/quotas':       { title: 'จัดการสิทธิ์วันลา',  sub: 'เพิ่มลดและดูแลสิทธิ์คงเหลือของพนักงานทุกคน', icon: 'person-gear' },
     '#/settings':     { title: 'ตั้งค่าระบบ',        sub: 'กำหนดลิมิตการลา · ข้อมูลบริษัท',     icon: 'gear-fill' },
     '#/profile':      { title: 'โปรไฟล์ของฉัน',      sub: 'จัดการข้อมูลส่วนตัว',                  icon: 'person-circle' },
-    '#/branches':     { title: 'ตารางสาขาพนักงาน',   sub: 'รายชื่อพนักงานแยกตามสาขาและข้อมูลติดต่อ', icon: 'building' },
+    '#/branches':     { title: 'ผังองค์กร',   sub: 'แสดงผังตามแผนก', icon: 'diagram-3' },
     '#/schedule':     { title: 'ตารางทำงานสาขา',     sub: 'ตารางทำงานและคนแทนอัตโนมัติ (6 วัน หยุด 1 วัน)', icon: 'calendar-week' },
     '#/audit':        { title: 'บันทึกระบบ',         sub: 'ประวัติการใช้งาน',                    icon: 'shield-check' },
     '#/attendance':   { title: 'ประวัติการเข้างาน',  sub: 'ตรวจสอบการลงเวลาเข้า-ออกงานและภาพถ่ายเซลฟี่', icon: 'clock-history' }
@@ -4726,7 +4726,7 @@ async function api(req) {
         items: [
           { hash: '#/calendar',  icon: 'calendar3',         label: 'ปฏิทินลา',          cap: 'calendar.view_own|calendar.view_department|calendar.view_all' },
           { hash: '#/missions',  icon: 'signpost-2-fill',   label: 'งานออกนอกพื้นที่',   cap: 'mission.create_own|mission.view_own|mission.view_department|mission.view_all' },
-          { hash: '#/branches',  icon: 'building',          label: 'ตารางสาขาพนักงาน',   cap: 'user.manage' },
+          { hash: '#/branches',  icon: 'diagram-3',          label: 'ผังองค์กร',   cap: 'user.manage' },
           { hash: '#/schedule',  icon: 'calendar-week',     label: 'ตารางทำงานสาขา',     cap: 'schedule.view_all' }
         ]
       },
@@ -7338,21 +7338,47 @@ async function api(req) {
   };
   Routes['#/branches'] = function () {
     if (!hasCap('user.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
-    renderBranchesDirectory();
+    renderOrganizationChart();
   };
 
-  function renderBranchesDirectory() {
-    var st = { q: '', branch: '' };
-    setPage('<div class="toolbar">'
-      + '<div class="search-box"><i class="bi bi-search"></i><input type="text" id="br-q" placeholder="ค้นหาชื่อพนักงาน/ตำแหน่ง/สังกัด..."></div>'
-      + '<select class="select" id="br-select" style="max-width:200px"><option value="">ทุกสาขา</option>'
-      + BRANCHES.map(function (b) { return '<option value="' + b + '">' + esc(b) + '</option>'; }).join('')
-      + '</select>'
+  function renderOrganizationChart() {
+    var st = { q: '', department: '' };
+    setPage('<style>'
+      + '.org-dept-section { background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:24px; margin-bottom:30px; box-shadow:0 1px 3px rgba(0,0,0,0.02); }'
+      + '.org-dept-header { font-size:18px; font-weight:800; color:#1e293b; border-bottom:2px solid #f1f5f9; padding-bottom:10px; margin-bottom:20px; display:flex; align-items:center; gap:8px; }'
+      + '.org-tree { display:flex; flex-direction:column; align-items:center; width:100%; }'
+      + '.org-leaders { display:flex; justify-content:center; gap:16px; width:100%; flex-wrap:wrap; }'
+      + '.org-connector { width:2px; height:24px; background:#cbd5e1; margin:8px 0; }'
+      + '.org-staff-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; width:100%; margin-top:8px; }'
+      + '.org-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:10px; transition:transform .2s,box-shadow .2s,border-color .2s; position:relative; min-width:0; }'
+      + '.org-card:hover { transform:translateY(-2px); box-shadow:0 10px 25px -5px rgba(0,0,0,0.05); border-color:#cbd5e1; }'
+      + '.leader-card { background:linear-gradient(135deg,#f0fdf4 0%,#ffffff 100%); border:1.5px solid #bbf7d0; max-width:340px; width:100%; }'
+      + '.leader-card:hover { border-color:#86efac; }'
+      + '.org-card-head { display:flex; align-items:center; gap:12px; width:100%; }'
+      + '.org-avatar { width:48px; height:48px; border-radius:50%; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; font-weight:700; font-size:18px; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }'
+      + '.org-avatar img { width:100%; height:100%; object-fit:cover; }'
+      + '.org-info { min-width:0; flex:1; }'
+      + '.org-name { font-weight:700; font-size:14.5px; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }'
+      + '.org-title { font-size:11.5px; color:#64748b; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }'
+      + '.org-badge { display:inline-block; font-size:9.5px; font-weight:700; padding:2px 6px; border-radius:4px; margin-top:4px; text-transform:uppercase; }'
+      + '.leader-badge { background:#dcfce7; color:#166534; }'
+      + '.staff-badge { background:#f1f5f9; color:#475569; }'
+      + '.org-contact { border-top:1px dashed #e2e8f0; padding-top:10px; display:flex; flex-direction:column; gap:6px; font-size:12.5px; color:#475569; width:100%; }'
+      + '.org-contact-item { display:flex; align-items:center; gap:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }'
+      + '.org-contact-item i { color:#64748b; }'
+      + '.org-contact a { color:#2563eb; text-decoration:none; }'
+      + '.org-contact a:hover { text-decoration:underline; }'
+      + '</style>'
+      + '<div class="toolbar">'
+      + '  <div class="search-box"><i class="bi bi-search"></i><input type="text" id="org-q" placeholder="ค้นหาชื่อพนักงาน/ตำแหน่ง/แผนก..."></div>'
+      + '  <select class="select" id="org-dept" style="max-width:200px"><option value="">ทุกแผนก</option>'
+      + DEPARTMENTS.map(function (d) { return '<option value="' + d + '">' + esc(d) + '</option>'; }).join('')
+      + '  </select>'
       + '</div>'
-      + '<div id="br-list" style="margin-top:16px"></div>');
+      + '<div id="org-chart-list" style="margin-top:16px"></div>');
 
     function load() {
-      var listDiv = $('#br-list');
+      var listDiv = $('#org-chart-list');
       if (!listDiv) return;
       listDiv.innerHTML = skBlocks(4, 80);
       call('user.branch_directory', {}).then(function (r) {
@@ -7365,61 +7391,103 @@ async function api(req) {
             var deptOk = (u.department || '').toLowerCase().indexOf(search) >= 0;
             if (!nameOk && !posOk && !deptOk) return false;
           }
-          if (st.branch && u.branch !== st.branch) return false;
+          if (st.department && u.department !== st.department) return false;
           return true;
         });
 
-        // Group by branch
-        var branchesMap = {};
-        BRANCHES.forEach(function (b) { branchesMap[b] = []; });
-        branchesMap['ไม่ระบุสาขา'] = [];
+        // Group by Department
+        var deptsMap = {};
+        DEPARTMENTS.forEach(function (d) { deptsMap[d] = []; });
+        deptsMap['ไม่ระบุแผนก'] = [];
 
         filtered.forEach(function (u) {
-          var b = u.branch || 'ไม่ระบุสาขา';
-          if (!branchesMap[b]) branchesMap[b] = [];
-          branchesMap[b].push(u);
+          var d = u.department || 'ไม่ระบุแผนก';
+          if (!deptsMap[d]) deptsMap[d] = [];
+          deptsMap[d].push(u);
         });
 
         var html = '';
-        var branchColors = {
-          'ออฟฟิต': { bg: '#eef2ff', text: '#4f46e5', border: '#c7d2fe' },
-          'ราชพฤกษ์': { bg: '#fef2f2', text: '#dc2626', border: '#fca5a5' },
-          'วิรันด้า': { bg: '#ecfdf5', text: '#059669', border: '#a7f3d0' },
-          'ปอโต': { bg: '#fffbeb', text: '#d97706', border: '#fde68a' },
-          'ไม่ระบุสาขา': { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' }
-        };
 
-        Object.keys(branchesMap).forEach(function (bName) {
-          var uList = branchesMap[bName] || [];
-          if (st.branch && bName !== st.branch) return;
+        Object.keys(deptsMap).forEach(function (dName) {
+          var uList = deptsMap[dName] || [];
+          if (st.department && dName !== st.department) return;
           if (uList.length === 0) return;
 
-          var col = branchColors[bName] || branchColors['ไม่ระบุสาขา'];
-
-          html += '<div style="margin-bottom:24px">'
-            + '  <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;border-bottom:2px solid ' + col.border + ';padding-bottom:6px">'
-            + '    <i class="bi bi-building" style="color:' + col.text + ';font-size:18px"></i>'
-            + '    <h3 style="margin:0;font-size:16px;font-weight:700;color:#1e293b">' + esc(bName) + ' <span style="font-size:13px;font-weight:500;color:#64748b;margin-left:6px">(' + uList.length + ' คน)</span></h3>'
-            + '  </div>'
-            + '  <div class="grid-3">';
+          // Separate leaders and staff
+          var leaders = [];
+          var staff = [];
 
           uList.forEach(function (u) {
+            var isLeader = u.role === 'supervisor' || u.role === 'admin' || u.role === 'approver'
+              || (u.position || '').indexOf('หัวหน้า') >= 0
+              || (u.position || '').indexOf('ผู้จัดการ') >= 0
+              || (u.position || '').toLowerCase().indexOf('head') >= 0
+              || (u.position || '').toLowerCase().indexOf('manager') >= 0;
+            if (isLeader) {
+              leaders.push(u);
+            } else {
+              staff.push(u);
+            }
+          });
+
+          // Sort leaders by role priority (admin/approver first, then supervisor)
+          leaders.sort(function (a, b) {
+            var getPriority = function (u) {
+              if (u.role === 'admin') return 1;
+              if (u.role === 'approver') return 2;
+              if (u.role === 'supervisor') return 3;
+              return 4;
+            };
+            return getPriority(a) - getPriority(b);
+          });
+
+          function renderCard(u, isLeader) {
             var initial = (u.full_name || '?').substring(0, 1).toUpperCase();
-            var avatar = u.avatar ? '<img src="' + esc(u.avatar) + '" style="width:100%;height:100%;object-fit:cover" referrerpolicy="no-referrer">' : initial;
-            html += '<div class="card" style="margin:0;display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid #e2e8f0">'
-              + '  <div style="display:flex;align-items:center;gap:12px">'
-              + '    <div class="lv-avatar" style="width:48px;height:48px;font-size:18px;flex-shrink:0;background:#f1f5f9">' + avatar + '</div>'
-              + '    <div style="min-width:0">'
-              + '      <div style="font-weight:700;font-size:15px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(u.full_name) + '</div>'
-              + '      <div style="font-size:12px;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(u.position || '-') + ' / ' + esc(u.department || '-') + '</div>'
+            var avatar = u.avatar ? '<img src="' + esc(u.avatar) + '" referrerpolicy="no-referrer">' : initial;
+            var badgeClass = isLeader ? 'leader-badge' : 'staff-badge';
+            var badgeText = isLeader ? 'หัวหน้าแผนก / ผู้บริหาร' : 'พนักงาน';
+            var cardClass = isLeader ? 'org-card leader-card' : 'org-card staff-card';
+
+            return '<div class="' + cardClass + '">'
+              + '  <div class="org-card-head">'
+              + '    <div class="org-avatar">' + avatar + '</div>'
+              + '    <div class="org-info">'
+              + '      <div class="org-name">' + esc(u.full_name) + '</div>'
+              + '      <div class="org-title">' + esc(u.position || '-') + '</div>'
+              + '      <span class="org-badge ' + badgeClass + '">' + badgeText + '</span>'
               + '    </div>'
               + '  </div>'
-              + '  <div style="border-top:1px dashed #e2e8f0;padding-top:10px;display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:#475569">'
-              + '    <div><i class="bi bi-envelope" style="margin-right:6px"></i>' + (u.email ? '<a href="mailto:' + esc(u.email) + '" style="color:#2563eb;text-decoration:none">' + esc(u.email) + '</a>' : '-') + '</div>'
-              + '    <div><i class="bi bi-telephone" style="margin-right:6px"></i>' + (u.phone ? '<a href="tel:' + esc(u.phone) + '" style="color:#2563eb;text-decoration:none">' + esc(u.phone) + '</a>' : '-') + '</div>'
+              + '  <div class="org-contact">'
+              + '    <div class="org-contact-item"><i class="bi bi-envelope-fill"></i>' + (u.email ? '<a href="mailto:' + esc(u.email) + '">' + esc(u.email) + '</a>' : '-') + '</div>'
+              + '    <div class="org-contact-item"><i class="bi bi-telephone-fill"></i>' + (u.phone ? '<a href="tel:' + esc(u.phone) + '">' + esc(u.phone) + '</a>' : '-') + '</div>'
+              + '    <div class="org-contact-item"><i class="bi bi-building"></i> สาขา: ' + esc(u.branch || '-') + '</div>'
               + '  </div>'
               + '</div>';
-          });
+          }
+
+          html += '<div class="org-dept-section">'
+            + '  <div class="org-dept-header">'
+            + '    <i class="bi bi-diagram-3-fill" style="color:#024ad8"></i>'
+            + '    <span>' + esc(dName) + '</span>'
+            + '    <span style="font-size:13px;font-weight:500;color:#64748b;margin-left:6px">(' + uList.length + ' คน)</span>'
+            + '  </div>'
+            + '  <div class="org-tree">';
+
+          if (leaders.length > 0) {
+            html += '<div class="org-leaders">'
+              + leaders.map(function (u) { return renderCard(u, true); }).join('')
+              + '</div>';
+          }
+
+          if (leaders.length > 0 && staff.length > 0) {
+            html += '<div class="org-connector"></div>';
+          }
+
+          if (staff.length > 0) {
+            html += '<div class="org-staff-grid">'
+              + staff.map(function (u) { return renderCard(u, false); }).join('')
+              + '</div>';
+          }
 
           html += '  </div>'
             + '</div>';
@@ -7436,12 +7504,12 @@ async function api(req) {
     }
 
     var t;
-    $('#br-q').addEventListener('input', function () {
+    $('#org-q').addEventListener('input', function () {
       clearTimeout(t);
-      t = setTimeout(function () { st.q = $('#br-q').value; load(); }, 300);
+      t = setTimeout(function () { st.q = $('#org-q').value; load(); }, 300);
     });
-    $('#br-select').addEventListener('change', function () {
-      st.branch = $('#br-select').value;
+    $('#org-dept').addEventListener('change', function () {
+      st.department = $('#org-dept').value;
       load();
     });
 
