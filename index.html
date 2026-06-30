@@ -4699,6 +4699,9 @@ async function api(req) {
     '#/profile':      { title: 'โปรไฟล์ของฉัน',      sub: 'จัดการข้อมูลส่วนตัว',                  icon: 'person-circle' },
     '#/branches':     { title: 'ผังองค์กร',   sub: 'แสดงผังตามแผนก', icon: 'diagram-3' },
     '#/schedule':     { title: 'ตารางทำงานสาขา',     sub: 'ตารางทำงานและคนแทนอัตโนมัติ (6 วัน หยุด 1 วัน)', icon: 'calendar-week' },
+    '#/courses':      { title: 'คอร์สฝึกอบรม',       sub: 'จัดการเนื้อหาอบรมและควิซข้อมูลสินค้า', icon: 'journal-bookmark-fill' },
+    '#/courses/new':  { title: 'จัดการคอร์สเรียน',   sub: 'ป้อนบทเรียนและแบบทดสอบสำหรับพนักงาน', icon: 'journal-plus' },
+    '#/courses/view': { title: 'รายละเอียดคอร์ส',     sub: 'ประเมินผลการเรียนรู้ของพนักงาน', icon: 'journal-text' },
     '#/audit':        { title: 'บันทึกระบบ',         sub: 'ประวัติการใช้งาน',                    icon: 'shield-check' },
     '#/attendance':   { title: 'ประวัติการเข้างาน',  sub: 'ตรวจสอบการลงเวลาเข้า-ออกงานและภาพถ่ายเซลฟี่', icon: 'clock-history' }
   };
@@ -4736,6 +4739,12 @@ async function api(req) {
           { hash: '#/expenses/new',     icon: 'cash-coin',     label: 'เบิกค่าใช้จ่าย',     cap: 'expense.create_own' },
           { hash: '#/expenses/pending', icon: 'check2-square', label: 'ใบเบิกรอดำเนินการ', cap: 'expense.manage', badge: 'expenses_pending' },
           { hash: '#/expenses/all',     icon: 'inbox-fill',     label: 'ใบเบิกทั้งหมด',     cap: 'expense.create_own|expense.manage' }
+        ]
+      },
+      {
+        title: 'ระบบฝึกอบรม',
+        items: [
+          { hash: '#/courses', icon: 'journal-bookmark-fill', label: 'จัดการคอร์สเรียน', cap: 'setting.manage' }
         ]
       },
       {
@@ -7340,6 +7349,357 @@ async function api(req) {
     if (!hasCap('user.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
     renderOrganizationChart();
   };
+
+  Routes['#/courses'] = function () {
+    if (!hasCap('setting.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
+    renderCoursesDirectory();
+  };
+  Routes['#/courses/new'] = function () {
+    if (!hasCap('setting.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
+    renderCourseWizard();
+  };
+  Routes['#/courses/view'] = function () {
+    if (!hasCap('setting.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
+    renderCourseDetail();
+  };
+
+  function renderCoursesDirectory() {
+    setPage('<div class="toolbar" style="justify-content:space-between">'
+      + '  <div class="search-box"><i class="bi bi-search"></i><input type="text" id="course-q" placeholder="ค้นหาคอร์สเรียน..."></div>'
+      + '  <a class="btn btn-primary" href="#/courses/new"><i class="bi bi-journal-plus"></i> สร้างคอร์สเรียนใหม่</a>'
+      + '</div>'
+      + '<div class="grid-3" id="course-list" style="margin-top:16px"></div>');
+
+    var st = { q: '' };
+
+    function load() {
+      var listDiv = $('#course-list');
+      if (!listDiv) return;
+      listDiv.innerHTML = skBlocks(3, 100);
+      call('course.list', {}).then(function (r) {
+        var items = r.items || [];
+        var filtered = items.filter(function (c) {
+          if (st.q) {
+            var search = st.q.toLowerCase();
+            return (c.title || '').toLowerCase().indexOf(search) >= 0 || (c.description || '').toLowerCase().indexOf(search) >= 0;
+          }
+          return true;
+        });
+
+        var html = '';
+        filtered.forEach(function (c) {
+          var thumb = c.thumbnail_url || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500&auto=format&fit=crop&q=60';
+          var statusBadge = c.status === 'active' ? '<span class="badge b-emerald">เปิดใช้งาน</span>' : '<span class="badge b-slate">ปิดใช้งาน</span>';
+          html += '<div class="card" style="margin:0;display:flex;flex-direction:column;gap:12px;overflow:hidden;padding:0;border:1px solid #e2e8f0;border-radius:12px">'
+            + '  <div style="height:140px;position:relative;background:#f1f5f9">'
+            + '    <img src="' + esc(thumb) + '" style="width:100%;height:100%;object-fit:cover" referrerpolicy="no-referrer">'
+            + '    <div style="position:absolute;top:10px;right:10px">' + statusBadge + '</div>'
+            + '  </div>'
+            + '  <div style="padding:16px;flex:1;display:flex;flex-direction:column;gap:8px">'
+            + '    <h3 style="margin:0;font-size:16px;font-weight:700;color:#0f172a">' + esc(c.title) + '</h3>'
+            + '    <p style="margin:0;font-size:13px;color:#64748b;flex:1;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis">' + esc(c.description || '-') + '</p>'
+            + '    <div style="display:flex;gap:8px;margin-top:10px;border-top:1px solid #f1f5f9;padding-top:12px">'
+            + '      <a class="btn btn-outline" style="flex:1;font-size:12.5px;padding:6px 12px" href="#/courses/view?id=' + esc(c.id) + '"><i class="bi bi-eye"></i> ดูรายงาน</a>'
+            + '      <a class="btn btn-outline" style="font-size:12.5px;padding:6px 10px" href="#/courses/new?id=' + esc(c.id) + '"><i class="bi bi-pencil"></i> แก้ไข</a>'
+            + '      <button class="btn btn-outline" style="font-size:12.5px;padding:6px 10px;color:#ef4444;border-color:#fca5a5" onclick="deleteCourse(\'' + esc(c.id) + '\')"><i class="bi bi-trash"></i></button>'
+            + '    </div>'
+            + '  </div>'
+            + '</div>';
+        });
+
+        if (html === '') {
+          html = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#94a3b8"><i class="bi bi-journal-bookmark" style="font-size:32px;display:block;margin-bottom:8px"></i>ไม่พบคอร์สเรียน</div>';
+        }
+        listDiv.innerHTML = html;
+      }).catch(function (e) {
+        listDiv.innerHTML = '<div style="grid-column:1/-1;color:#ef4444;text-align:center;padding:20px">' + esc(e.message) + '</div>';
+      });
+    }
+
+    window.deleteCourse = function (id) {
+      if (!confirm('ยืนยันที่จะลบคอร์สเรียนนี้ใช่หรือไม่? ข้อมูลแบบทดสอบและความก้าวหน้าพนักงานจะถูกลบทั้งหมด')) return;
+      Spinner.show('กำลังลบ...');
+      call('course.delete', { id: id }).then(function () {
+        Spinner.hide();
+        toast('ลบสำเร็จแล้ว', 'success');
+        load();
+      }).catch(function (e) {
+        Spinner.hide();
+        alertError('ผิดพลาด', e.message);
+      });
+    };
+
+    var t;
+    $('#course-q').addEventListener('input', function () {
+      clearTimeout(t);
+      t = setTimeout(function () { st.q = $('#course-q').value; load(); }, 300);
+    });
+
+    load();
+  }
+
+  function renderCourseWizard() {
+    var id = (location.hash).split('?id=')[1] || '';
+    var isEdit = !!id;
+
+    setPage('<div class="card" style="max-width:800px;margin:0 auto">'
+      + '<div class="card-head" style="border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:20px">'
+      + '  <i class="bi bi-journal-plus" style="color:#024ad8;font-size:20px"></i>'
+      + '  <h3 class="card-title">' + (isEdit ? 'แก้ไขคอร์สเรียน' : 'สร้างคอร์สเรียนและแบบทดสอบ') + '</h3>'
+      + '</div>'
+      + '<div class="card-body" style="display:flex;flex-direction:column;gap:18px">'
+      + '  <div class="grid-2">'
+      + '    <div class="form-group"><label class="form-label">ชื่อคอร์สเรียน *</label><input type="text" class="input" id="c-title" placeholder="เช่น การขายรองเท้าวิ่ง Avarin Pro 2026"></div>'
+      + '    <div class="form-group"><label class="form-label">ลิงก์ภาพหน้าปก (Thumbnail URL)</label><input type="text" class="input" id="c-thumb" placeholder="https://domain.com/image.jpg"></div>'
+      + '  </div>'
+      + '  <div class="form-group"><label class="form-label">คำอธิบายย่อ</label><textarea class="input" id="c-desc" style="height:60px" placeholder="คำอธิบายสรุปสั้น ๆ เกี่ยวกับคอร์สนี้..."></textarea></div>'
+      + '  <div class="grid-2">'
+      + '    <div class="form-group"><label class="form-label">ลิงก์วิดีโอประกอบการเรียน (YouTube URL - ไม่บังคับ)</label><input type="text" class="input" id="c-video" placeholder="https://www.youtube.com/watch?v=..."></div>'
+      + '    <div class="form-group"><label class="form-label">สถานะคอร์สเรียน</label><select class="select" id="c-status"><option value="active">เปิดใช้งาน (Active)</option><option value="inactive">ปิดใช้งาน (Inactive)</option></select></div>'
+      + '  </div>'
+      + '  <div class="form-group"><label class="form-label">เนื้อหาบทเรียนสำหรับศึกษา (รองรับ HTML/Text) *</label><textarea class="input" id="c-content" style="height:250px;font-family:inherit" placeholder="ใส่ข้อมูลเนื้อหาสินค้า จุดเด่น วิธีการแนะนำลูกค้า ฯลฯ อย่างละเอียด..."></textarea></div>'
+      + '  '
+      + '  <!-- Quiz Section -->'
+      + '  <div style="border-top:1px solid #e2e8f0;padding-top:20px;margin-top:10px">'
+      + '    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
+      + '      <h4 style="margin:0;font-size:16px;font-weight:700;color:#1e293b"><i class="bi bi-question-circle-fill" style="color:#024ad8"></i> แบบทดสอบข้อเขียน (ผ่านเกณฑ์ที่ 80% ขึ้นไป)</h4>'
+      + '      <button class="btn btn-outline" style="font-size:12.5px;padding:6px 12px" type="button" onclick="addQuestion()"><i class="bi bi-plus-lg"></i> เพิ่มข้อสอบ</button>'
+      + '    </div>'
+      + '    <div id="quiz-builder-list" style="display:flex;flex-direction:column;gap:16px"></div>'
+      + '  </div>'
+      + '  '
+      + '  <div style="display:flex;gap:12px;margin-top:24px;border-top:1px solid #e2e8f0;padding-top:20px">'
+      + '    <button class="btn btn-primary" onclick="saveCourse()" style="flex:1"><i class="bi bi-save"></i> บันทึกข้อมูล</button>'
+      + '    <a class="btn btn-outline" href="#/courses" style="max-width:120px;text-align:center">ยกเลิก</a>'
+      + '  </div>'
+      + '</div>'
+      + '</div>');
+
+    var questions = [];
+
+    window.addQuestion = function (qData) {
+      var qId = crypto.randomUUID();
+      var q = qData || { question: '', options: ['', '', '', ''], correct_option: 0 };
+      q.id = qId;
+      questions.push(q);
+      renderQuestions();
+    };
+
+    window.deleteQuestion = function (qId) {
+      questions = questions.filter(function (x) { return x.id !== qId; });
+      renderQuestions();
+    };
+
+    function renderQuestions() {
+      var container = $('#quiz-builder-list');
+      if (!container) return;
+      
+      if (questions.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:20px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;color:#94a3b8">ยังไม่มีคำถามแบบทดสอบ กรุณากดเพิ่มข้อสอบ</div>';
+        return;
+      }
+
+      container.innerHTML = questions.map(function (q, index) {
+        var optsHtml = q.options.map(function (opt, optIndex) {
+          return '<div style="display:flex;align-items:center;gap:8px">'
+            + '  <span style="font-size:12px;color:#64748b;width:60px">ตัวเลือกที่ ' + (optIndex + 1) + '</span>'
+            + '  <input type="text" class="input" style="padding:6px 10px;font-size:13.5px" id="q-' + q.id + '-opt-' + optIndex + '" value="' + esc(opt) + '" placeholder="กรอกคำตอบตัวเลือก...">'
+            + '</div>';
+        }).join('');
+
+        return '<div class="card" style="margin:0;padding:16px;border:1.5px solid #e2e8f0;background:#f8fafc;position:relative">'
+          + '  <div style="position:absolute;top:10px;right:10px">'
+          + '    <button class="btn btn-outline" style="color:#ef4444;border-color:#fca5a5;padding:4px 8px;font-size:12px" type="button" onclick="deleteQuestion(\'' + q.id + '\')"><i class="bi bi-trash"></i> ลบข้อนี้</button>'
+          + '  </div>'
+          + '  <div style="font-weight:700;margin-bottom:12px;color:#024ad8">คำถามข้อที่ ' + (index + 1) + '</div>'
+          + '  <div class="form-group" style="margin-bottom:12px">'
+          + '    <input type="text" class="input" style="font-weight:600" id="q-' + q.id + '-title" value="' + esc(q.question) + '" placeholder="กรอกคำถาม เช่น ข้อใดคือจุดเด่นของรองเท้าวิ่งรุ่นนี้?">'
+          + '  </div>'
+          + '  <div style="display:grid;gap:8px;margin-bottom:12px">'
+          + optsHtml
+          + '  </div>'
+          + '  <div style="display:flex;align-items:center;gap:12px">'
+          + '    <label class="form-label" style="margin:0;font-size:13px">คำตอบที่ถูกต้อง:</label>'
+          + '    <select class="select" style="max-width:180px;padding:4px 8px;font-size:13px" id="q-' + q.id + '-correct">'
+          + '      <option value="0" ' + (Number(q.correct_option) === 0 ? 'selected' : '') + '>ตัวเลือกที่ 1</option>'
+          + '      <option value="1" ' + (Number(q.correct_option) === 1 ? 'selected' : '') + '>ตัวเลือกที่ 2</option>'
+          + '      <option value="2" ' + (Number(q.correct_option) === 2 ? 'selected' : '') + '>ตัวเลือกที่ 3</option>'
+          + '      <option value="3" ' + (Number(q.correct_option) === 3 ? 'selected' : '') + '>ตัวเลือกที่ 4</option>'
+          + '    </select>'
+          + '  </div>'
+          + '</div>';
+      }).join('');
+    }
+
+    if (isEdit) {
+      Spinner.show('กำลังโหลดข้อมูลคอร์สเรียน...');
+      Promise.all([
+        call('course.get', { id: id }),
+        call('quiz.get_questions', { course_id: id })
+      ]).then(function (res) {
+        Spinner.hide();
+        var c = res[0].course || {};
+        var qList = res[1].items || [];
+
+        $('#c-title').value = c.title || '';
+        $('#c-thumb').value = c.thumbnail_url || '';
+        $('#c-desc').value = c.description || '';
+        $('#c-video').value = c.video_url || '';
+        $('#c-status').value = c.status || 'active';
+        $('#c-content').value = c.content || '';
+
+        questions = [];
+        qList.forEach(function (q) {
+          addQuestion({
+            question: q.question,
+            options: q.options,
+            correct_option: q.correct_option
+          });
+        });
+      }).catch(function (e) {
+        Spinner.hide();
+        alertError('ผิดพลาด', e.message);
+        location.hash = '#/courses';
+      });
+    } else {
+      addQuestion();
+    }
+
+    window.saveCourse = function () {
+      var title = $('#c-title').value.trim();
+      var content = $('#c-content').value.trim();
+      if (!title) { toast('กรุณาระบุชื่อคอร์สเรียน', 'warning'); return; }
+      if (!content) { toast('กรุณาระบุเนื้อหาบทเรียน', 'warning'); return; }
+
+      var updatedQuestions = [];
+      for (var i = 0; i < questions.length; i++) {
+        var oldQ = questions[i];
+        var qTitle = $('#q-' + oldQ.id + '-title').value.trim();
+        if (!qTitle) { toast('กรุณากรอกคำถามข้อที่ ' + (i + 1), 'warning'); return; }
+        
+        var opts = [];
+        for (var j = 0; j < 4; j++) {
+          var optVal = $('#q-' + oldQ.id + '-opt-' + j).value.trim();
+          if (!optVal) { toast('กรุณากรอกตัวเลือกที่ ' + (j + 1) + ' ของคำถามข้อที่ ' + (i + 1), 'warning'); return; }
+          opts.push(optVal);
+        }
+
+        var correctOpt = Number($('#q-' + oldQ.id + '-correct').value);
+
+        updatedQuestions.push({
+          question: qTitle,
+          options: opts,
+          correct_option: correctOpt
+        });
+      }
+
+      var payload = {
+        title: title,
+        description: $('#c-desc').value.trim(),
+        thumbnail_url: $('#c-thumb').value.trim(),
+        content: content,
+        video_url: $('#c-video').value.trim(),
+        status: $('#c-status').value,
+        questions: updatedQuestions
+      };
+
+      var apiAction = isEdit ? 'course.update' : 'course.create';
+      if (isEdit) payload.id = id;
+
+      Spinner.show('กำลังบันทึก...');
+      call(apiAction, payload).then(function () {
+        Spinner.hide();
+        toast('บันทึกคอร์สเรียนสำเร็จแล้ว', 'success');
+        location.hash = '#/courses';
+      }).catch(function (e) {
+        Spinner.hide();
+        alertError('ผิดพลาด', e.message);
+      });
+    };
+  }
+
+  function renderCourseDetail() {
+    var id = (location.hash).split('?id=')[1] || '';
+    if (!id) { toast('ไม่พบคอร์สเรียน', 'error'); location.hash = '#/courses'; return; }
+
+    setPage('<div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start">'
+      + '  <div style="display:flex;flex-direction:column;gap:20px">'
+      + '    <div class="card" style="margin:0">'
+      + '      <div class="card-head" style="border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:20px;justify-content:space-between">'
+      + '        <div style="display:flex;align-items:center;gap:10px">'
+      + '          <i class="bi bi-journal-text" style="color:#024ad8;font-size:20px"></i>'
+      + '          <h3 class="card-title" id="cd-title">กำลังโหลด...</h3>'
+      + '        </div>'
+      + '        <a class="btn btn-outline" style="font-size:12.5px;padding:6px 12px" id="cd-edit-btn"><i class="bi bi-pencil"></i> แก้ไขบทเรียน</a>'
+      + '      </div>'
+      + '      <div class="card-body" id="cd-body">'
+      + '        <p id="cd-desc" style="color:#64748b;font-size:14px;margin-bottom:20px;line-height:1.5;background:#f8fafc;padding:12px;border-left:4px solid #cbd5e1;border-radius:0 8px 8px 0"></p>'
+      + '        <div id="cd-content-area" style="font-size:14.5px;line-height:1.7;color:#334155;white-space:pre-wrap"></div>'
+      + '      </div>'
+      + '    </div>'
+      + '  </div>'
+      + '  '
+      + '  <div style="display:flex;flex-direction:column;gap:20px">'
+      + '    <div class="card" style="margin:0"><div class="card-head"><i class="bi bi-bar-chart-fill" style="color:#024ad8"></i> <span class="card-title">ความคืบหน้าของพนักงาน</span></div>'
+      + '      <div class="card-body" style="padding:0">'
+      + '        <table class="table" style="font-size:12.5px">'
+      + '          <thead>'
+      + '            <tr>'
+      + '              <th>พนักงาน</th>'
+      + '              <th style="text-align:center">คะแนนสอบ</th>'
+      + '              <th style="text-align:center">สถานะ</th>'
+      + '            </tr>'
+      + '          </thead>'
+      + '          <tbody id="progress-list-body"></tbody>'
+      + '        </table>'
+      + '      </div>'
+      + '    </div>'
+      + '  </div>'
+      + '</div>');
+
+    Spinner.show('กำลังโหลดข้อมูล...');
+    Promise.all([
+      call('course.get', { id: id }),
+      call('course.progress_list', { course_id: id })
+    ]).then(function (res) {
+      Spinner.hide();
+      var c = res[0].course || {};
+      var progressList = res[1].items || [];
+
+      $('#cd-title').textContent = c.title || '';
+      $('#cd-desc').textContent = c.description || 'ไม่มีคำอธิบายย่อ';
+      $('#cd-content-area').innerHTML = c.content || '';
+      $('#cd-edit-btn').href = '#/courses/new?id=' + encodeURIComponent(id);
+
+      var progressBody = $('#progress-list-body');
+      if (!progressBody) return;
+
+      if (progressList.length === 0) {
+        progressBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#94a3b8;padding:20px">ยังไม่มีพนักงานเข้าเรียนและทดสอบ</td></tr>';
+        return;
+      }
+
+      progressBody.innerHTML = progressList.map(function (p) {
+        var scoreText = p.quiz_score + '/' + p.quiz_total;
+        var badge = p.is_passed === 'yes' ? '<span class="badge b-emerald">ผ่านเกณฑ์</span>' : '<span class="badge b-rose">ไม่ผ่าน</span>';
+        return '<tr>'
+          + '  <td>'
+          + '    <div style="font-weight:600">' + esc(p.full_name) + '</div>'
+          + '    <div style="font-size:10.5px;color:#64748b">' + esc(p.department) + '</div>'
+          + '  </td>'
+          + '  <td style="text-align:center;font-weight:600">' + scoreText + '</td>'
+          + '  <td style="text-align:center">' + badge + '</td>'
+          + '</tr>';
+      }).join('');
+
+    }).catch(function (e) {
+      Spinner.hide();
+      alertError('ผิดพลาด', e.message);
+      location.hash = '#/courses';
+    });
+  }
+
+
 
   function renderOrganizationChart() {
     var st = { q: '', department: '' };

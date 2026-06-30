@@ -195,6 +195,15 @@
       .menu-grid { grid-template-columns: repeat(2, 1fr); }
       .nav-btn span { font-size: 9px; }
     }
+    /* Training Styles */
+    .course-card { display: flex; flex-direction: column; overflow: hidden; margin-bottom: 12px; }
+    .course-card img { width: 100%; height: 130px; object-fit: cover; border-radius: 12px; }
+    .video-wrapper { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 12px; margin-bottom: 12px; }
+    .video-wrapper iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+    .quiz-question-card { margin-bottom: 14px; border-bottom: 1px dashed var(--line); padding-bottom: 14px; }
+    .quiz-question-card:last-child { border: 0; }
+    .quiz-option-item { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 10px; border-radius: 8px; background: rgba(255,255,255,.5); border: 1px solid var(--line); }
+    .quiz-option-item input { margin: 0; width: 18px; height: 18px; }
   </style>
 </head>
 <body>
@@ -355,11 +364,11 @@
       }
       Store.route = name;
       document.querySelectorAll('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.route === name));
-      const titles = { dashboard: 'Dashboard', checkin: 'Check In', leave: 'Leave', expenses: 'Expenses', approval: 'Approval', profile: 'Profile' };
+      const titles = { dashboard: 'Dashboard', checkin: 'Check In', leave: 'Leave', expenses: 'Expenses', approval: 'Approval', profile: 'Profile', training: 'ฝึกอบรม' };
       $('#pageTitle').textContent = titles[name] || 'Dashboard';
       $('#view').innerHTML = '<div class="panel empty">กำลังโหลดข้อมูล...</div>';
       try {
-        await ({ dashboard, checkin, leave, expenses, approval, profile }[name] || dashboard)();
+        await ({ dashboard, checkin, leave, expenses, approval, profile, training }[name] || dashboard)();
       } catch (err) {
         $('#view').innerHTML = `<div class="panel empty">${esc(err.message)}</div>`;
       }
@@ -392,6 +401,7 @@
             ${menuTile('expenses','bi-receipt','Expenses')}
             ${menuTile('approval','bi-check2-square','Approval')}
             ${menuTile('profile','bi-person-circle','Profile')}
+            ${menuTile('training','bi-journal-bookmark-fill','ฝึกอบรม')}
           </div>
         </div>`;
       $('#view').querySelectorAll('.menu-tile').forEach((b) => b.onclick = () => route(b.dataset.route));
@@ -1010,6 +1020,270 @@
 
     function profileRow(k, v) {
       return `<div class="item"><div class="item-main"><div class="item-meta">${esc(k)}</div><div class="item-title" style="text-align:right">${esc(v || '-')}</div></div></div>`;
+    }
+
+    async function training() {
+      if (!Store.trainingState) Store.trainingState = 'list';
+      
+      if (Store.trainingState === 'list') {
+        const listDiv = $('#view');
+        listDiv.innerHTML = '<div class="panel empty">กำลังโหลดคอร์สฝึกอบรม...</div>';
+        
+        try {
+          const res = await api('course.list');
+          const items = res.items || [];
+          
+          let html = '<div class="panel"><div class="section-title">คอร์สเรียนข้อมูลสินค้า</div><div style="margin-top:12px;display:flex;flex-direction:column;gap:12px">';
+          
+          if (items.length === 0) {
+            html += '<div style="text-align:center;padding:30px;color:var(--muted)">ไม่มีคอร์สเรียนเปิดใช้งานในขณะนี้</div>';
+          } else {
+            items.forEach(function (c) {
+              const thumb = c.thumbnail_url || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500&auto=format&fit=crop&q=60';
+              let badgeHtml = '';
+              let btnText = 'เริ่มเข้าสู่บทเรียน';
+              
+              if (!c.progress) {
+                badgeHtml = '<span class="badge" style="background:#cbd5e1;color:#334155"><i class="bi bi-circle"></i> ยังไม่ได้เรียน</span>';
+              } else if (c.progress.is_passed === 'yes') {
+                badgeHtml = `<span class="badge" style="background:#dcfce7;color:#15803d"><i class="bi bi-check-circle-fill"></i> ผ่านเกณฑ์แล้ว (${c.progress.quiz_score}/${c.progress.quiz_total})</span>`;
+                btnText = 'ทบทวนบทเรียน';
+              } else {
+                badgeHtml = `<span class="badge" style="background:#fee2e2;color:#b91c1c"><i class="bi bi-x-circle-fill"></i> สอบไม่ผ่าน (${c.progress.quiz_score}/${c.progress.quiz_total})</span>`;
+                btnText = 'เรียนรู้/สอบแก้ตัวใหม่';
+              }
+              
+              html += `
+                <div class="card course-card panel" style="padding:0;box-shadow:none;border:1px solid var(--line);margin:0">
+                  <img src="${esc(thumb)}" referrerpolicy="no-referrer">
+                  <div style="padding:12px;display:flex;flex-direction:column;gap:8px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+                      <div class="section-title" style="font-size:15px;margin:0">${esc(c.title)}</div>
+                    </div>
+                    <div>${badgeHtml}</div>
+                    <div style="font-size:12.5px;color:var(--muted)">${esc(c.description || '-')}</div>
+                    <button class="btn btn-primary start-course-btn" style="width:100%;margin-top:4px" data-id="${esc(c.id)}"><i class="bi bi-journal-text"></i> ${btnText}</button>
+                  </div>
+                </div>`;
+            });
+          }
+          
+          html += '</div></div>';
+          listDiv.innerHTML = html;
+          
+          listDiv.querySelectorAll('.start-course-btn').forEach((btn) => {
+            btn.onclick = () => {
+              Store.currentCourseId = btn.dataset.id;
+              Store.trainingState = 'study';
+              training();
+            };
+          });
+        } catch (err) {
+          listDiv.innerHTML = `<div class="panel empty">${esc(err.message)}</div>`;
+        }
+      }
+      
+      else if (Store.trainingState === 'study') {
+        const listDiv = $('#view');
+        listDiv.innerHTML = '<div class="panel empty">กำลังโหลดบทเรียน...</div>';
+        
+        try {
+          const res = await api('course.get', { id: Store.currentCourseId });
+          const c = res.course || {};
+          const p = res.progress;
+          
+          let videoHtml = '';
+          if (c.video_url) {
+            const embed = getYoutubeEmbedUrl(c.video_url);
+            if (embed) {
+              videoHtml = `<div class="video-wrapper"><iframe src="${esc(embed)}" allowfullscreen></iframe></div>`;
+            }
+          }
+          
+          let badgeHtml = '';
+          if (!p) {
+            badgeHtml = '<span class="badge" style="background:#cbd5e1;color:#334155">ยังไม่ผ่านการทดสอบ</span>';
+          } else if (p.is_passed === 'yes') {
+            badgeHtml = `<span class="badge" style="background:#dcfce7;color:#15803d">สอบผ่านแล้ว (${p.quiz_score}/${p.quiz_total})</span>`;
+          } else {
+            badgeHtml = `<span class="badge" style="background:#fee2e2;color:#b91c1c">สอบยังไม่ผ่าน (${p.quiz_score}/${p.quiz_total})</span>`;
+          }
+          
+          listDiv.innerHTML = `
+            <div class="panel">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+                <button class="btn btn-secondary" id="back-to-list" style="padding:6px 12px;font-size:13px"><i class="bi bi-chevron-left"></i> กลับ</button>
+                <div class="section-title" style="flex:1">${esc(c.title)}</div>
+              </div>
+              
+              ${videoHtml}
+              
+              <div style="margin-bottom:14px">${badgeHtml}</div>
+              
+              <div style="font-size:14px;line-height:1.6;color:var(--text);white-space:pre-wrap;margin-bottom:20px">${c.content}</div>
+              
+              <button class="btn btn-primary" id="start-quiz-btn" style="width:100%;padding:12px;font-size:15px;font-weight:700"><i class="bi bi-question-circle"></i> เริ่มทำแบบทดสอบ</button>
+            </div>`;
+            
+          $('#back-to-list').onclick = () => {
+            Store.trainingState = 'list';
+            training();
+          };
+          
+          $('#start-quiz-btn').onclick = () => {
+            Store.trainingState = 'quiz';
+            training();
+          };
+        } catch (err) {
+          listDiv.innerHTML = `<div class="panel empty">${esc(err.message)}</div>`;
+        }
+      }
+      
+      else if (Store.trainingState === 'quiz') {
+        const listDiv = $('#view');
+        listDiv.innerHTML = '<div class="panel empty">กำลังเตรียมข้อสอบ...</div>';
+        
+        try {
+          const res = await api('quiz.get_questions', { course_id: Store.currentCourseId });
+          const questions = res.items || [];
+          
+          if (questions.length === 0) {
+            listDiv.innerHTML = `
+              <div class="panel" style="text-align:center">
+                <i class="bi bi-exclamation-triangle" style="font-size:42px;color:var(--amber)"></i>
+                <div class="section-title" style="margin-top:10px">ยังไม่มีแบบทดสอบสำหรับบทเรียนนี้</div>
+                <button class="btn btn-primary" id="back-to-study" style="margin-top:14px;width:100%">กลับเข้าสู่บทเรียน</button>
+              </div>`;
+            $('#back-to-study').onclick = () => {
+              Store.trainingState = 'study';
+              training();
+            };
+            return;
+          }
+          
+          let qHtml = '';
+          questions.forEach(function (q, index) {
+            let optionsHtml = '';
+            q.options.forEach(function (opt, optIndex) {
+              optionsHtml += `
+                <label class="quiz-option-item">
+                  <input type="radio" name="q-${esc(q.id)}" value="${optIndex}">
+                  <span>${esc(opt)}</span>
+                </label>`;
+            });
+            
+            qHtml += `
+              <div class="quiz-question-card">
+                <div style="font-weight:700;margin-bottom:8px">คำถามข้อที่ ${index + 1}: ${esc(q.question)}</div>
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  ${optionsHtml}
+                </div>
+              </div>`;
+          });
+          
+          listDiv.innerHTML = `
+            <div class="panel">
+              <div class="section-title" style="margin-bottom:14px"><i class="bi bi-question-square"></i> แบบทดสอบข้อเขียน</div>
+              
+              <form id="quiz-form">
+                ${qHtml}
+                <div style="margin-top:20px;display:flex;gap:10px">
+                  <button type="submit" class="btn btn-primary" style="flex:1;padding:12px;font-weight:700">ส่งคำตอบและตรวจข้อสอบ</button>
+                  <button type="button" class="btn btn-secondary" id="cancel-quiz" style="max-width:100px">ยกเลิก</button>
+                </div>
+              </form>
+            </div>`;
+            
+          $('#cancel-quiz').onclick = () => {
+            Store.trainingState = 'study';
+            training();
+          };
+          
+          $('#quiz-form').onsubmit = async (e) => {
+            e.preventDefault();
+            
+            const answers = {};
+            let allAnswered = true;
+            questions.forEach(function (q) {
+              const selected = $(`input[name="q-${q.id}"]:checked`);
+              if (!selected) {
+                allAnswered = false;
+              } else {
+                answers[q.id] = Number(selected.value);
+              }
+            });
+            
+            if (!allAnswered) {
+              if (!confirm('คุณยังไม่ได้ตอบคำถามครบทุกข้อ ยืนยันที่จะส่งข้อสอบเพื่อประเมินผลเลยหรือไม่?')) return;
+            }
+            
+            listDiv.innerHTML = '<div class="panel empty">กำลังตรวจคำตอบ...</div>';
+            
+            try {
+              const scoreRes = await api('quiz.submit', { course_id: Store.currentCourseId, answers: answers });
+              
+              let resultHtml = '';
+              if (scoreRes.is_passed) {
+                resultHtml = `
+                  <div style="text-align:center;padding:20px">
+                    <i class="bi bi-check-circle-fill" style="font-size:64px;color:var(--brand-dark)"></i>
+                    <h3 class="section-title" style="font-size:20px;margin-top:14px;color:var(--brand-dark)">ยินดีด้วย คุณสอบผ่านแล้ว!</h3>
+                    <div style="font-size:46px;font-weight:800;margin:14px 0">${scoreRes.score}/${scoreRes.total}</div>
+                    <div style="font-size:14px;color:var(--muted);margin-bottom:20px">คะแนนของคุณคิดเป็น ${scoreRes.percentage}% (เกณฑ์การผ่านคือ 80%)</div>
+                    <button class="btn btn-primary" id="finish-quiz-btn" style="width:100%">ตกลง</button>
+                  </div>`;
+              } else {
+                resultHtml = `
+                  <div style="text-align:center;padding:20px">
+                    <i class="bi bi-x-circle-fill" style="font-size:64px;color:var(--red)"></i>
+                    <h3 class="section-title" style="font-size:20px;margin-top:14px;color:var(--red)">คุณยังไม่ผ่านเกณฑ์การทดสอบ</h3>
+                    <div style="font-size:46px;font-weight:800;margin:14px 0">${scoreRes.score}/${scoreRes.total}</div>
+                    <div style="font-size:14px;color:var(--muted);margin-bottom:20px">คะแนนของคุณคิดเป็น ${scoreRes.percentage}% (เกณฑ์การผ่านคือ 80%)</div>
+                    <div style="display:flex;gap:10px">
+                      <button class="btn btn-primary" id="retry-quiz-btn" style="flex:1">ทำข้อสอบอีกครั้ง</button>
+                      <button class="btn btn-secondary" id="finish-quiz-btn" style="flex:1">กลับหน้าบทเรียน</button>
+                    </div>
+                  </div>`;
+              }
+              
+              listDiv.innerHTML = `<div class="panel">${resultHtml}</div>`;
+              
+              const finishBtn = $('#finish-quiz-btn');
+              if (finishBtn) {
+                finishBtn.onclick = () => {
+                  Store.trainingState = 'list';
+                  training();
+                };
+              }
+              
+              const retryBtn = $('#retry-quiz-btn');
+              if (retryBtn) {
+                retryBtn.onclick = () => {
+                  Store.trainingState = 'quiz';
+                  training();
+                };
+              }
+            } catch (err) {
+              toast(err.message, 'error');
+              Store.trainingState = 'study';
+              training();
+            }
+          };
+          
+        } catch (err) {
+          listDiv.innerHTML = `<div class="panel empty">${esc(err.message)}</div>`;
+        }
+      }
+    }
+
+    function getYoutubeEmbedUrl(url) {
+      if (!url) return '';
+      var regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+      var match = url.match(regExp);
+      if (match && match[2].length == 11) {
+        return 'https://www.youtube.com/embed/' + match[2];
+      }
+      return '';
     }
 
     $('#bottomNav').addEventListener('click', (e) => {

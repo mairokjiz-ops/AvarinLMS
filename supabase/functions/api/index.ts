@@ -75,7 +75,10 @@ const SHEETS = Object.freeze({
   MISSIONS:  'Missions',
   EXPENSES:  'Expenses',
   HOLIDAYS:  'Holidays',
-  CHECKINS:  'Checkins'
+  CHECKINS:  'Checkins',
+  COURSES:   'Courses',
+  QUIZZES:   'Quizzes',
+  PROGRESS:  'UserProgress'
 });
 
 // ── Schemas ─────────────────────────────────────────────────
@@ -88,14 +91,17 @@ const SCHEMAS = Object.freeze({
   Missions: ['id','mission_no','requester_id','title','purpose','destination','start_date','end_date','transport_type','requested_amount','status','approver_id','approver_comment','approver_at','approved_amount','created_at','updated_at'],
   Expenses: ['id','expense_no','mission_id','expense_date','expense_type','description','amount','receipt_url','status','approver_id','approver_comment','approver_at','approved_amount','created_by','created_at','updated_at'],
   Holidays: ['id','holiday_date','name','created_at','updated_at'],
-  Checkins: ['id','user_id','check_in_at','check_out_at','check_in_lat','check_in_lng','check_out_lat','check_out_lng','check_in_loc','check_out_loc','status','created_at','updated_at','check_in_img','check_out_img']
+  Checkins: ['id','user_id','check_in_at','check_out_at','check_in_lat','check_in_lng','check_out_lat','check_out_lng','check_in_loc','check_out_loc','status','created_at','updated_at','check_in_img','check_out_img'],
+  Courses: ['id','title','description','thumbnail_url','content','video_url','status','created_at','updated_at'],
+  Quizzes: ['id','course_id','question','options','correct_option','created_at','updated_at'],
+  UserProgress: ['id','user_id','course_id','quiz_score','quiz_total','is_passed','created_at','updated_at']
 });
 
 // ── TEXT_COLUMNS — บังคับ Sheet เก็บเป็น text กัน auto-coercion ─
 const TEXT_COLUMNS = Object.freeze([
   'phone','contact_phone','leave_no','token','password_hash','salt','attachment_url','avatar',
   'mission_no','title','purpose','destination','transport_type','expense_type','description','receipt_url',
-  'holiday_date','expense_no','line_user_id','line_connect_code'
+  'holiday_date','expense_no','line_user_id','line_connect_code','question','options','content'
 ]);
 
 // ── Roles ────────────────────────────────────────────────────
@@ -436,7 +442,7 @@ function _dbIdCol_(table) {
 }
 
 async function DB_warmCache() {
-  var tables = ['Users', 'Leaves', 'Sessions', 'Settings', 'AuditLog', 'Missions', 'Expenses', 'Holidays', 'Checkins'];
+  var tables = ['Users', 'Leaves', 'Sessions', 'Settings', 'AuditLog', 'Missions', 'Expenses', 'Holidays', 'Checkins', 'Courses', 'Quizzes', 'UserProgress'];
   for (var i = 0; i < tables.length; i++) {
     var t = tables[i];
     var rows = await sbFetch('GET', t, 'select=*&limit=10000');
@@ -785,7 +791,8 @@ function Users_branchDirectory(user, p) {
       branch: u.branch,
       email: u.email,
       phone: u.phone,
-      avatar: u.avatar
+      avatar: u.avatar,
+      role: u.role
     };
   });
   return { items: list };
@@ -3408,6 +3415,15 @@ async function api(req) {
       case 'holiday.upsert':          return _ok(await Holidays_upsert(user, p));
       case 'holiday.delete':          return _ok(await Holidays_delete(user, p));
 
+      case 'course.list':             return _ok(Courses_list(user, p));
+      case 'course.get':              return _ok(Courses_get(user, p));
+      case 'course.create':           return _ok(await Courses_create(user, p));
+      case 'course.update':           return _ok(await Courses_update(user, p));
+      case 'course.delete':           return _ok(await Courses_delete(user, p));
+      case 'quiz.get_questions':      return _ok(Quizzes_getQuestions(user, p));
+      case 'quiz.submit':             return _ok(await Quizzes_submit(user, p));
+      case 'course.progress_list':    return _ok(Courses_progressList(user, p));
+
       case 'audit.list':              return _ok(Audit_list(user, p));
     }
     throw new Error('ไม่พบ action: ' + action);
@@ -3513,6 +3529,245 @@ async function Checkins_clockOut(user, p) {
 
   await Audit_log_(user, 'checkin.clock_out', 'checkin', todayRecord.id, { check_out_at: record.check_out_at });
   return record;
+}
+
+// === TRAINING & QUIZ LOGIC ===
+function Courses_list(user, p) {
+  var data = p || {};
+  var list = DB_readAll(SHEETS.COURSES);
+  var progress = DB_readAll(SHEETS.PROGRESS).filter(function (x) { return String(x.user_id) === String(user.id); });
+  var progressMap = {};
+  progress.forEach(function (x) { progressMap[String(x.course_id)] = x; });
+
+  if (user.role !== 'admin' && user.role !== 'approver') {
+    list = list.filter(function (c) { return c.status === 'active'; });
+  }
+
+  var result = list.map(function (c) {
+    var prog = progressMap[String(c.id)] || null;
+    return {
+      id: c.id,
+      title: c.title,
+      description: c.description,
+      thumbnail_url: c.thumbnail_url,
+      status: c.status,
+      created_at: c.created_at,
+      progress: prog ? { quiz_score: Number(prog.quiz_score), quiz_total: Number(prog.quiz_total), is_passed: prog.is_passed } : null
+    };
+  });
+
+  return { items: result };
+}
+
+function Courses_get(user, p) {
+  var id = String((p && p.id) || '').trim();
+  if (!id) throw new Error('ระบุ id');
+  var c = DB_findById(SHEETS.COURSES, id);
+  if (!c) throw new Error('ไม่พบคอร์สเรียน');
+  
+  var progress = DB_findOne(SHEETS.PROGRESS, function (x) {
+    return String(x.user_id) === String(user.id) && String(x.course_id) === String(id);
+  });
+
+  return {
+    course: c,
+    progress: progress ? { quiz_score: Number(progress.quiz_score), quiz_total: Number(progress.quiz_total), is_passed: progress.is_passed } : null
+  };
+}
+
+async function Courses_create(user, p) {
+  Auth_requireCap(user, 'setting.manage');
+  var data = p || {};
+  var title = String(data.title || '').trim();
+  var content = String(data.content || '').trim();
+  if (!title) throw new Error('กรุณาระบุชื่อคอร์สเรียน');
+  if (!content) throw new Error('กรุณาระบุเนื้อหาบทเรียน');
+
+  var course = await DB_insert(SHEETS.COURSES, {
+    title: title,
+    description: String(data.description || '').trim(),
+    thumbnail_url: String(data.thumbnail_url || '').trim(),
+    content: content,
+    video_url: String(data.video_url || '').trim(),
+    status: String(data.status || 'active').trim()
+  });
+
+  if (Array.isArray(data.questions)) {
+    for (var i = 0; i < data.questions.length; i++) {
+      var q = data.questions[i];
+      if (q.question && Array.isArray(q.options)) {
+        await DB_insert(SHEETS.QUIZZES, {
+          course_id: course.id,
+          question: String(q.question).trim(),
+          options: JSON.stringify(q.options),
+          correct_option: Number(q.correct_option || 0)
+        });
+      }
+    }
+  }
+
+  await Audit_log_(user, 'course.create', 'course', course.id, {});
+  return course;
+}
+
+async function Courses_update(user, p) {
+  Auth_requireCap(user, 'setting.manage');
+  var data = p || {};
+  var id = String(data.id || '').trim();
+  if (!id) throw new Error('ระบุ id');
+  var c = DB_findById(SHEETS.COURSES, id);
+  if (!c) throw new Error('ไม่พบคอร์สเรียน');
+
+  var patch = {};
+  if ('title' in data) patch.title = String(data.title || '').trim();
+  if ('description' in data) patch.description = String(data.description || '').trim();
+  if ('thumbnail_url' in data) patch.thumbnail_url = String(data.thumbnail_url || '').trim();
+  if ('content' in data) patch.content = String(data.content || '').trim();
+  if ('video_url' in data) patch.video_url = String(data.video_url || '').trim();
+  if ('status' in data) patch.status = String(data.status || 'active').trim();
+
+  var updated = await DB_update(SHEETS.COURSES, id, patch);
+
+  if (Array.isArray(data.questions)) {
+    var existing = DB_readAll(SHEETS.QUIZZES).filter(function (q) { return String(q.course_id) === String(id); });
+    for (var i = 0; i < existing.length; i++) {
+      await DB_delete(SHEETS.QUIZZES, existing[i].id);
+    }
+    for (var i = 0; i < data.questions.length; i++) {
+      var q = data.questions[i];
+      if (q.question && Array.isArray(q.options)) {
+        await DB_insert(SHEETS.QUIZZES, {
+          course_id: id,
+          question: String(q.question).trim(),
+          options: JSON.stringify(q.options),
+          correct_option: Number(q.correct_option || 0)
+        });
+      }
+    }
+  }
+
+  await Audit_log_(user, 'course.update', 'course', id, {});
+  return updated;
+}
+
+async function Courses_delete(user, p) {
+  Auth_requireCap(user, 'setting.manage');
+  var id = String((p && p.id) || '').trim();
+  if (!id) throw new Error('ระบุ id');
+  var c = DB_findById(SHEETS.COURSES, id);
+  if (!c) throw new Error('ไม่พบคอร์สเรียน');
+
+  await DB_delete(SHEETS.COURSES, id);
+  await Audit_log_(user, 'course.delete', 'course', id, {});
+  return { success: true };
+}
+
+function Quizzes_getQuestions(user, p) {
+  var courseId = String((p && p.course_id) || '').trim();
+  if (!courseId) throw new Error('ระบุ course_id');
+  var quizzes = DB_readAll(SHEETS.QUIZZES).filter(function (q) { return String(q.course_id) === String(courseId); });
+  var isAdmin = user.role === 'admin' || user.role === 'approver';
+
+  return {
+    items: quizzes.map(function (q) {
+      var opts = [];
+      try {
+        opts = JSON.parse(q.options);
+      } catch(e) {
+        opts = [];
+      }
+      var item = {
+        id: q.id,
+        question: q.question,
+        options: opts
+      };
+      if (isAdmin) {
+        item.correct_option = Number(q.correct_option);
+      }
+      return item;
+    })
+  };
+}
+
+async function Quizzes_submit(user, p) {
+  var data = p || {};
+  var courseId = String(data.course_id || '').trim();
+  if (!courseId) throw new Error('ระบุ course_id');
+  var answers = data.answers || {};
+
+  var quizzes = DB_readAll(SHEETS.QUIZZES).filter(function (q) { return String(q.course_id) === String(courseId); });
+  if (quizzes.length === 0) throw new Error('ไม่พบข้อมูลข้อสอบในคอร์สเรียนนี้');
+
+  var score = 0;
+  var total = quizzes.length;
+
+  quizzes.forEach(function (q) {
+    var submittedAns = answers[String(q.id)];
+    if (submittedAns != null && Number(submittedAns) === Number(q.correct_option)) {
+      score++;
+    }
+  });
+
+  var pct = Math.round(score * 100 / total);
+  var isPassed = pct >= 80 ? 'yes' : 'no';
+
+  var progress = DB_findOne(SHEETS.PROGRESS, function (x) {
+    return String(x.user_id) === String(user.id) && String(x.course_id) === String(courseId);
+  });
+
+  var result;
+  if (progress) {
+    var finalPass = (progress.is_passed === 'yes' || isPassed === 'yes') ? 'yes' : 'no';
+    var finalScore = Math.max(Number(progress.quiz_score || 0), score);
+    result = await DB_update(SHEETS.PROGRESS, progress.id, {
+      quiz_score: finalScore,
+      quiz_total: total,
+      is_passed: finalPass,
+      updated_at: cfg_iso_(cfg_now_())
+    });
+  } else {
+    result = await DB_insert(SHEETS.PROGRESS, {
+      user_id: user.id,
+      course_id: courseId,
+      quiz_score: score,
+      quiz_total: total,
+      is_passed: isPassed
+    });
+  }
+
+  await Audit_log_(user, 'quiz.submit', 'course', courseId, { score: score, total: total, is_passed: isPassed });
+  return {
+    score: score,
+    total: total,
+    percentage: pct,
+    is_passed: isPassed === 'yes'
+  };
+}
+
+function Courses_progressList(user, p) {
+  Auth_requireCap(user, 'setting.manage');
+  var data = p || {};
+  var courseId = String(data.course_id || '').trim();
+  if (!courseId) throw new Error('ระบุ course_id');
+
+  var progress = DB_readAll(SHEETS.PROGRESS).filter(function (x) { return String(x.course_id) === String(courseId); });
+  var users = DB_buildIndex(SHEETS.USERS);
+
+  var items = progress.map(function (pg) {
+    var u = users[pg.user_id] || {};
+    return {
+      user_id: pg.user_id,
+      full_name: u.full_name || '-',
+      department: u.department || '-',
+      position: u.position || '-',
+      quiz_score: Number(pg.quiz_score),
+      quiz_total: Number(pg.quiz_total),
+      is_passed: pg.is_passed,
+      updated_at: pg.updated_at || pg.created_at
+    };
+  });
+
+  return { items: items };
 }
 
 // === SERVE HANDLER ===
