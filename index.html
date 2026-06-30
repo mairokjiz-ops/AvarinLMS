@@ -7543,7 +7543,12 @@ async function api(req) {
                 tryFetch(fallbackUrl, true);
                 return;
               }
-              throw new Error('Gemini API returned status ' + res.status);
+              return res.json().then(function (errJson) {
+                var msg = errJson && errJson.error && errJson.error.message ? errJson.error.message : ('Status ' + res.status);
+                return Promise.reject(new Error(msg));
+              }).catch(function () {
+                return Promise.reject(new Error('Gemini API returned status ' + res.status));
+              });
             }
             return res.json();
           })
