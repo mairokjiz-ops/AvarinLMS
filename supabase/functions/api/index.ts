@@ -1793,6 +1793,14 @@ async function Leaves_comment(user, p) {
   if (stages < 2) throw new Error('ระบบไม่ได้เปิดขั้นตอนความเห็นผู้บังคับบัญชา (กำหนดเป็น ' + stages + ' ขั้น)');
   var lv = DB_findById(SHEETS.LEAVES, p && p.id);
   if (!lv) throw new Error('ไม่พบใบลา');
+
+  if (user.role !== 'admin' && user.role !== 'approver' && user.role !== 'checker') {
+    var requester = DB_findById(SHEETS.USERS, lv.requester_id);
+    if (!requester || requester.department !== user.department) {
+      throw new Error('คุณไม่มีสิทธิ์ลงความเห็นใบลาของแผนกอื่น');
+    }
+  }
+
   var ok = (lv.status === STATUS.CHECKED) || (stages === 2 && lv.status === STATUS.PENDING);
   if (!ok) throw new Error('ใบลานี้ไม่อยู่ในสถานะที่ให้ความเห็นได้');
   var updated = await DB_update(SHEETS.LEAVES, lv.id, {
@@ -1911,6 +1919,14 @@ function Leaves_list(user, p) {
   });
   var users = DB_buildIndex(SHEETS.USERS);
 
+  if (user.role !== 'admin' && user.role !== 'approver' && user.role !== 'checker') {
+    rows = rows.filter(function (r) {
+      if (String(r.requester_id) === String(user.id)) return true;
+      var reqUser = users[r.requester_id];
+      return reqUser && reqUser.department === user.department;
+    });
+  }
+
   if (scope === 'mine') {
     rows = rows.filter(function (r) { return String(r.requester_id) === String(user.id); });
   } else if (scope === 'all') {
@@ -1949,10 +1965,16 @@ function Leaves_get(user, p) {
   if (!id) throw new Error('ระบุ id');
   var lv = DB_findById(SHEETS.LEAVES, id);
   if (!lv) throw new Error('ไม่พบใบลา');
+  var users = DB_buildIndex(SHEETS.USERS);
   if (String(lv.requester_id) !== String(user.id)) {
     if (!hasCap_(user.role, 'leave.view_all')) throw new Error('คุณไม่มีสิทธิ์ดูใบลาของผู้อื่น');
+    var requester = users[lv.requester_id];
+    var isSameDept = requester && requester.department === user.department;
+    var canViewAll = user.role === 'admin' || user.role === 'approver' || user.role === 'checker';
+    if (!canViewAll && !isSameDept) {
+      throw new Error('คุณไม่มีสิทธิ์ดูใบลาของแผนกอื่น');
+    }
   }
-  var users = DB_buildIndex(SHEETS.USERS);
   var settings = Settings_get_public_();
   return {
     leave: _enrichLeave_(lv, users),
@@ -1974,6 +1996,14 @@ function Reports_overview(user, p) {
   var fy = Number((p && p.fiscal_year) || cfg_fiscalYear_(cfg_now_()));
   var rows = DB_readAll(SHEETS.LEAVES).filter(function (r) { return Number(r.fiscal_year) === fy; });
   var users = DB_buildIndex(SHEETS.USERS);
+
+  if (user.role !== 'admin' && user.role !== 'approver' && user.role !== 'checker') {
+    rows = rows.filter(function (r) {
+      if (String(r.requester_id) === String(user.id)) return true;
+      var reqUser = users[r.requester_id];
+      return reqUser && reqUser.department === user.department;
+    });
+  }
 
   var by_status = {};
   var by_type = {};
@@ -2040,6 +2070,12 @@ function Reports_user(user, p) {
   if (uid !== String(user.id) && !hasCap_(user.role, 'report.view_all')) {
     throw new Error('คุณไม่มีสิทธิ์ดูรายงานของผู้อื่น');
   }
+  if (uid !== String(user.id) && user.role !== 'admin' && user.role !== 'approver' && user.role !== 'checker') {
+    var targetUser = DB_findById(SHEETS.USERS, uid);
+    if (targetUser && targetUser.department !== user.department) {
+      throw new Error('คุณไม่มีสิทธิ์ดูรายงานของแผนกอื่น');
+    }
+  }
   var fy = Number((p && p.fiscal_year) || cfg_fiscalYear_(cfg_now_()));
   var u = DB_findById(SHEETS.USERS, uid);
   if (!u) throw new Error('ไม่พบผู้ใช้');
@@ -2075,6 +2111,9 @@ function Reports_user(user, p) {
 function Reports_users_list(user) {
   Auth_requireCap(user, 'report.view_all');
   var rows = DB_readAll(SHEETS.USERS).filter(function (u) { return _yes_(u.is_active); });
+  if (user.role !== 'admin' && user.role !== 'approver' && user.role !== 'checker') {
+    rows = rows.filter(function (u) { return u.department === user.department; });
+  }
   return {
     items: rows.map(function (u) {
       return { id: u.id, full_name: u.full_name, position: u.position, department: u.department, role: u.role };
@@ -2089,6 +2128,14 @@ function Dashboard_data(user) {
     return r.leave_type !== 'compensatory' && r.leave_type !== 'work_offday';
   });
   var users = DB_buildIndex(SHEETS.USERS);
+
+  if (user.role !== 'admin' && user.role !== 'approver' && user.role !== 'checker') {
+    rows = rows.filter(function (r) {
+      if (String(r.requester_id) === String(user.id)) return true;
+      var reqUser = users[r.requester_id];
+      return reqUser && reqUser.department === user.department;
+    });
+  }
 
   var data = {
     fiscal_year: fy, fiscal_year_be: fy + 543,
@@ -2522,7 +2569,9 @@ function _wf_visibleMissionRows_(user, p) {
 }
 function Calendar_month(user, p) {
   var range = _wf_monthRange_(p && p.month);
-  var scope = 'all';
+  var scope = 'own';
+  if (hasCap_(user.role, 'calendar.view_all')) scope = 'all';
+  else if (hasCap_(user.role, 'calendar.view_department')) scope = 'department';
   var users = DB_buildIndex(SHEETS.USERS);
   var visibleStatuses = {};
   [STATUS.PENDING, STATUS.CHECKED, STATUS.REVIEWED, STATUS.APPROVED].forEach(function (s) { visibleStatuses[s] = true; });

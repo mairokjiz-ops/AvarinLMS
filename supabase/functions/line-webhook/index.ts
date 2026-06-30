@@ -3270,7 +3270,13 @@ async function _LINE_handlePostbackEvent_(event, replyToken, lineUserId) {
     var leaves = DB_readAll(SHEETS.LEAVES);
     var usersIndex = DB_buildIndex(SHEETS.USERS);
     var pending = leaves.filter(function (r) {
-      return inboxStatuses.indexOf(r.status) >= 0;
+      if (inboxStatuses.indexOf(r.status) < 0) return false;
+      if (user.role !== 'admin' && user.role !== 'approver' && user.role !== 'checker') {
+        if (String(r.requester_id) === String(user.id)) return true;
+        var reqUser = usersIndex[r.requester_id];
+        return reqUser && reqUser.department === user.department;
+      }
+      return true;
     }).map(function (r) {
       return _enrichLeave_(r, usersIndex);
     });
