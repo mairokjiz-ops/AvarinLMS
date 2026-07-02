@@ -11502,7 +11502,7 @@ async function api(req) {
           + (function() {
               /* parse multi-item: "1. [type] desc (฿amt) | 2. [type] desc (฿amt)" */
               var parts = printDesc.split(' | ');
-              var multiPattern = /^(\d+)\.\s*\[([^\]]+)\]\s*(.*?)\s*\(฿([\d,\.]+)\)$/;
+              var multiPattern = /^(\d+)\.\s*\[([^\]]+)\]\s*(.*?)\s*\(฿(-?[\d,\.]+)\)$/;
               var rows = '';
               var anyMatch = false;
               var itemTotal = 0;
