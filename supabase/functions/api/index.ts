@@ -90,7 +90,7 @@ const SCHEMAS = Object.freeze({
   Settings: ['key','value','updated_at'],
   AuditLog: ['id','user_id','action','entity','entity_id','meta','created_at'],
   Missions: ['id','mission_no','requester_id','title','purpose','destination','start_date','end_date','transport_type','requested_amount','status','approver_id','approver_comment','approver_at','approved_amount','created_at','updated_at','work_type'],
-  Expenses: ['id','expense_no','mission_id','expense_date','expense_type','description','amount','receipt_url','status','approver_id','approver_comment','approver_at','approved_amount','created_by','created_at','updated_at'],
+  Expenses: ['id','expense_no','mission_id','expense_date','expense_type','description','amount','receipt_url','bank_account','status','approver_id','approver_comment','approver_at','approved_amount','created_by','created_at','updated_at'],
   Holidays: ['id','holiday_date','name','created_at','updated_at'],
   Checkins: ['id','user_id','check_in_at','check_out_at','check_in_lat','check_in_lng','check_out_lat','check_out_lng','check_in_loc','check_out_loc','status','created_at','updated_at','check_in_img','check_out_img'],
   Courses: ['id','title','description','thumbnail_url','content','video_url','status','category','duration_hours','pass_score','instructor','ai_summary','ai_modules','ai_quiz','ai_flashcards','ai_key_points','ai_checklist','created_at','updated_at'],
@@ -2726,6 +2726,7 @@ function _wf_enrichExpense_(ex, users) {
     description: ex.description,
     amount: Number(ex.amount || 0),
     receipt_url: ex.receipt_url,
+    bank_account: ex.bank_account,
     status: ex.status,
     status_label: STATUS_LABEL[ex.status] || ex.status,
     status_tone: STATUS_TONE[ex.status] || 'slate',
@@ -2841,6 +2842,7 @@ async function Expense_create(user, p) {
     description: String(data.description || '').trim(),
     amount: Number(data.amount),
     receipt_url: String(data.receipt_url || '').trim(),
+    bank_account: data.bank_account ? String(data.bank_account).trim() : null,
     status: status,
     approver_id: null,
     approver_comment: '',
@@ -2869,7 +2871,7 @@ async function Expense_update(user, p) {
   if (ex.status !== STATUS.DRAFT && ex.status !== STATUS.PENDING && !hasCap_(user.role, 'expense.manage')) throw new Error('รายการนี้แก้ไขไม่ได้');
   
   var patch = {};
-  ['description', 'expense_type', 'receipt_url'].forEach(function (k) {
+  ['description', 'expense_type', 'receipt_url', 'bank_account'].forEach(function (k) {
     if (typeof data[k] !== 'undefined') patch[k] = String(data[k] || '').trim();
   });
   if (typeof data.mission_id !== 'undefined') {
