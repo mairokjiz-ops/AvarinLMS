@@ -10350,7 +10350,7 @@ async function api(req) {
     }
 
     function expenseTypeOptions(selectedType) {
-      var types = ['ค่าเดินทาง', 'ค่าอาหาร', 'ค่าที่พัก', 'ค่าทางด่วน', 'อื่น ๆ'];
+      var types = ['ค่าเดินทาง', 'ค่าอาหาร', 'ค่าที่พัก', 'ค่าทางด่วน', 'ส่วนลด', 'อื่น ๆ'];
       return types.map(function (t) {
         var sel = (selectedType === t || (!selectedType && t === 'ค่าเดินทาง')) ? ' selected' : '';
         return '<option value="' + t + '"' + sel + '>' + t + '</option>';
@@ -10642,7 +10642,12 @@ async function api(req) {
           var amt  = parseFloat(row.querySelector('.ef-item-amt') ? row.querySelector('.ef-item-amt').value : '');
           var date = row.querySelector('.ef-item-date') ? row.querySelector('.ef-item-date').value : '';
           if (!desc) { err = 'รายการที่ ' + (i+1) + ': กรุณาระบุรายละเอียด'; return; }
-          if (isNaN(amt) || amt <= 0) { err = 'รายการที่ ' + (i+1) + ': กรุณาระบุจำนวนเงินที่มากกว่า 0'; return; }
+          if (type === 'ส่วนลด') {
+            if (isNaN(amt) || amt === 0) { err = 'รายการที่ ' + (i+1) + ': กรุณาระบุจำนวนเงินส่วนลด'; return; }
+            if (amt > 0) amt = -amt;
+          } else {
+            if (isNaN(amt) || amt <= 0) { err = 'รายการที่ ' + (i+1) + ': กรุณาระบุจำนวนเงินที่มากกว่า 0'; return; }
+          }
           if (!date) { err = 'รายการที่ ' + (i+1) + ': กรุณาระบุวันที่ใช้จ่าย'; return; }
           totalAmt += amt;
           descParts.push((i+1) + '. [' + type + '] ' + desc + ' (฿' + amt.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ')');
@@ -10746,8 +10751,8 @@ async function api(req) {
 
       list.innerHTML = '';
 
-      var TYPES = ['ค่าเดินทาง', 'ค่าอาหาร', 'ค่าที่พัก', 'ค่าทางด่วน', 'อื่น ๆ'];
-      var ICONS = { 'ค่าเดินทาง': '🚗', 'ค่าอาหาร': '🍽️', 'ค่าที่พัก': '🏨', 'ค่าทางด่วน': '🛣️', 'อื่น ๆ': '📎' };
+      var TYPES = ['ค่าเดินทาง', 'ค่าอาหาร', 'ค่าที่พัก', 'ค่าทางด่วน', 'ส่วนลด', 'อื่น ๆ'];
+      var ICONS = { 'ค่าเดินทาง': '🚗', 'ค่าอาหาร': '🍽️', 'ค่าที่พัก': '🏨', 'ค่าทางด่วน': '🛣️', 'ส่วนลด': '🏷️', 'อื่น ๆ': '📎' };
 
       function typeOptions(sel) {
         return TYPES.map(function(t) {
@@ -10757,9 +10762,16 @@ async function api(req) {
 
       function recalcTotal() {
         var total = 0;
-        list.querySelectorAll('.ef-item-amt').forEach(function(el) {
-          var v = parseFloat(el.value);
-          if (!isNaN(v)) total += v;
+        list.querySelectorAll('.ef-item-row').forEach(function(row) {
+          var type = row.querySelector('.ef-item-type') ? row.querySelector('.ef-item-type').value : '';
+          var el = row.querySelector('.ef-item-amt');
+          var v = parseFloat(el ? el.value : '');
+          if (!isNaN(v)) {
+            if (type === 'ส่วนลด' && v > 0) {
+              v = -v;
+            }
+            total += v;
+          }
         });
         var el = document.getElementById('ef-grand-total');
         if (el) el.textContent = '฿ ' + total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -10781,7 +10793,7 @@ async function api(req) {
               '<input class="ef-input ef-item-date" type="date" value="' + (preset.date || TH.iso(new Date())) + '">' +
               '<div class="ef-input-money">' +
                 '<span class="ef-baht-prefix">฿</span>' +
-                '<input class="ef-input ef-item-amt" type="number" placeholder="0.00" min="0" value="' + (preset.amount || '') + '">' +
+                '<input class="ef-input ef-item-amt" type="number" placeholder="0.00" value="' + (preset.amount || '') + '">' +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -10799,6 +10811,7 @@ async function api(req) {
           }, 180);
         });
         row.querySelector('.ef-item-amt').addEventListener('input', recalcTotal);
+        row.querySelector('.ef-item-type').addEventListener('change', recalcTotal);
         setTimeout(function() { row.style.opacity = '1'; row.style.transform = 'translateY(0)'; }, 20);
         list.appendChild(row);
         recalcTotal();
