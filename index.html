@@ -4720,7 +4720,7 @@ async function api(req) {
         items: [
           { hash: '#/leaves/new',   icon: 'file-earmark-plus-fill', label: 'ยื่นใบลา',           cap: 'leave.create_own' },
           { hash: '#/leaves/mine',  icon: 'person-vcard-fill',      label: 'ใบลาของฉัน',         cap: 'leave.view_own' },
-          { hash: '#/leaves/inbox', icon: 'check2-square',          label: 'งานรอดำเนินการ',     cap: 'leave.check|leave.comment|leave.approve' },
+          { hash: '#/leaves/inbox', icon: 'check2-square',          label: 'งานรอดำเนินการ',     cap: 'leave.check|leave.comment|leave.approve', badge: 'leaves_pending' },
           { hash: '#/leaves/all',   icon: 'inbox-fill',             label: 'รายการใบลาทั้งหมด',  cap: 'leave.view_all' }
         ]
       },
@@ -5183,6 +5183,9 @@ async function api(req) {
             } else if (it.badge === 'expenses_pending') {
               var cnt = Store._pendingExpensesCount || 0;
               if (cnt > 0) badgeHtml = '<span class="sb-nav-badge">' + cnt + '</span>';
+            } else if (it.badge === 'leaves_pending') {
+              var cnt = Store._pendingLeavesCount || 0;
+              if (cnt > 0) badgeHtml = '<span class="sb-nav-badge">' + cnt + '</span>';
             }
             return '<a href="' + it.hash + '" class="sb-link' + active + '"><i class="bi bi-' + it.icon + '"></i> ' + esc(it.label) + badgeHtml + '</a>';
           }).join('');
@@ -5449,6 +5452,13 @@ async function api(req) {
       promises.push(
         call('expense.list', { status: 'pending' }).then(function (r) {
           Store._pendingExpensesCount = (r && r.total) || 0;
+        }).catch(function () {})
+      );
+    }
+    if (hasCap('leave.check|leave.comment|leave.approve')) {
+      promises.push(
+        call('leave.list', { scope: 'pending_action' }).then(function (r) {
+          Store._pendingLeavesCount = (r && r.total) || 0;
         }).catch(function () {})
       );
     }
