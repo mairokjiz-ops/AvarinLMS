@@ -4287,9 +4287,9 @@ async function AI_courseGenerate(user, p) {
 // === CLOUDFLARE R2 INTEGRATION ===
 let s3Client: any = null;
 function getS3Client() {
-  const r2_key = Deno.env.get('R2_ACCESS_KEY_ID') || '';
-  const r2_secret = Deno.env.get('R2_SECRET_ACCESS_KEY') || '';
-  const r2_endpoint = Deno.env.get('R2_ENDPOINT') || '';
+  const r2_key = (Deno.env.get('R2_ACCESS_KEY_ID') || '').trim();
+  const r2_secret = (Deno.env.get('R2_SECRET_ACCESS_KEY') || '').trim();
+  const r2_endpoint = (Deno.env.get('R2_ENDPOINT') || '').trim();
   if (!s3Client) {
     if (!r2_key || !r2_secret || !r2_endpoint) {
       throw new Error("Missing R2 environment configuration (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT).");
@@ -4319,7 +4319,7 @@ async function R2_getUploadUrl(user, p) {
   var path = `uploads/${user.id}/${stamp}_${rand}_${cleanName}`;
 
   var client = getS3Client();
-  var r2_bucket = Deno.env.get('R2_BUCKET_NAME') || '';
+  var r2_bucket = (Deno.env.get('R2_BUCKET_NAME') || '').trim();
   var command = new PutObjectCommand({
     Bucket: r2_bucket,
     Key: path,
@@ -4327,7 +4327,7 @@ async function R2_getUploadUrl(user, p) {
   });
 
   var uploadUrl = await getSignedUrl(client, command, { expiresIn: 900 });
-  var r2_prefix = Deno.env.get('R2_PUBLIC_URL_PREFIX') || '';
+  var r2_prefix = (Deno.env.get('R2_PUBLIC_URL_PREFIX') || '').trim();
   var publicUrl = `${r2_prefix.replace(/\/$/, '')}/${path}`;
 
   return {
@@ -4360,7 +4360,7 @@ async function R2_upload(user, p) {
 
   try {
     var client = getS3Client();
-    var r2_bucket = Deno.env.get('R2_BUCKET_NAME') || '';
+    var r2_bucket = (Deno.env.get('R2_BUCKET_NAME') || '').trim();
     var command = new PutObjectCommand({
       Bucket: r2_bucket,
       Key: path,
@@ -4373,7 +4373,7 @@ async function R2_upload(user, p) {
     throw new Error("R2 storage upload failed: " + err.message);
   }
 
-  var r2_prefix = Deno.env.get('R2_PUBLIC_URL_PREFIX') || '';
+  var r2_prefix = (Deno.env.get('R2_PUBLIC_URL_PREFIX') || '').trim();
   var publicUrl = `${r2_prefix.replace(/\/$/, '')}/${path}`;
   return {
     publicUrl: publicUrl,
@@ -4383,11 +4383,11 @@ async function R2_upload(user, p) {
 
 async function R2_test(user, p) {
   if (!user) throw new Error("Unauthorized");
-  const r2_key = Deno.env.get('R2_ACCESS_KEY_ID') || '';
-  const r2_secret = Deno.env.get('R2_SECRET_ACCESS_KEY') || '';
-  const r2_endpoint = Deno.env.get('R2_ENDPOINT') || '';
-  const r2_bucket = Deno.env.get('R2_BUCKET_NAME') || '';
-  const r2_prefix = Deno.env.get('R2_PUBLIC_URL_PREFIX') || '';
+  const r2_key = (Deno.env.get('R2_ACCESS_KEY_ID') || '').trim();
+  const r2_secret = (Deno.env.get('R2_SECRET_ACCESS_KEY') || '').trim();
+  const r2_endpoint = (Deno.env.get('R2_ENDPOINT') || '').trim();
+  const r2_bucket = (Deno.env.get('R2_BUCKET_NAME') || '').trim();
+  const r2_prefix = (Deno.env.get('R2_PUBLIC_URL_PREFIX') || '').trim();
   return {
     R2_ACCESS_KEY_ID_len: r2_key.length,
     R2_SECRET_ACCESS_KEY_len: r2_secret.length,
@@ -4404,8 +4404,8 @@ async function R2_migrateLegacyData(user) {
     throw new Error('Only admin can run data migration');
   }
 
-  const R2_BUCKET_NAME = Deno.env.get('R2_BUCKET_NAME') || '';
-  const R2_PUBLIC_URL_PREFIX = Deno.env.get('R2_PUBLIC_URL_PREFIX') || '';
+  const R2_BUCKET_NAME = (Deno.env.get('R2_BUCKET_NAME') || '').trim();
+  const R2_PUBLIC_URL_PREFIX = (Deno.env.get('R2_PUBLIC_URL_PREFIX') || '').trim();
 
   var summary = {
     avatars_migrated: 0,

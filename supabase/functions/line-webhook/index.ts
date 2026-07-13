@@ -3570,9 +3570,9 @@ function _LINE_buildReceiptStoragePath_(lineUserId, ext) {
 // === CLOUDFLARE R2 INTEGRATION ===
 let s3Client: any = null;
 function getS3Client() {
-  const r2_key = Deno.env.get('R2_ACCESS_KEY_ID') || '';
-  const r2_secret = Deno.env.get('R2_SECRET_ACCESS_KEY') || '';
-  const r2_endpoint = Deno.env.get('R2_ENDPOINT') || '';
+  const r2_key = (Deno.env.get('R2_ACCESS_KEY_ID') || '').trim();
+  const r2_secret = (Deno.env.get('R2_SECRET_ACCESS_KEY') || '').trim();
+  const r2_endpoint = (Deno.env.get('R2_ENDPOINT') || '').trim();
   if (!s3Client) {
     if (!r2_key || !r2_secret || !r2_endpoint) {
       throw new Error("Missing R2 environment configuration (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT).");
@@ -3590,7 +3590,7 @@ function getS3Client() {
 }
 
 function _LINE_publicStorageUrl_(path) {
-  const r2_prefix = Deno.env.get('R2_PUBLIC_URL_PREFIX') || '';
+  const r2_prefix = (Deno.env.get('R2_PUBLIC_URL_PREFIX') || '').trim();
   if (r2_prefix) {
     var prefix = String(r2_prefix || '').replace(/\/$/, '');
     return prefix + '/' + path.split('/').map(encodeURIComponent).join('/');
@@ -3604,10 +3604,10 @@ async function _LINE_uploadReceiptImage_(messageId, lineUserId) {
   var ext = _LINE_guessImageExtension_(file.contentType);
   var path = _LINE_buildReceiptStoragePath_(lineUserId, ext);
 
-  const r2_key = Deno.env.get('R2_ACCESS_KEY_ID') || '';
-  const r2_secret = Deno.env.get('R2_SECRET_ACCESS_KEY') || '';
-  const r2_endpoint = Deno.env.get('R2_ENDPOINT') || '';
-  const r2_bucket = Deno.env.get('R2_BUCKET_NAME') || '';
+  const r2_key = (Deno.env.get('R2_ACCESS_KEY_ID') || '').trim();
+  const r2_secret = (Deno.env.get('R2_SECRET_ACCESS_KEY') || '').trim();
+  const r2_endpoint = (Deno.env.get('R2_ENDPOINT') || '').trim();
+  const r2_bucket = (Deno.env.get('R2_BUCKET_NAME') || '').trim();
 
   if (r2_key && r2_secret && r2_endpoint && r2_bucket) {
     try {
