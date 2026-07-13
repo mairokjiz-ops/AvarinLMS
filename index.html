@@ -10661,32 +10661,14 @@ async function api(req) {
           (function (file) {
             var reader = new FileReader();
             reader.onload = function (e) {
+              var originalBase64 = e.target.result;
+              
               var img = new Image();
               img.onload = function () {
-                // 1. High-quality compression for R2 upload
-                var hqCanvas = document.createElement('canvas');
-                var hqMaxSize = 1600;
-                var hqW = img.width;
-                var hqH = img.height;
-                if (hqW > hqH) {
-                  if (hqW > hqMaxSize) { hqH *= hqMaxSize / hqW; hqW = hqMaxSize; }
-                } else {
-                  if (hqH > hqMaxSize) { hqW *= hqMaxSize / hqH; hqH = hqMaxSize; }
-                }
-                hqCanvas.width = hqW; hqCanvas.height = hqH;
-                var hqCtx = hqCanvas.getContext('2d');
-                hqCtx.drawImage(img, 0, 0, hqW, hqH);
-                var hqDataUrl = '';
-                try {
-                  hqDataUrl = hqCanvas.toDataURL('image/jpeg', 0.85);
-                } catch (err) {
-                  hqDataUrl = e.target.result;
-                }
-
-                // 2. Low-quality compression to fit Sheets cell (<= 48000 characters)
+                // Low-quality compression strictly to fit Sheets cell (<= 48000 characters)
                 var max_size = 600;
                 var quality = 0.5;
-                var dataUrl = '';
+                var lowQualityDataUrl = '';
                 var attempt = 0;
                 while (attempt < 5) {
                   var canvas = document.createElement('canvas');
@@ -10701,20 +10683,20 @@ async function api(req) {
                   var ctx = canvas.getContext('2d');
                   ctx.drawImage(img, 0, 0, w, h);
                   try {
-                    dataUrl = canvas.toDataURL('image/jpeg', quality);
+                    lowQualityDataUrl = canvas.toDataURL('image/jpeg', quality);
                   } catch (err) {
-                    dataUrl = e.target.result;
+                    lowQualityDataUrl = originalBase64;
                     break;
                   }
-                  if (dataUrl.length <= 48000) break;
+                  if (lowQualityDataUrl.length <= 48000) break;
                   max_size = Math.round(max_size * 0.8);
                   quality = Math.max(0.2, quality - 0.1);
                   attempt++;
                 }
                 
                 var idx = chosenReceipts.length;
-                var targetData = dataUrl || e.target.result;
-                chosenReceipts.push(targetData);
+                var fallbackData = lowQualityDataUrl || originalBase64;
+                chosenReceipts.push(fallbackData);
                 loadedCount++;
                 if (loadedCount === toAdd) {
                   updateReceiptsPreview();
@@ -10722,8 +10704,9 @@ async function api(req) {
                   fi.value = '';
                 }
 
-                (function (currentIdx, uploadDataUrl) {
-                  call('r2.upload', { filename: 'receipt.jpg', contentType: 'image/jpeg', base64: uploadDataUrl })
+                // Upload the original, high-quality, raw image file to Cloudflare R2
+                (function (currentIdx, rawDataUrl) {
+                  call('r2.upload', { filename: file.name || 'receipt.jpg', contentType: file.type || 'image/jpeg', base64: rawDataUrl })
                     .then(function (r2Data) {
                       chosenReceipts[currentIdx] = r2Data.publicUrl;
                       console.log('Receipt uploaded to R2:', r2Data.publicUrl);
@@ -10736,12 +10719,11 @@ async function api(req) {
                       console.warn('R2 receipt upload failed:', err);
                       toast('อัปโหลด R2 ล้มเหลว ระบบใช้ฐานข้อมูลสำรองแทน (' + (err.message || err) + ')', 'warning');
                     });
-                })(idx, hqDataUrl);
+                })(idx, originalBase64);
               };
               img.onerror = function () {
                 var idx = chosenReceipts.length;
-                var targetData = e.target.result;
-                chosenReceipts.push(targetData);
+                chosenReceipts.push(originalBase64);
                 loadedCount++;
                 if (loadedCount === toAdd) {
                   updateReceiptsPreview();
@@ -10749,8 +10731,8 @@ async function api(req) {
                   fi.value = '';
                 }
 
-                (function (currentIdx, currentDataUrl) {
-                  call('r2.upload', { filename: 'receipt.jpg', contentType: 'image/jpeg', base64: currentDataUrl })
+                (function (currentIdx, rawDataUrl) {
+                  call('r2.upload', { filename: file.name || 'receipt.jpg', contentType: file.type || 'image/jpeg', base64: rawDataUrl })
                     .then(function (r2Data) {
                       chosenReceipts[currentIdx] = r2Data.publicUrl;
                       console.log('Receipt uploaded to R2 (fallback path):', r2Data.publicUrl);
@@ -10763,9 +10745,9 @@ async function api(req) {
                       console.warn('R2 receipt upload failed:', err);
                       toast('อัปโหลด R2 ล้มเหลว ระบบใช้ฐานข้อมูลสำรองแทน (' + (err.message || err) + ')', 'warning');
                     });
-                })(idx, targetData);
+                })(idx, originalBase64);
               };
-              img.src = e.target.result;
+              img.src = originalBase64;
             };
             reader.readAsDataURL(file);
           })(files[i]);
