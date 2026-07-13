@@ -4922,7 +4922,7 @@ async function api(req) {
       + '  </div>'
       + '</div>'
       + '<div class="login-footer">'
-      + '  <div class="lf-copy">' + year + ' © ' + esc(app.name) + ' <span class="lf-version">v1.2.0 (RAW_UPLOAD)</span></div>'
+      + '  <div class="lf-copy">' + year + ' © ' + esc(app.name) + ' <span class="lf-version">v1.2.1 (DIRECT_RAW_VIEW)</span></div>'
       + '  <div class="lf-dev">'
       + '    <a href="' + esc(dev.URL) + '" target="_blank" rel="noopener noreferrer" class="lf-dev-link">'
       + '      <img class="lf-dev-logo" src="' + esc(dev.LOGO || '') + '" alt="" referrerpolicy="no-referrer">'
@@ -10488,30 +10488,8 @@ async function api(req) {
         img.style.width = '100%';
         img.style.height = '100%';
         img.style.objectFit = 'cover';
-        img.style.cursor = 'pointer';
         img.addEventListener('click', function() {
-          Swal.fire({
-            imageUrl: url,
-            imageAlt: 'หลักฐานการจ่ายเงิน รูปที่ ' + (index + 1),
-            showConfirmButton: true,
-            confirmButtonText: '<i class="bi bi-box-arrow-up-right"></i> เปิดดูรูปภาพจริงขนาดเต็ม',
-            confirmButtonColor: '#2563eb',
-            showCloseButton: true,
-            width: 'auto',
-            didOpen: function(modal) {
-              var imgEl = modal.querySelector('.swal2-image');
-              if (imgEl) {
-                imgEl.style.cursor = 'zoom-in';
-                imgEl.addEventListener('click', function() {
-                  window.open(url, '_blank');
-                });
-              }
-            }
-          }).then(function(result) {
-            if (result.isConfirmed) {
-              window.open(url, '_blank');
-            }
-          });
+          window.open(url, '_blank');
         });
         wrapper.appendChild(img);
         
@@ -11467,28 +11445,7 @@ async function api(req) {
         el.addEventListener('click', function () {
           var idx = parseInt(this.getAttribute('data-idx'));
           var url = receipts[idx];
-          Swal.fire({
-            imageUrl: url,
-            imageAlt: 'หลักฐานการจ่ายเงิน รูปที่ ' + (idx + 1),
-            showConfirmButton: true,
-            confirmButtonText: '<i class="bi bi-box-arrow-up-right"></i> เปิดดูรูปภาพจริงขนาดเต็ม',
-            confirmButtonColor: '#2563eb',
-            showCloseButton: true,
-            width: 'auto',
-            didOpen: function(modal) {
-              var imgEl = modal.querySelector('.swal2-image');
-              if (imgEl) {
-                imgEl.style.cursor = 'zoom-in';
-                imgEl.addEventListener('click', function() {
-                  window.open(url, '_blank');
-                });
-              }
-            }
-          }).then(function(result) {
-            if (result.isConfirmed) {
-              window.open(url, '_blank');
-            }
-          });
+          window.open(url, '_blank');
         });
       });
     }
