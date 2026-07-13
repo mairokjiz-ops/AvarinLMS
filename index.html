@@ -10348,6 +10348,7 @@ async function api(req) {
     if (!hasCap('expense.create_own|expense.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
     
     var chosenReceipts = [];
+    var uploadsInProgress = 0;
     var params = {};
     if (hash.indexOf('?') >= 0) {
       hash.split('?')[1].split('&').forEach(function (pair) {
@@ -10754,8 +10755,10 @@ async function api(req) {
 
                 // Upload the original, high-quality, raw image file to Cloudflare R2
                 (function (currentIdx, rawDataUrl) {
+                  uploadsInProgress++;
                   call('r2.upload', { filename: file.name || 'receipt.jpg', contentType: file.type || 'image/jpeg', base64: rawDataUrl })
                     .then(function (r2Data) {
+                      uploadsInProgress--;
                       chosenReceipts[currentIdx] = r2Data.publicUrl;
                       console.log('Receipt uploaded to R2:', r2Data.publicUrl);
                       var container = document.getElementById('fe-previews-container');
@@ -10764,6 +10767,7 @@ async function api(req) {
                         if (imgs[currentIdx]) imgs[currentIdx].src = r2Data.publicUrl;
                       }
                     }).catch(function (err) {
+                      uploadsInProgress--;
                       console.warn('R2 receipt upload failed:', err);
                       toast('อัปโหลด R2 ล้มเหลว ระบบใช้ฐานข้อมูลสำรองแทน (' + (err.message || err) + ')', 'warning');
                     });
@@ -10780,8 +10784,10 @@ async function api(req) {
                 }
 
                 (function (currentIdx, rawDataUrl) {
+                  uploadsInProgress++;
                   call('r2.upload', { filename: file.name || 'receipt.jpg', contentType: file.type || 'image/jpeg', base64: rawDataUrl })
                     .then(function (r2Data) {
+                      uploadsInProgress--;
                       chosenReceipts[currentIdx] = r2Data.publicUrl;
                       console.log('Receipt uploaded to R2 (fallback path):', r2Data.publicUrl);
                       var container = document.getElementById('fe-previews-container');
@@ -10790,6 +10796,7 @@ async function api(req) {
                         if (imgs[currentIdx]) imgs[currentIdx].src = r2Data.publicUrl;
                       }
                     }).catch(function (err) {
+                      uploadsInProgress--;
                       console.warn('R2 receipt upload failed:', err);
                       toast('อัปโหลด R2 ล้มเหลว ระบบใช้ฐานข้อมูลสำรองแทน (' + (err.message || err) + ')', 'warning');
                     });
@@ -10805,6 +10812,9 @@ async function api(req) {
 
 
     function collectExpensePayload(preset) {
+      if (uploadsInProgress > 0) {
+        return Promise.reject(new Error('ระบบกำลังอัปโหลดรูปภาพหลักฐานความละเอียดสูง กรุณารอซักครู่...'));
+      }
       preset = preset || {};
       var comp = document.getElementById('fe-company') ? document.getElementById('fe-company').value.trim() : '';
       var missionId = document.getElementById('fe-mission') ? document.getElementById('fe-mission').value : '';
