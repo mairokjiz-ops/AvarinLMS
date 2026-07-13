@@ -10574,9 +10574,34 @@ async function api(req) {
             '</button>' +
           '</div>' +
           '<div id="fe-bank-input-wrap" style="display:' + (preset.bank_account ? 'block' : 'none') + ';margin-top:14px;border-top:1px solid #f1f5f9;padding-top:14px;">' +
-            '<div class="ef-field">' +
-              '<label class="ef-label">ระบุ ธนาคาร / เลขที่บัญชี / ชื่อบัญชี</label>' +
-              '<input id="fe-bank-account" class="ef-input" placeholder="เช่น กสิกรไทย 123-4-56789-0 นายสมชาย" value="' + esc(preset.bank_account || '') + '">' +
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;">' +
+              '<div class="ef-field">' +
+                '<label class="ef-label">ธนาคาร <span class="ef-req">*</span></label>' +
+                '<select id="fe-bank-name" class="ef-input" style="height:42px;">' +
+                  '<option value="">-- เลือกธนาคาร --</option>' +
+                  '<option value="ธนาคารกสิกรไทย">ธนาคารกสิกรไทย (KBank)</option>' +
+                  '<option value="ธนาคารไทยพาณิชย์">ธนาคารไทยพาณิชย์ (SCB)</option>' +
+                  '<option value="ธนาคารกรุงเทพ">ธนาคารกรุงเทพ (BBL)</option>' +
+                  '<option value="ธนาคารกรุงไทย">ธนาคารกรุงไทย (KTB)</option>' +
+                  '<option value="ธนาคารทหารไทยธนชาต">ธนาคารทหารไทยธนชาต (TTB)</option>' +
+                  '<option value="ธนาคารกรุงศรีอยุธยา">ธนาคารกรุงศรีอยุธยา (BAY)</option>' +
+                  '<option value="ธนาคารออมสิน">ธนาคารออมสิน (GSB)</option>' +
+                  '<option value="ธนาคารยูโอบี">ธนาคารยูโอบี (UOB)</option>' +
+                  '<option value="ธนาคารซีไอเอ็มบีไทย">ธนาคารซีไอเอ็มบีไทย (CIMBT)</option>' +
+                  '<option value="ธนาคารแลนด์ แอนด์ เฮ้าส์">ธนาคารแลนด์ แอนด์ เฮ้าส์ (LH Bank)</option>' +
+                  '<option value="ธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร">ธ.ก.ส. (BAAC)</option>' +
+                  '<option value="ธนาคารอาคารสงเคราะห์">ธอส. (GHB)</option>' +
+                  '<option value="อื่นๆ">อื่นๆ</option>' +
+                '</select>' +
+              '</div>' +
+              '<div class="ef-field">' +
+                '<label class="ef-label">เลขที่บัญชี <span class="ef-req">*</span></label>' +
+                '<input id="fe-bank-number" class="ef-input" placeholder="เช่น 123-4-56789-0" value="">' +
+              '</div>' +
+              '<div class="ef-field">' +
+                '<label class="ef-label">ชื่อบัญชี <span class="ef-req">*</span></label>' +
+                '<input id="fe-bank-holder" class="ef-input" placeholder="เช่น นายสมชาย ใจดี" value="">' +
+              '</div>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -10748,12 +10773,55 @@ async function api(req) {
       });
     }
 
+    function formatBankAccount(str) {
+      if (!str) return '';
+      var bankAccountStr = String(str || '').trim();
+      if (bankAccountStr.indexOf('{') === 0) {
+        try {
+          var obj = JSON.parse(bankAccountStr);
+          var parts = [];
+          if (obj.bank) parts.push(obj.bank);
+          if (obj.number) parts.push(obj.number);
+          if (obj.name) parts.push(obj.name);
+          return parts.join(' ');
+        } catch(e) {}
+      }
+      return bankAccountStr;
+    }
+
+    function formatBankAccountHtml(str) {
+      if (!str) return '-';
+      var bankAccountStr = String(str || '').trim();
+      if (bankAccountStr.indexOf('{') === 0) {
+        try {
+          var obj = JSON.parse(bankAccountStr);
+          return '<span style="font-weight:600;color:#0f172a;"><i class="bi bi-bank" style="color:#2563eb;margin-right:4px;"></i>' + esc(obj.bank) + '</span> ' +
+                 'เลขบัญชี: <span style="font-weight:600;color:#0f172a;">' + esc(obj.number) + '</span> ' +
+                 '(ชื่อบัญชี: <span style="font-weight:600;color:#0f172a;">' + esc(obj.name) + '</span>)';
+        } catch(e) {}
+      }
+      return '<span style="font-weight:600;color:#0f172a;"><i class="bi bi-credit-card-2-front" style="color:#2563eb;margin-right:4px;"></i>' + esc(bankAccountStr) + '</span>';
+    }
+
     function collectExpensePayload(preset) {
       preset = preset || {};
       var comp = document.getElementById('fe-company') ? document.getElementById('fe-company').value.trim() : '';
       var missionId = document.getElementById('fe-mission') ? document.getElementById('fe-mission').value : '';
       var receipts = chosenReceipts.length > 0 ? JSON.stringify(chosenReceipts) : '';
-      var bankAccount = document.getElementById('fe-bank-account') ? document.getElementById('fe-bank-account').value.trim() : '';
+      
+      var bankAccount = '';
+      var bankInputWrap = document.getElementById('fe-bank-input-wrap');
+      if (bankInputWrap && bankInputWrap.style.display !== 'none') {
+        var bankName = document.getElementById('fe-bank-name') ? document.getElementById('fe-bank-name').value.trim() : '';
+        var bankNumber = document.getElementById('fe-bank-number') ? document.getElementById('fe-bank-number').value.trim() : '';
+        var bankHolder = document.getElementById('fe-bank-holder') ? document.getElementById('fe-bank-holder').value.trim() : '';
+        
+        if (!bankName) return Promise.reject(new Error('กรุณาระบุหรือเลือกธนาคาร'));
+        if (!bankNumber) return Promise.reject(new Error('กรุณาระบุเลขที่บัญชี'));
+        if (!bankHolder) return Promise.reject(new Error('กรุณาระบุชื่อบัญชี'));
+        
+        bankAccount = JSON.stringify({ bank: bankName, number: bankNumber, name: bankHolder });
+      }
 
       if (!comp) return Promise.reject(new Error('กรุณาเลือกบริษัทที่ต้องการเบิก'));
 
@@ -10960,19 +11028,45 @@ async function api(req) {
     function bindExpenseBank(bankAccount) {
       var bankToggle = document.getElementById('fe-bank-toggle');
       var bankInputWrap = document.getElementById('fe-bank-input-wrap');
-      var bankInput = document.getElementById('fe-bank-account');
-      if (!bankToggle || !bankInputWrap || !bankInput) return;
+      var bankNameInput = document.getElementById('fe-bank-name');
+      var bankNumberInput = document.getElementById('fe-bank-number');
+      var bankHolderInput = document.getElementById('fe-bank-holder');
+      if (!bankToggle || !bankInputWrap || !bankNameInput || !bankNumberInput || !bankHolderInput) return;
 
       if (bankAccount) {
         bankToggle.textContent = 'ลบเลขบัญชี';
         bankToggle.style.borderColor = '#fca5a5';
         bankToggle.style.color = '#ef4444';
         bankInputWrap.style.display = 'block';
+
+        var bankVal = '';
+        var numVal = '';
+        var nameVal = '';
+        var bankAccountStr = String(bankAccount || '').trim();
+        if (bankAccountStr.indexOf('{') === 0) {
+          try {
+            var obj = JSON.parse(bankAccountStr);
+            bankVal = obj.bank || '';
+            numVal = obj.number || '';
+            nameVal = obj.name || '';
+          } catch(e) {
+            bankVal = bankAccountStr;
+          }
+        } else {
+          bankVal = bankAccountStr;
+        }
+
+        bankNameInput.value = bankVal;
+        bankNumberInput.value = numVal;
+        bankHolderInput.value = nameVal;
       } else {
         bankToggle.textContent = 'เพิ่มเลขบัญชี';
         bankToggle.style.borderColor = '#cbd5e1';
         bankToggle.style.color = '#475569';
         bankInputWrap.style.display = 'none';
+        bankNameInput.value = '';
+        bankNumberInput.value = '';
+        bankHolderInput.value = '';
       }
 
       bankToggle.addEventListener('click', function() {
@@ -10981,10 +11075,12 @@ async function api(req) {
           bankToggle.textContent = 'ลบเลขบัญชี';
           bankToggle.style.borderColor = '#fca5a5';
           bankToggle.style.color = '#ef4444';
-          bankInput.focus();
+          bankNameInput.focus();
         } else {
           bankInputWrap.style.display = 'none';
-          bankInput.value = '';
+          bankNameInput.value = '';
+          bankNumberInput.value = '';
+          bankHolderInput.value = '';
           bankToggle.textContent = 'เพิ่มเลขบัญชี';
           bankToggle.style.borderColor = '#cbd5e1';
           bankToggle.style.color = '#475569';
@@ -11288,7 +11384,7 @@ async function api(req) {
       + detailField('เบิกในนามบริษัท', companyName ? '<span class="badge b-blue" style="background:#e0f2fe;color:#0369a1;font-weight:600;">' + esc(companyName) + '</span>' : '-')
       + detailField('สถานะใบเบิก', '<span class="badge b-' + esc(ex.status_tone) + '">' + esc(ex.status_label) + '</span>')
       + detailField('เชื่อมโยงงานออกนอกพื้นที่', missionLink)
-      + detailField('เลขที่บัญชีรับเงิน', ex.bank_account ? '<span style="font-weight:600;color:#0f172a;"><i class="bi bi-credit-card-2-front" style="color:#2563eb;margin-right:4px;"></i>' + esc(ex.bank_account) + '</span>' : '-')
+      + detailField('เลขที่บัญชีรับเงิน', formatBankAccountHtml(ex.bank_account))
       + '</div>'
       + '</div></div>'
       + '<div class="card"><div class="card-head"><i class="bi bi-card-image" style="color:#10b981"></i> <span class="card-title">หลักฐาน/เอกสารแนบ</span></div>'
@@ -11624,7 +11720,7 @@ async function api(req) {
           + '<div style="text-align:right;margin-bottom:12px;">เลขที่ใบเบิก <strong class="dotted" style="width:120px;text-align:center;">' + esc(ex.expense_no) + '</strong> วันที่เบิก <span class="dotted" style="width:120px;text-align:center;">' + TH.date(ex.created_at) + '</span></div>'
           + '<div style="margin-bottom:7px;">ข้าพเจ้า <span class="dotted" style="width:220px;text-align:center;">' + esc((ex.requester && ex.requester.full_name) || '-') + '</span> แผนก/ฝ่าย <span class="dotted" style="width:150px;text-align:center;">' + esc((ex.requester && ex.requester.department) || '-') + '</span></div>'
           + '<div style="margin-bottom:7px;">มีความประสงค์ขออนุมัติเบิกเงินค่า <span class="dotted" style="width:150px;text-align:center;">' + esc(ex.expense_type) + '</span> ดังรายละเอียดต่อไปนี้:</div>'
-          + (ex.bank_account ? '<div style="margin-bottom:7px;">บัญชีรับเงิน: <span class="dotted" style="width:250px;text-align:center;">' + esc(ex.bank_account) + '</span></div>' : '')
+          + (ex.bank_account ? '<div style="margin-bottom:7px;">บัญชีรับเงิน: <span class="dotted" style="width:250px;text-align:center;">' + esc(formatBankAccount(ex.bank_account)) + '</span></div>' : '')
           + '<table>'
           + '<thead><tr><th style="width:50px;text-align:center;">ลำดับ</th><th>รายละเอียดการใช้จ่าย</th><th style="width:150px;text-align:right;">จำนวนเงิน (บาท)</th></tr></thead>'
           + '<tbody>'
