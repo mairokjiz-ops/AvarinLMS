@@ -1,6 +1,8 @@
 // @ts-nocheck
 // === SUPABASE EDGE FUNCTION: api (Backend API Router & Database Manager) ===
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { S3Client, PutObjectCommand } from "https://esm.sh/@aws-sdk/client-s3@3.515.0"
+import { getSignedUrl } from "https://esm.sh/@aws-sdk/s3-request-presigner@3.515.0"
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY') || '';
@@ -394,8 +396,9 @@ function cfg_leaveDuration_(data) {
     if (sm < cfg_workStartMinutes_()) return { error: 'เวลาเริ่มลาต้องไม่ก่อน 08:30 น.' };
     if (em > cfg_workEndMinutes_()) return { error: 'เวลาสิ้นสุดการลาต้องไม่เกิน 20:00 น.' };
     if (em <= sm) return { error: 'เวลาสิ้นสุดต้องมากกว่าเวลาเริ่มลา' };
+    if ((em - sm) % 30 !== 0) return { error: 'การลาเป็นชั่วโมงต้องเป็นจำนวนเต็มชั่วโมงหรือครึ่งชั่วโมง (เช่น 1.5, 2 ชั่วโมง)' };
     var hours = cfg_round2_((em - sm) / 60);
-    if (hours < 1) return { error: 'การลาเป็นชั่วโมงต้องไม่น้อยกว่า 1 ชั่วโมง' };
+    if (hours < 0.5) return { error: 'การลาเป็นชั่วโมงต้องไม่น้อยกว่า 0.5 ชั่วโมง' };
     var workdayHours = cfg_workdayHours_();
     return {
       unit: 'hour',
@@ -3463,6 +3466,9 @@ async function api(req) {
       case 'ai.tutor_ask':            return _ok(await AI_tutorAsk(user, p));
 
       case 'audit.list':              return _ok(Audit_list(user, p));
+      case 'r2.get_upload_url':       return _ok(await R2_getUploadUrl(user, p));
+      case 'r2.upload':               return _ok(await R2_upload(user, p));
+      case 'r2.migrate_legacy_data':  return _ok(await R2_migrateLegacyData(user));
     }
     throw new Error('ไม่พบ action: ' + action);
   } catch (e) {
@@ -4276,6 +4282,254 @@ async function AI_courseGenerate(user, p) {
     }
   }
   throw lastErr || new Error('สร้างคอร์สด้วย AI ไม่สำเร็จ');
+}
+
+// === CLOUDFLARE R2 INTEGRATION ===
+const R2_ACCESS_KEY_ID = Deno.env.get('R2_ACCESS_KEY_ID') || '';
+const R2_SECRET_ACCESS_KEY = Deno.env.get('R2_SECRET_ACCESS_KEY') || '';
+const R2_ENDPOINT = Deno.env.get('R2_ENDPOINT') || '';
+const R2_BUCKET_NAME = Deno.env.get('R2_BUCKET_NAME') || '';
+const R2_PUBLIC_URL_PREFIX = Deno.env.get('R2_PUBLIC_URL_PREFIX') || '';
+
+let s3Client: any = null;
+function getS3Client() {
+  if (!s3Client) {
+    if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_ENDPOINT) {
+      throw new Error("Missing R2 environment configuration (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT).");
+    }
+    s3Client = new S3Client({
+      region: "auto",
+      endpoint: R2_ENDPOINT,
+      credentials: {
+        accessKeyId: R2_ACCESS_KEY_ID,
+        secretAccessKey: R2_SECRET_ACCESS_KEY,
+      },
+    });
+  }
+  return s3Client;
+}
+
+async function R2_getUploadUrl(user, p) {
+  if (!user) throw new Error("Unauthorized");
+  var filename = String(p.filename || "").trim();
+  var contentType = String(p.contentType || "application/octet-stream").trim();
+  if (!filename) throw new Error("Require filename");
+
+  var ext = filename.split('.').pop() || '';
+  var cleanName = filename.replace(/[^a-zA-Z0-9_\.-]/g, '_');
+  var stamp = Date.now();
+  var rand = String(crypto.randomUUID()).replace(/-/g, '').slice(0, 8);
+  var path = `uploads/${user.id}/${stamp}_${rand}_${cleanName}`;
+
+  var client = getS3Client();
+  var command = new PutObjectCommand({
+    Bucket: R2_BUCKET_NAME,
+    Key: path,
+    ContentType: contentType,
+  });
+
+  var uploadUrl = await getSignedUrl(client, command, { expiresIn: 900 });
+  var publicUrl = `${R2_PUBLIC_URL_PREFIX.replace(/\/$/, '')}/${path}`;
+
+  return {
+    uploadUrl: uploadUrl,
+    publicUrl: publicUrl,
+    path: path
+  };
+}
+
+async function R2_upload(user, p) {
+  if (!user) throw new Error("Unauthorized");
+  var filename = String(p.filename || "receipt.jpg").trim();
+  var contentType = String(p.contentType || "image/jpeg").trim();
+  var base64Data = String(p.base64 || "").trim();
+  if (!base64Data) throw new Error("Require base64 data");
+
+  var ext = filename.split('.').pop() || 'jpg';
+  var cleanName = filename.replace(/[^a-zA-Z0-9_\.-]/g, '_');
+  var stamp = Date.now();
+  var rand = String(crypto.randomUUID()).replace(/-/g, '').slice(0, 8);
+  var path = `uploads/${user.id}/${stamp}_${rand}_${cleanName}`;
+
+  var cleanB64 = base64Data.split(',').pop() || '';
+  var binaryString = atob(cleanB64);
+  var len = binaryString.length;
+  var bytes = new Uint8Array(len);
+  for (var i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  var client = getS3Client();
+  var command = new PutObjectCommand({
+    Bucket: R2_BUCKET_NAME,
+    Key: path,
+    ContentType: contentType,
+    Body: bytes
+  });
+  await client.send(command);
+
+  var publicUrl = `${R2_PUBLIC_URL_PREFIX.replace(/\/$/, '')}/${path}`;
+  return {
+    publicUrl: publicUrl,
+    path: path
+  };
+}
+
+async function R2_migrateLegacyData(user) {
+  if (user.role !== 'admin') {
+    throw new Error('Only admin can run data migration');
+  }
+
+  var summary = {
+    avatars_migrated: 0,
+    receipts_migrated: 0,
+    errors: []
+  };
+
+  function base64ToBytes(base64Str) {
+    var cleanB64 = base64Str.split(',').pop() || '';
+    var binaryString = atob(cleanB64);
+    var len = binaryString.length;
+    var bytes = new Uint8Array(len);
+    for (var i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  var client = getS3Client();
+
+  // 1. Migrate Users Avatars
+  try {
+    var users = await sbFetch('GET', 'Users', 'select=id,full_name,avatar', null);
+    if (Array.isArray(users)) {
+      for (var u of users) {
+        if (u.avatar && u.avatar.indexOf('data:image/') === 0) {
+          try {
+            var bytes = base64ToBytes(u.avatar);
+            var mime = u.avatar.split(';')[0].split(':')[1] || 'image/jpeg';
+            var ext = mime.split('/')[1] || 'jpg';
+            var path = `uploads/${u.id}/avatar_migrated_${Date.now()}.${ext}`;
+
+            var command = new PutObjectCommand({
+              Bucket: R2_BUCKET_NAME,
+              Key: path,
+              ContentType: mime,
+              Body: bytes
+            });
+            await client.send(command);
+
+            var newUrl = `${R2_PUBLIC_URL_PREFIX.replace(/\/$/, '')}/${path}`;
+            await sbFetch('PATCH', 'Users', `id=eq.${u.id}`, { avatar: newUrl });
+            summary.avatars_migrated++;
+          } catch (e) {
+            summary.errors.push(`User ${u.id} avatar failed: ${e.message}`);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    summary.errors.push(`Users fetch/migration failed: ${e.message}`);
+  }
+
+  // 2. Migrate Expenses Receipts
+  try {
+    var expenses = await sbFetch('GET', 'Expenses', 'select=id,expense_no,receipt_url', null);
+    if (Array.isArray(expenses)) {
+      for (var ex of expenses) {
+        if (!ex.receipt_url) continue;
+
+        var urls = [];
+        var isJSON = false;
+        if (ex.receipt_url.indexOf('[') === 0) {
+          try {
+            urls = JSON.parse(ex.receipt_url);
+            isJSON = true;
+          } catch (e) {
+            urls = [ex.receipt_url];
+          }
+        } else {
+          urls = [ex.receipt_url];
+        }
+
+        var newUrls = [];
+        var modified = false;
+
+        for (var url of urls) {
+          if (!url) continue;
+
+          if (url.indexOf('data:image/') === 0) {
+            try {
+              var bytes = base64ToBytes(url);
+              var mime = url.split(';')[0].split(':')[1] || 'image/jpeg';
+              var ext = mime.split('/')[1] || 'jpg';
+              var path = `uploads/legacy_migration/receipt_${ex.id}_${Date.now()}_${Math.floor(Math.random() * 1000)}.${ext}`;
+
+              var command = new PutObjectCommand({
+                Bucket: R2_BUCKET_NAME,
+                Key: path,
+                ContentType: mime,
+                Body: bytes
+              });
+              await client.send(command);
+
+              var newUrl = `${R2_PUBLIC_URL_PREFIX.replace(/\/$/, '')}/${path}`;
+              newUrls.push(newUrl);
+              modified = true;
+              summary.receipts_migrated++;
+            } catch (e) {
+              summary.errors.push(`Expense ${ex.expense_no} base64 migration failed: ${e.message}`);
+              newUrls.push(url);
+            }
+          } else if (url.indexOf('/storage/v1/object/public/receipts/') >= 0) {
+            try {
+              var parts = url.split('/storage/v1/object/public/receipts/');
+              var relativePath = parts.pop();
+              if (relativePath) {
+                var fileRes = await fetch(url);
+                if (fileRes.ok) {
+                  var blobBytes = new Uint8Array(await fileRes.arrayBuffer());
+                  var mime = fileRes.headers.get('content-type') || 'image/jpeg';
+                  var path = `receipts/${decodeURIComponent(relativePath)}`;
+
+                  var command = new PutObjectCommand({
+                    Bucket: R2_BUCKET_NAME,
+                    Key: path,
+                    ContentType: mime,
+                    Body: blobBytes
+                  });
+                  await client.send(command);
+
+                  var newUrl = `${R2_PUBLIC_URL_PREFIX.replace(/\/$/, '')}/${path}`;
+                  newUrls.push(newUrl);
+                  modified = true;
+                  summary.receipts_migrated++;
+                } else {
+                  throw new Error(`Fetch failed: ${fileRes.status}`);
+                }
+              } else {
+                newUrls.push(url);
+              }
+            } catch (e) {
+              summary.errors.push(`Expense ${ex.expense_no} Supabase storage migration failed: ${e.message}`);
+              newUrls.push(url);
+            }
+          } else {
+            newUrls.push(url);
+          }
+        }
+
+        if (modified) {
+          var receiptStr = isJSON ? JSON.stringify(newUrls) : (newUrls[0] || '');
+          await sbFetch('PATCH', 'Expenses', `id=eq.${ex.id}`, { receipt_url: receiptStr });
+        }
+      }
+    }
+  } catch (e) {
+    summary.errors.push(`Expenses fetch/migration failed: ${e.message}`);
+  }
+
+  return summary;
 }
 
 // === SERVE HANDLER ===

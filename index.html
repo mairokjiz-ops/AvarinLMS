@@ -4487,6 +4487,18 @@ async function api(req) {
       .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function dataURLtoBlob(dataurl) {
+    try {
+      var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+          bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+      while(n--){
+          u8arr[n] = bstr.charCodeAt(n);
+      }
+      return new Blob([u8arr], {type:mime});
+    } catch (e) {
+      return null;
+    }
+  }
 
   // ── Thai date module ────────────────────────────────
   var TH = {
@@ -6275,7 +6287,7 @@ async function api(req) {
   function wizStep2() {
     var d = WIZ.data;
     var todayISO = TH.iso(new Date());
-    return wizSection('ช่วงวันที่ลา', 'เลือกลาเต็มวัน หรือกำหนดเป็นชั่วโมงขั้นต่ำ 1 ชั่วโมง', 'calendar3-fill')
+    return wizSection('ช่วงวันที่ลา', 'เลือกลาเต็มวัน หรือกำหนดเป็นชั่วโมงขั้นต่ำ 0.5 ชั่วโมง', 'calendar3-fill')
       + '<div class="field"><label>รูปแบบการลา <span class="req">*</span></label>'
       + '<select class="select" data-field="leave_unit">'
       + '<option value="day"' + (d.leave_unit !== 'hour' ? ' selected' : '') + '>ลาเต็มวัน</option>'
@@ -6399,8 +6411,10 @@ async function api(req) {
         var sm = timeMinutes(d.start_time), em = timeMinutes(d.end_time);
         if (sm != null && sm < WORK_START_MINUTES) err.start_time = 'เวลาเริ่มลาต้องไม่ก่อน 08:30 น.';
         if (em != null && em > WORK_END_MINUTES) err.end_time = 'เวลาสิ้นสุดต้องไม่เกิน 20:00 น.';
+        if (sm != null && em != null && em <= sm) err.end_time = 'เวลาสิ้นสุดต้องมากกว่าเวลาเริ่มลา';
+        if (sm != null && em != null && (em - sm) % 30 !== 0) err.end_time = 'เวลาที่เลือกต้องเป็นช่วงละ 30 นาที (เช่น ลา 1.5 ชั่วโมง)';
         var dur = leaveDuration(d);
-        if (d.start_time && d.end_time && dur.hours < 1) err.end_time = 'ต้องลาอย่างน้อย 1 ชั่วโมง';
+        if (d.start_time && d.end_time && dur.hours < 0.5) err.end_time = 'ต้องลาอย่างน้อย 0.5 ชั่วโมง';
       }
       if (!d.written_place) err.written_place = 'ระบุสถานที่เขียน';
     } else if (n === 3) {
@@ -7239,11 +7253,53 @@ async function api(req) {
             if (previewContainer) {
               previewContainer.innerHTML = '<img src="' + esc(dataUrl) + '" style="width:100%;height:100%;object-fit:cover" id="pf-avatar-img">';
             }
+
+            var blob = dataURLtoBlob(dataUrl);
+            if (blob) {
+              call('r2.get_upload_url', { filename: 'avatar.jpg', contentType: 'image/jpeg' })
+                .then(function (r2Data) {
+                  fetch(r2Data.uploadUrl, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'image/jpeg' },
+                    body: blob
+                  }).then(function (uploadRes) {
+                    if (uploadRes.ok) {
+                      chosenAvatarBase64 = r2Data.publicUrl;
+                      console.log('Avatar uploaded to R2:', r2Data.publicUrl);
+                    }
+                  }).catch(function (err) {
+                    console.warn('R2 avatar upload failed:', err);
+                  });
+                }).catch(function (apiErr) {
+                  console.warn('R2 get avatar upload url failed:', apiErr);
+                });
+            }
           };
           img.onerror = function () {
             chosenAvatarBase64 = e.target.result;
             if (previewContainer) {
               previewContainer.innerHTML = '<img src="' + esc(e.target.result) + '" style="width:100%;height:100%;object-fit:cover" id="pf-avatar-img">';
+            }
+
+            var blob = dataURLtoBlob(e.target.result);
+            if (blob) {
+              call('r2.get_upload_url', { filename: 'avatar.jpg', contentType: 'image/jpeg' })
+                .then(function (r2Data) {
+                  fetch(r2Data.uploadUrl, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'image/jpeg' },
+                    body: blob
+                  }).then(function (uploadRes) {
+                    if (uploadRes.ok) {
+                      chosenAvatarBase64 = r2Data.publicUrl;
+                      console.log('Avatar uploaded to R2 (fallback path):', r2Data.publicUrl);
+                    }
+                  }).catch(function (err) {
+                    console.warn('R2 avatar upload failed:', err);
+                  });
+                }).catch(function (apiErr) {
+                  console.warn('R2 get avatar upload url failed:', apiErr);
+                });
             }
           };
           img.src = e.target.result;
@@ -10576,6 +10632,27 @@ async function api(req) {
             reader.onload = function (e) {
               var img = new Image();
               img.onload = function () {
+                // 1. High-quality compression for R2 upload
+                var hqCanvas = document.createElement('canvas');
+                var hqMaxSize = 1600;
+                var hqW = img.width;
+                var hqH = img.height;
+                if (hqW > hqH) {
+                  if (hqW > hqMaxSize) { hqH *= hqMaxSize / hqW; hqW = hqMaxSize; }
+                } else {
+                  if (hqH > hqMaxSize) { hqW *= hqMaxSize / hqH; hqH = hqMaxSize; }
+                }
+                hqCanvas.width = hqW; hqCanvas.height = hqH;
+                var hqCtx = hqCanvas.getContext('2d');
+                hqCtx.drawImage(img, 0, 0, hqW, hqH);
+                var hqDataUrl = '';
+                try {
+                  hqDataUrl = hqCanvas.toDataURL('image/jpeg', 0.85);
+                } catch (err) {
+                  hqDataUrl = e.target.result;
+                }
+
+                // 2. Low-quality compression to fit Sheets cell (<= 48000 characters)
                 var max_size = 600;
                 var quality = 0.5;
                 var dataUrl = '';
@@ -10604,22 +10681,46 @@ async function api(req) {
                   attempt++;
                 }
                 
-                chosenReceipts.push(dataUrl || e.target.result);
+                var idx = chosenReceipts.length;
+                var targetData = dataUrl || e.target.result;
+                chosenReceipts.push(targetData);
                 loadedCount++;
                 if (loadedCount === toAdd) {
                   updateReceiptsPreview();
                   if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> อัปโหลดรูปภาพสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
                   fi.value = '';
                 }
+
+                (function (currentIdx, uploadDataUrl) {
+                  call('r2.upload', { filename: 'receipt.jpg', contentType: 'image/jpeg', base64: uploadDataUrl })
+                    .then(function (r2Data) {
+                      chosenReceipts[currentIdx] = r2Data.publicUrl;
+                      console.log('Receipt uploaded to R2:', r2Data.publicUrl);
+                    }).catch(function (err) {
+                      console.warn('R2 receipt upload failed:', err);
+                    });
+                })(idx, hqDataUrl);
               };
               img.onerror = function () {
-                chosenReceipts.push(e.target.result);
+                var idx = chosenReceipts.length;
+                var targetData = e.target.result;
+                chosenReceipts.push(targetData);
                 loadedCount++;
                 if (loadedCount === toAdd) {
                   updateReceiptsPreview();
                   if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> อัปโหลดรูปภาพสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
                   fi.value = '';
                 }
+
+                (function (currentIdx, currentDataUrl) {
+                  call('r2.upload', { filename: 'receipt.jpg', contentType: 'image/jpeg', base64: currentDataUrl })
+                    .then(function (r2Data) {
+                      chosenReceipts[currentIdx] = r2Data.publicUrl;
+                      console.log('Receipt uploaded to R2 (fallback path):', r2Data.publicUrl);
+                    }).catch(function (err) {
+                      console.warn('R2 receipt upload failed:', err);
+                    });
+                })(idx, targetData);
               };
               img.src = e.target.result;
             };
