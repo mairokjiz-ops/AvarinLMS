@@ -10702,6 +10702,11 @@ async function api(req) {
                     .then(function (r2Data) {
                       chosenReceipts[currentIdx] = r2Data.publicUrl;
                       console.log('Receipt uploaded to R2:', r2Data.publicUrl);
+                      var container = document.getElementById('fe-previews-container');
+                      if (container) {
+                        var imgs = container.querySelectorAll('img');
+                        if (imgs[currentIdx]) imgs[currentIdx].src = r2Data.publicUrl;
+                      }
                     }).catch(function (err) {
                       console.warn('R2 receipt upload failed:', err);
                       toast('อัปโหลด R2 ล้มเหลว ระบบใช้ฐานข้อมูลสำรองแทน (' + (err.message || err) + ')', 'warning');
@@ -10724,6 +10729,11 @@ async function api(req) {
                     .then(function (r2Data) {
                       chosenReceipts[currentIdx] = r2Data.publicUrl;
                       console.log('Receipt uploaded to R2 (fallback path):', r2Data.publicUrl);
+                      var container = document.getElementById('fe-previews-container');
+                      if (container) {
+                        var imgs = container.querySelectorAll('img');
+                        if (imgs[currentIdx]) imgs[currentIdx].src = r2Data.publicUrl;
+                      }
                     }).catch(function (err) {
                       console.warn('R2 receipt upload failed:', err);
                       toast('อัปโหลด R2 ล้มเหลว ระบบใช้ฐานข้อมูลสำรองแทน (' + (err.message || err) + ')', 'warning');
