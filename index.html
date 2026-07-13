@@ -3871,7 +3871,7 @@ body {
 .lf-input-wrap {
   background: #fff !important;
   border: 1px solid var(--glass-border) !important;
-  border-radius: var(--radius-pill) !important;
+  border-radius: var(--radius-sm) !important;
   box-shadow: inset 0 1px 3px rgba(31, 38, 135, 0.04);
 }
 .lf-input-wrap input {
@@ -3893,9 +3893,15 @@ body {
 }
 .lf-submit {
   background: var(--grad-primary) !important;
-  border-radius: var(--radius-pill) !important;
+  border-radius: var(--radius-sm) !important;
   box-shadow: 0 10px 28px var(--brand-glow) !important;
   height: 54px !important;
+}
+.lf-register-btn {
+  color: var(--brand-1) !important;
+}
+.lf-register-btn:hover {
+  color: var(--brand-2) !important;
 }
 .lf-demo {
   background: rgba(255, 255, 255, 0.6) !important;
@@ -4842,24 +4848,24 @@ async function api(req) {
       + '      <div><div class="lb-logo-name">' + esc(app.name) + '</div>'
       + '           <div class="lb-logo-tag">' + esc(app.org || '') + '</div></div>'
       + '    </div>'
-      + '    <div class="lb-tagline">ระบบ<span>ลาออนไลน์</span><br>ครบวงจร · ใช้งานง่าย</div>'
-      + '    <p class="lb-ready-note">ยื่นใบลา ติดตามสถานะ และพิมพ์เอกสาร — ทุกอย่างในที่เดียว</p>'
+      + '    <div class="lb-tagline">ระบบลงเวลาและจัดการวันลา<span>สำหรับพนักงาน</span><br>Employee Self-Service</div>'
+      + '    <p class="lb-ready-note">ระบบสารสนเทศความปลอดภัยสูงสำหรับการบันทึกเวลาทำงานและสิทธิ์การลาออนไลน์</p>'
       + '    <div class="lb-features">'
-      + '      <div class="lb-feature"><div class="lb-feature-icon"><i class="bi bi-lightning-charge-fill"></i></div><div><div class="lb-feature-title">ยื่นใบลาในคลิกเดียว</div><div class="lb-feature-desc">กรอกฟอร์มสั้น ๆ — ส่งถึงผู้อนุมัติทันที</div></div></div>'
-      + '      <div class="lb-feature"><div class="lb-feature-icon"><i class="bi bi-graph-up-arrow"></i></div><div><div class="lb-feature-title">เห็นสถิติการลาแบบเรียลไทม์</div><div class="lb-feature-desc">ลาไปเท่าไหร่ เหลือเท่าไหร่ — รู้ทันที</div></div></div>'
-      + '      <div class="lb-feature"><div class="lb-feature-icon"><i class="bi bi-bell-fill"></i></div><div><div class="lb-feature-title">แจ้งเตือนเมื่อใกล้หมดสิทธิ</div><div class="lb-feature-desc">ป้องกันการลาเกินกำหนด</div></div></div>'
-      + '      <div class="lb-feature"><div class="lb-feature-icon"><i class="bi bi-printer-fill"></i></div><div><div class="lb-feature-title">พิมพ์ใบลาทางการได้ทันที</div><div class="lb-feature-desc">ตามแบบฟอร์มราชการ 100%</div></div></div>'
+      + '      <div class="lb-feature"><div class="lb-feature-icon"><i class="bi bi-clock-history"></i></div><div><div class="lb-feature-title">บันทึกเวลาทำงาน (Time Attendance)</div><div class="lb-feature-desc">ลงเวลาเข้า-ออกงานผ่านระบบพิกัด GPS พร้อมถ่ายรูปยืนยันตัวตน</div></div></div>'
+      + '      <div class="lb-feature"><div class="lb-feature-icon"><i class="bi bi-file-earmark-text-fill"></i></div><div><div class="lb-feature-title">จัดการใบลาอิเล็กทรอนิกส์ (Leave Request)</div><div class="lb-feature-desc">ยื่นใบอนุมัติการลาประเภทต่างๆ และติดตามสถานะแบบเรียลไทม์</div></div></div>'
+      + '      <div class="lb-feature"><div class="lb-feature-icon"><i class="bi bi-shield-lock-fill"></i></div><div><div class="lb-feature-title">ความปลอดภัยตามมาตรฐานข้อมูล (Security)</div><div class="lb-feature-desc">การเข้ารหัสข้อมูลการใช้งานและรักษาความปลอดภัยพิกัดส่วนบุคคล</div></div></div>'
+      + '      <div class="lb-feature"><div class="lb-feature-icon"><i class="bi bi-info-circle-fill"></i></div><div><div class="lb-feature-title">ฝ่ายทรัพยากรบุคคล (HR Management)</div><div class="lb-feature-desc">เชื่อมโยงประวัติการลา วันลาสะสม และสรุปรายงานผลขององค์กร</div></div></div>'
       + '    </div>'
       + '    <div class="lb-stats">'
-      + '      <div><div class="lb-stat-num">99.9%</div><div class="lb-stat-label">เสถียรพร้อมใช้</div></div>'
-      + '      <div><div class="lb-stat-num">3</div><div class="lb-stat-label">ขั้นตอนอนุมัติ</div></div>'
-      + '      <div><div class="lb-stat-num">100%</div><div class="lb-stat-label">ทุกอุปกรณ์</div></div>'
+      + '      <div><div class="lb-stat-num">SECURE</div><div class="lb-stat-label">การเชื่อมต่อเข้ารหัสปลอดภัย</div></div>'
+      + '      <div><div class="lb-stat-num">OFFICIAL</div><div class="lb-stat-label">รายงานรูปแบบมาตรฐาน</div></div>'
+      + '      <div><div class="lb-stat-num">HR-LINK</div><div class="lb-stat-label">เชื่อมโยงข้อมูลภายในองค์กร</div></div>'
       + '    </div>'
       + '  </div>'
       + '  <div class="login-form-card">'
       + '    <div class="lf-mini-brand"><div class="icn"><i class="bi bi-' + (app.logo_icon || 'calendar2-check-fill') + '"></i></div><div class="name">' + esc(app.name) + '</div></div>'
-      + '    <h2 class="lf-title">ยินดีต้อนรับกลับ</h2>'
-      + '    <div class="lf-sub">เข้าสู่ระบบเพื่อจัดการใบลาของคุณ</div>'
+      + '    <h2 class="lf-title">เข้าสู่ระบบการทำงาน</h2>'
+      + '    <div class="lf-sub">กรอกข้อมูลบัญชีผู้ใช้ของคุณเพื่อเข้าสู่ระบบ</div>'
       + '    <form class="lf" id="login-form" novalidate autocomplete="on">'
       + '      <div class="lf-input-wrap">'
       + '        <i class="bi bi-person-fill lf-icon"></i>'

@@ -3,6 +3,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { S3Client, PutObjectCommand } from "https://esm.sh/@aws-sdk/client-s3@3.515.0"
 
 // === ENVIRONMENT VARIABLES ===
 const DENO_SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
@@ -470,8 +471,9 @@ function cfg_leaveDuration_(data) {
     if (sm < cfg_workStartMinutes_()) return { error: 'เวลาเริ่มลาต้องไม่ก่อน 08:30 น.' };
     if (em > cfg_workEndMinutes_()) return { error: 'เวลาสิ้นสุดการลาต้องไม่เกิน 20:00 น.' };
     if (em <= sm) return { error: 'เวลาสิ้นสุดต้องมากกว่าเวลาเริ่มลา' };
+    if ((em - sm) % 30 !== 0) return { error: 'การลาเป็นชั่วโมงต้องเป็นจำนวนเต็มชั่วโมงหรือครึ่งชั่วโมง (เช่น 1.5, 2 ชั่วโมง)' };
     var hours = cfg_round2_((em - sm) / 60);
-    if (hours < 1) return { error: 'การลาเป็นชั่วโมงต้องไม่น้อยกว่า 1 ชั่วโมง' };
+    if (hours < 0.5) return { error: 'การลาเป็นชั่วโมงต้องไม่น้อยกว่า 0.5 ชั่วโมง' };
     var workdayHours = cfg_workdayHours_();
     return {
       unit: 'hour',
@@ -3565,7 +3567,36 @@ function _LINE_buildReceiptStoragePath_(lineUserId, ext) {
   ].join('/');
 }
 
+// === CLOUDFLARE R2 INTEGRATION ===
+const R2_ACCESS_KEY_ID = Deno.env.get('R2_ACCESS_KEY_ID') || '';
+const R2_SECRET_ACCESS_KEY = Deno.env.get('R2_SECRET_ACCESS_KEY') || '';
+const R2_ENDPOINT = Deno.env.get('R2_ENDPOINT') || '';
+const R2_BUCKET_NAME = Deno.env.get('R2_BUCKET_NAME') || '';
+const R2_PUBLIC_URL_PREFIX = Deno.env.get('R2_PUBLIC_URL_PREFIX') || '';
+
+let s3Client: any = null;
+function getS3Client() {
+  if (!s3Client) {
+    if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_ENDPOINT) {
+      throw new Error("Missing R2 environment configuration (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT).");
+    }
+    s3Client = new S3Client({
+      region: "auto",
+      endpoint: R2_ENDPOINT,
+      credentials: {
+        accessKeyId: R2_ACCESS_KEY_ID,
+        secretAccessKey: R2_SECRET_ACCESS_KEY,
+      },
+    });
+  }
+  return s3Client;
+}
+
 function _LINE_publicStorageUrl_(path) {
+  if (R2_PUBLIC_URL_PREFIX) {
+    var prefix = String(R2_PUBLIC_URL_PREFIX || '').replace(/\/$/, '');
+    return prefix + '/' + path.split('/').map(encodeURIComponent).join('/');
+  }
   var base = String(SUPABASE_URL || DENO_SUPABASE_URL || '').replace(/\/$/, '');
   return base + '/storage/v1/object/public/' + SUPABASE_RECEIPT_BUCKET + '/' + path.split('/').map(encodeURIComponent).join('/');
 }
@@ -3574,6 +3605,25 @@ async function _LINE_uploadReceiptImage_(messageId, lineUserId) {
   var file = await LINE_downloadLineContent_(messageId);
   var ext = _LINE_guessImageExtension_(file.contentType);
   var path = _LINE_buildReceiptStoragePath_(lineUserId, ext);
+
+  if (R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_ENDPOINT && R2_BUCKET_NAME) {
+    try {
+      var client = getS3Client();
+      var command = new PutObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: path,
+        ContentType: file.contentType || 'image/jpeg',
+        Body: file.bytes,
+      });
+      await client.send(command);
+      return {
+        path: path,
+        url: _LINE_publicStorageUrl_(path)
+      };
+    } catch (r2Err) {
+      console.error('R2 upload failed, falling back to Supabase:', r2Err);
+    }
+  }
 
   var base = String(SUPABASE_URL || DENO_SUPABASE_URL || '').replace(/\/$/, '');
   var uploadUrl = base + '/storage/v1/object/' + SUPABASE_RECEIPT_BUCKET + '/' + path.split('/').map(encodeURIComponent).join('/');
