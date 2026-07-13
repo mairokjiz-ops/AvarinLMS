@@ -10704,6 +10704,7 @@ async function api(req) {
                       console.log('Receipt uploaded to R2:', r2Data.publicUrl);
                     }).catch(function (err) {
                       console.warn('R2 receipt upload failed:', err);
+                      toast('อัปโหลด R2 ล้มเหลว ระบบใช้ฐานข้อมูลสำรองแทน (' + (err.message || err) + ')', 'warning');
                     });
                 })(idx, hqDataUrl);
               };
@@ -10725,6 +10726,7 @@ async function api(req) {
                       console.log('Receipt uploaded to R2 (fallback path):', r2Data.publicUrl);
                     }).catch(function (err) {
                       console.warn('R2 receipt upload failed:', err);
+                      toast('อัปโหลด R2 ล้มเหลว ระบบใช้ฐานข้อมูลสำรองแทน (' + (err.message || err) + ')', 'warning');
                     });
                 })(idx, targetData);
               };

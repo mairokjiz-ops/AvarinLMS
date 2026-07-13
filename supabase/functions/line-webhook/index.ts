@@ -3568,24 +3568,21 @@ function _LINE_buildReceiptStoragePath_(lineUserId, ext) {
 }
 
 // === CLOUDFLARE R2 INTEGRATION ===
-const R2_ACCESS_KEY_ID = Deno.env.get('R2_ACCESS_KEY_ID') || '';
-const R2_SECRET_ACCESS_KEY = Deno.env.get('R2_SECRET_ACCESS_KEY') || '';
-const R2_ENDPOINT = Deno.env.get('R2_ENDPOINT') || '';
-const R2_BUCKET_NAME = Deno.env.get('R2_BUCKET_NAME') || '';
-const R2_PUBLIC_URL_PREFIX = Deno.env.get('R2_PUBLIC_URL_PREFIX') || '';
-
 let s3Client: any = null;
 function getS3Client() {
+  const r2_key = Deno.env.get('R2_ACCESS_KEY_ID') || '';
+  const r2_secret = Deno.env.get('R2_SECRET_ACCESS_KEY') || '';
+  const r2_endpoint = Deno.env.get('R2_ENDPOINT') || '';
   if (!s3Client) {
-    if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_ENDPOINT) {
+    if (!r2_key || !r2_secret || !r2_endpoint) {
       throw new Error("Missing R2 environment configuration (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT).");
     }
     s3Client = new S3Client({
       region: "auto",
-      endpoint: R2_ENDPOINT,
+      endpoint: r2_endpoint,
       credentials: {
-        accessKeyId: R2_ACCESS_KEY_ID,
-        secretAccessKey: R2_SECRET_ACCESS_KEY,
+        accessKeyId: r2_key,
+        secretAccessKey: r2_secret,
       },
     });
   }
@@ -3593,8 +3590,9 @@ function getS3Client() {
 }
 
 function _LINE_publicStorageUrl_(path) {
-  if (R2_PUBLIC_URL_PREFIX) {
-    var prefix = String(R2_PUBLIC_URL_PREFIX || '').replace(/\/$/, '');
+  const r2_prefix = Deno.env.get('R2_PUBLIC_URL_PREFIX') || '';
+  if (r2_prefix) {
+    var prefix = String(r2_prefix || '').replace(/\/$/, '');
     return prefix + '/' + path.split('/').map(encodeURIComponent).join('/');
   }
   var base = String(SUPABASE_URL || DENO_SUPABASE_URL || '').replace(/\/$/, '');
@@ -3606,11 +3604,16 @@ async function _LINE_uploadReceiptImage_(messageId, lineUserId) {
   var ext = _LINE_guessImageExtension_(file.contentType);
   var path = _LINE_buildReceiptStoragePath_(lineUserId, ext);
 
-  if (R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_ENDPOINT && R2_BUCKET_NAME) {
+  const r2_key = Deno.env.get('R2_ACCESS_KEY_ID') || '';
+  const r2_secret = Deno.env.get('R2_SECRET_ACCESS_KEY') || '';
+  const r2_endpoint = Deno.env.get('R2_ENDPOINT') || '';
+  const r2_bucket = Deno.env.get('R2_BUCKET_NAME') || '';
+
+  if (r2_key && r2_secret && r2_endpoint && r2_bucket) {
     try {
       var client = getS3Client();
       var command = new PutObjectCommand({
-        Bucket: R2_BUCKET_NAME,
+        Bucket: r2_bucket,
         Key: path,
         ContentType: file.contentType || 'image/jpeg',
         Body: file.bytes,
