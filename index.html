@@ -5608,6 +5608,8 @@ async function api(req) {
     Store: Store, Routes: Routes, PAGE_META: PAGE_META,
     $: $, $$: $$, esc: esc, pad: pad, TH: TH,
     hasCap: hasCap, call: call,
+    formatBankAccount: formatBankAccount,
+    formatBankAccountHtml: formatBankAccountHtml,
     toast: toast, alertSuccess: alertSuccess, alertError: alertError, alertInfo: alertInfo, confirmModal: confirmModal,
     Spinner: Spinner, Modal: Modal,
     dispatch: dispatch, renderLogin: renderLogin, renderShell: renderShell, refreshShell: refreshShell,
@@ -5625,6 +5627,7 @@ async function api(req) {
   var Spinner = LMS.Spinner, Modal = LMS.Modal;
   var Routes = LMS.Routes;
   var alertSuccess = LMS.alertSuccess, alertError = LMS.alertError, confirmModal = LMS.confirmModal;
+  var formatBankAccount = LMS.formatBankAccount, formatBankAccountHtml = LMS.formatBankAccountHtml;
   function page() { return $('#page'); }
   function setPage(html) { var p = page(); if (p) p.innerHTML = html; }
   function skBlocks(n, h) {
