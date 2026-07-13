@@ -4492,6 +4492,36 @@ async function api(req) {
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
       .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
+
+  function formatBankAccount(str) {
+    if (!str) return '';
+    var bankAccountStr = String(str || '').trim();
+    if (bankAccountStr.indexOf('{') === 0) {
+      try {
+        var obj = JSON.parse(bankAccountStr);
+        var parts = [];
+        if (obj.bank) parts.push(obj.bank);
+        if (obj.number) parts.push(obj.number);
+        if (obj.name) parts.push(obj.name);
+        return parts.join(' ');
+      } catch(e) {}
+    }
+    return bankAccountStr;
+  }
+
+  function formatBankAccountHtml(str) {
+    if (!str) return '-';
+    var bankAccountStr = String(str || '').trim();
+    if (bankAccountStr.indexOf('{') === 0) {
+      try {
+        var obj = JSON.parse(bankAccountStr);
+        return '<span style="font-weight:600;color:#0f172a;"><i class="bi bi-bank" style="color:#2563eb;margin-right:4px;"></i>' + esc(obj.bank) + '</span> ' +
+               'เลขบัญชี: <span style="font-weight:600;color:#0f172a;">' + esc(obj.number) + '</span> ' +
+               '(ชื่อบัญชี: <span style="font-weight:600;color:#0f172a;">' + esc(obj.name) + '</span>)';
+      } catch(e) {}
+    }
+    return '<span style="font-weight:600;color:#0f172a;"><i class="bi bi-credit-card-2-front" style="color:#2563eb;margin-right:4px;"></i>' + esc(bankAccountStr) + '</span>';
+  }
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
   function dataURLtoBlob(dataurl) {
     try {
@@ -10755,35 +10785,6 @@ async function api(req) {
       });
     }
 
-    function formatBankAccount(str) {
-      if (!str) return '';
-      var bankAccountStr = String(str || '').trim();
-      if (bankAccountStr.indexOf('{') === 0) {
-        try {
-          var obj = JSON.parse(bankAccountStr);
-          var parts = [];
-          if (obj.bank) parts.push(obj.bank);
-          if (obj.number) parts.push(obj.number);
-          if (obj.name) parts.push(obj.name);
-          return parts.join(' ');
-        } catch(e) {}
-      }
-      return bankAccountStr;
-    }
-
-    function formatBankAccountHtml(str) {
-      if (!str) return '-';
-      var bankAccountStr = String(str || '').trim();
-      if (bankAccountStr.indexOf('{') === 0) {
-        try {
-          var obj = JSON.parse(bankAccountStr);
-          return '<span style="font-weight:600;color:#0f172a;"><i class="bi bi-bank" style="color:#2563eb;margin-right:4px;"></i>' + esc(obj.bank) + '</span> ' +
-                 'เลขบัญชี: <span style="font-weight:600;color:#0f172a;">' + esc(obj.number) + '</span> ' +
-                 '(ชื่อบัญชี: <span style="font-weight:600;color:#0f172a;">' + esc(obj.name) + '</span>)';
-        } catch(e) {}
-      }
-      return '<span style="font-weight:600;color:#0f172a;"><i class="bi bi-credit-card-2-front" style="color:#2563eb;margin-right:4px;"></i>' + esc(bankAccountStr) + '</span>';
-    }
 
     function collectExpensePayload(preset) {
       preset = preset || {};
