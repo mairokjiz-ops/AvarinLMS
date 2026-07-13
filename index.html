@@ -10488,6 +10488,31 @@ async function api(req) {
         img.style.width = '100%';
         img.style.height = '100%';
         img.style.objectFit = 'cover';
+        img.style.cursor = 'pointer';
+        img.addEventListener('click', function() {
+          Swal.fire({
+            imageUrl: url,
+            imageAlt: 'หลักฐานการจ่ายเงิน รูปที่ ' + (index + 1),
+            showConfirmButton: true,
+            confirmButtonText: '<i class="bi bi-box-arrow-up-right"></i> เปิดดูรูปภาพจริงขนาดเต็ม',
+            confirmButtonColor: '#2563eb',
+            showCloseButton: true,
+            width: 'auto',
+            didOpen: function(modal) {
+              var imgEl = modal.querySelector('.swal2-image');
+              if (imgEl) {
+                imgEl.style.cursor = 'zoom-in';
+                imgEl.addEventListener('click', function() {
+                  window.open(url, '_blank');
+                });
+              }
+            }
+          }).then(function(result) {
+            if (result.isConfirmed) {
+              window.open(url, '_blank');
+            }
+          });
+        });
         wrapper.appendChild(img);
         
         var delBtn = document.createElement('button');
@@ -11445,10 +11470,24 @@ async function api(req) {
           Swal.fire({
             imageUrl: url,
             imageAlt: 'หลักฐานการจ่ายเงิน รูปที่ ' + (idx + 1),
-            showConfirmButton: false,
+            showConfirmButton: true,
+            confirmButtonText: '<i class="bi bi-box-arrow-up-right"></i> เปิดดูรูปภาพจริงขนาดเต็ม',
+            confirmButtonColor: '#2563eb',
             showCloseButton: true,
             width: 'auto',
-            maxWidth: '80%'
+            didOpen: function(modal) {
+              var imgEl = modal.querySelector('.swal2-image');
+              if (imgEl) {
+                imgEl.style.cursor = 'zoom-in';
+                imgEl.addEventListener('click', function() {
+                  window.open(url, '_blank');
+                });
+              }
+            }
+          }).then(function(result) {
+            if (result.isConfirmed) {
+              window.open(url, '_blank');
+            }
           });
         });
       });
