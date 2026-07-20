@@ -2874,8 +2874,8 @@ async function doPost(e) {
     }
 
     // 2. ดึงข้อมูลการตั้งค่า LINE API (เมื่อมี Event จริงส่งมาเท่านั้น)
-    var channelAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') || _settingsRaw_('line_channel_access_token') || '';
-    var channelSecret = Deno.env.get('LINE_CHANNEL_SECRET') || _settingsRaw_('line_channel_secret') || '';
+    var channelAccessToken = (Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') || _settingsRaw_('line_channel_access_token') || '').trim();
+    var channelSecret = (Deno.env.get('LINE_CHANNEL_SECRET') || _settingsRaw_('line_channel_secret') || '').trim();
     
     // หากไม่มีการตั้งค่า Token ให้แจ้งเตือน แต่ตอบกลับ OK (ป้องกัน webhook บล็อก)
     if (!channelAccessToken) {
@@ -3493,7 +3493,7 @@ function LINE_getWebhookUrl() {
  */
 async function LINE_replyMessage_(replyToken, messages) {
   var url = 'https://api.line.me/v2/bot/message/reply';
-  var channelAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') || _settingsRaw_('line_channel_access_token') || '';
+  var channelAccessToken = (Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') || _settingsRaw_('line_channel_access_token') || '').trim();
   
   var options = {
     method: 'post',
@@ -3529,7 +3529,7 @@ async function LINE_replyTextMessage_(replyToken, text) {
  * ดาวน์โหลดไฟล์มีเดียจาก LINE Content API
  */
 async function LINE_downloadLineContent_(messageId) {
-  var channelAccessToken = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') || _settingsRaw_('line_channel_access_token') || '';
+  var channelAccessToken = (Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') || _settingsRaw_('line_channel_access_token') || '').trim();
   if (!channelAccessToken) throw new Error('ยังไม่ได้ตั้งค่า LINE channel access token');
   var url = 'https://api-data.line.me/v2/bot/message/' + encodeURIComponent(String(messageId || '')) + '/content';
   var res = await fetch(url, {
@@ -3714,8 +3714,9 @@ function LINE_buildPortalFlexForUser_(user) {
               height: "48px",
               cornerRadius: "24px",
               backgroundColor: "#f1f5f9",
+              justifyContent: "center",
               contents: [
-                { type: "text", text: "👤", size: "xl", align: "center", gravity: "center" }
+                { type: "text", text: "👤", size: "xl", align: "center" }
               ]
             },
             {
