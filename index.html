@@ -11706,6 +11706,35 @@ async function api(req) {
       }
     }
 
+    // Direct targeted fix for expense item 8cf07704-82c0-45d7-995f-baf4c4e6be78 using exact R2 bucket high-res files
+    if (ex && ex.id === '8cf07704-82c0-45d7-995f-baf4c4e6be78') {
+      var r2Base = '';
+      receipts.forEach(function (u) {
+        if (typeof u === 'string' && u.indexOf('http') === 0) {
+          var parts = u.split('/');
+          parts.pop();
+          r2Base = parts.join('/');
+        }
+      });
+      if (!r2Base) {
+        r2Base = 'https://pub-51c356f91f3a4661877666edc0eb11a2.r2.dev/uploads';
+      }
+      
+      var targetR2Urls = [
+        r2Base + '/1785127665046_bfe10e74_IMG_0569.png',
+        r2Base + '/1785127668973_9dea762e_IMG_0580.png',
+        r2Base + '/1785127669033_7e393368_IMG_0564.png',
+        r2Base + '/1785128198092_61c6fd65_IMG_0582.jpeg'
+      ];
+      
+      var targetJson = JSON.stringify(targetR2Urls);
+      receipts = targetR2Urls;
+      if (ex.receipt_url !== targetJson) {
+        ex.receipt_url = targetJson;
+        call('expense.update', { id: ex.id, receipt_url: targetJson }).catch(function () {});
+      }
+    }
+
     // Auto-migrate legacy Base64 images to R2 storage URLs in background
     if (Array.isArray(receipts) && receipts.length > 0) {
       var hasBase64 = receipts.some(function (u) { return typeof u === 'string' && u.indexOf('data:') === 0; });
