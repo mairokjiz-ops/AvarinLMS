@@ -2270,6 +2270,7 @@ async function Settings_update(user, p) {
     } else {
       await DB_insert(SHEETS.SETTINGS, { key: k, value: val });
     }
+    GLOBAL_SETTINGS[k] = val;
     changed.push(k);
   }
   await Audit_log_(user, 'setting.update', 'setting', '', { keys: changed });

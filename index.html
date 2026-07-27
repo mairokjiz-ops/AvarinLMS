@@ -13261,20 +13261,29 @@ async function api(req) {
     renderPage();
 
     call('setting.get', {}).then(function (s) {
-      if (s && typeof s.rentals_json === 'string') {
+      var localRaw = localStorage.getItem('lms_rentals_data');
+      var localList = null;
+      if (localRaw) {
+        try { localList = JSON.parse(localRaw); } catch (e) {}
+      }
+
+      if (s && s.rentals_json && typeof s.rentals_json === 'string' && s.rentals_json.trim() !== '') {
         try {
           var remoteList = JSON.parse(s.rentals_json);
-          var hasOldMockup = Array.isArray(remoteList) && remoteList.some(function (x) { return x.id === 'RNT-1001' || (x.name && x.name.indexOf('MacBook Pro') >= 0); });
-          if (hasOldMockup || !Array.isArray(remoteList) || remoteList.length === 0) {
-            var freshData = getInitialRentalsData();
-            localStorage.setItem('lms_rentals_data', JSON.stringify(freshData));
-            call('setting.update', { rentals_json: JSON.stringify(freshData) }).catch(function () {});
-            renderPage();
-          } else {
-            localStorage.setItem('lms_rentals_data', s.rentals_json);
-            renderPage();
+          if (Array.isArray(remoteList) && remoteList.length > 0) {
+            var hasOldMockup = remoteList.some(function (x) { return x.id === 'RNT-1001' || (x.name && x.name.indexOf('MacBook Pro') >= 0); });
+            if (!hasOldMockup) {
+              localStorage.setItem('lms_rentals_data', s.rentals_json);
+              renderPage();
+              return;
+            }
           }
         } catch(e) {}
+      }
+
+      if (Array.isArray(localList) && localList.length > 0) {
+        call('setting.update', { rentals_json: JSON.stringify(localList) }).catch(function () {});
+        renderPage();
       } else {
         var freshData = getInitialRentalsData();
         localStorage.setItem('lms_rentals_data', JSON.stringify(freshData));
