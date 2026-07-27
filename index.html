@@ -250,9 +250,14 @@ a:hover { text-decoration: underline; }
   font-size: 14px;
 }
 .lf-input-wrap input::placeholder { color: rgba(241,245,249,.4); }
-.lf-input-wrap input:-webkit-autofill {
-  -webkit-text-fill-color: #f1f5f9;
-  -webkit-box-shadow: 0 0 0 1000px rgba(15,23,42,.8) inset;
+.lf-input-wrap input:-webkit-autofill,
+.lf-input-wrap input:-webkit-autofill:hover,
+.lf-input-wrap input:-webkit-autofill:focus,
+.lf-input-wrap input:-webkit-autofill:active {
+  -webkit-text-fill-color: #0f172a !important;
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  transition: background-color 50000s ease-in-out 0s !important;
 }
 .lf-icon {
   position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
@@ -3839,24 +3844,36 @@ body {
 }
 .login-brand .lb-logo-name,
 .login-brand .lb-logo-tag,
-.login-brand .lb-tagline,
 .login-brand .lb-ready-note {
   color: var(--ink) !important;
 }
-.lb-tagline span {
-  background: var(--grad-soft) !important;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent !important;
+.lb-tagline {
+  font-size: clamp(26px, 3.8vw, 42px) !important;
+  font-weight: 800 !important;
+  line-height: 1.25 !important;
+  color: #0f172a !important;
+  margin-top: 18px !important;
+  max-width: 440px !important;
 }
-.lb-stat-num {
-  background: var(--grad-soft) !important;
+.lb-tagline span,
+.lb-tagline .lb-accent {
+  background: linear-gradient(135deg, #0284c7 0%, #10b981 100%) !important;
   -webkit-background-clip: text !important;
   background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+  display: inline-block !important;
+  font-weight: 800 !important;
+}
+.lb-stat-num {
+  background: linear-gradient(135deg, #0284c7 0%, #10b981 100%) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
   color: transparent !important;
 }
 .login-form-card {
-  background: rgba(255, 255, 255, 0.5) !important;
+  background: rgba(255, 255, 255, 0.75) !important;
   color: var(--ink) !important;
   border-left: 1px solid var(--glass-border);
 }
@@ -3869,14 +3886,24 @@ body {
   opacity: 1 !important;
 }
 .lf-input-wrap {
-  background: #fff !important;
-  border: 1px solid var(--glass-border) !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
   border-radius: var(--radius-sm) !important;
   box-shadow: inset 0 1px 3px rgba(31, 38, 135, 0.04);
 }
 .lf-input-wrap input {
-  color: var(--ink) !important;
+  color: #0f172a !important;
+  background-color: #ffffff !important;
   min-height: 50px;
+}
+.lf-input-wrap input:-webkit-autofill,
+.lf-input-wrap input:-webkit-autofill:hover,
+.lf-input-wrap input:-webkit-autofill:focus,
+.lf-input-wrap input:-webkit-autofill:active {
+  -webkit-text-fill-color: #0f172a !important;
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  transition: background-color 50000s ease-in-out 0s !important;
 }
 .lf-input-wrap input::placeholder {
   color: var(--ink-muted) !important;
@@ -4708,6 +4735,8 @@ async function api(req) {
     open: function (opts) {
       opts = opts || {};
       var host = $('#modal-host'); if (!host) return;
+      if (opts.preventBackdropClose) host.setAttribute('data-prevent-close', 'true');
+      else host.removeAttribute('data-prevent-close');
       var sizeCls = opts.large ? ' is-large' : (opts.xl ? ' is-xl' : '');
       var html = '<div class="modal-card' + sizeCls + '">'
         + (opts.title ? ('<div class="md-header"><div class="md-title">' + esc(opts.title) + '</div><button class="md-close" data-modal-close><i class="bi bi-x-lg"></i></button></div>') : '')
@@ -4720,6 +4749,7 @@ async function api(req) {
     },
     close: function () {
       var host = $('#modal-host'); if (!host) return;
+      host.removeAttribute('data-prevent-close');
       host.classList.remove('is-open');
       setTimeout(function () { host.innerHTML = ''; }, 200);
     }
@@ -4751,7 +4781,8 @@ async function api(req) {
     '#/courses/new':  { title: 'จัดการคอร์สเรียน',   sub: 'ป้อนบทเรียนและแบบทดสอบสำหรับพนักงาน', icon: 'journal-plus' },
     '#/courses/view': { title: 'รายละเอียดคอร์ส',     sub: 'ประเมินผลการเรียนรู้ของพนักงาน', icon: 'journal-text' },
     '#/audit':        { title: 'บันทึกระบบ',         sub: 'ประวัติการใช้งาน',                    icon: 'shield-check' },
-    '#/attendance':   { title: 'ประวัติการเข้างาน',  sub: 'ตรวจสอบการลงเวลาเข้า-ออกงานและภาพถ่ายเซลฟี่', icon: 'clock-history' }
+    '#/attendance':   { title: 'ประวัติการเข้างาน',  sub: 'ตรวจสอบการลงเวลาเข้า-ออกงานและภาพถ่ายเซลฟี่', icon: 'clock-history' },
+    '#/rentals':      { title: 'การเช่า-หมดอายุ',    sub: 'ติดตามรายการเช่าและสัญญาหมดอายุของพนักงานและระบบสำนักงาน', icon: 'calendar-range' }
   };
 
   // ── Menu groups ────────────────────────────────────
@@ -4798,6 +4829,7 @@ async function api(req) {
       {
         title: 'ข้อมูลหลัก',
         items: [
+          { hash: '#/rentals',       icon: 'calendar-range',            label: 'การเช่า-หมดอายุ',    cap: '*', badge: 'rentals_expiring' },
           { hash: '#/users',         icon: 'people-fill',               label: 'จัดการผู้ใช้',       cap: 'user.manage' },
           { hash: '#/pending-users', icon: 'person-fill-exclamation', label: 'คำขอสมัคร', cap: 'user.manage', badge: 'pending' },
           { hash: '#/quotas',        icon: 'person-gear',               label: 'จัดการสิทธิ์วันลา',  cap: 'setting.manage|leave.adjust_quota' }
@@ -4878,7 +4910,7 @@ async function api(req) {
       + '      <div><div class="lb-logo-name">' + esc(app.name) + '</div>'
       + '           <div class="lb-logo-tag">' + esc(app.org || '') + '</div></div>'
       + '    </div>'
-      + '    <div class="lb-tagline">ระบบลงเวลาและจัดการวันลา<span>สำหรับพนักงาน</span><br>Employee Self-Service</div>'
+      + '    <div class="lb-tagline">ระบบลงเวลาและ<br>จัดการวันลา<br><span class="lb-accent">Employee Self-Service</span></div>'
       + '    <p class="lb-ready-note">ระบบสารสนเทศความปลอดภัยสูงสำหรับการบันทึกเวลาทำงานและสิทธิ์การลาออนไลน์</p>'
       + '    <div class="lb-features">'
       + '      <div class="lb-feature"><div class="lb-feature-icon"><i class="bi bi-clock-history"></i></div><div><div class="lb-feature-title">บันทึกเวลาทำงาน (Time Attendance)</div><div class="lb-feature-desc">ลงเวลาเข้า-ออกงานผ่านระบบพิกัด GPS พร้อมถ่ายรูปยืนยันตัวตน</div></div></div>'
@@ -5234,6 +5266,9 @@ async function api(req) {
             } else if (it.badge === 'leaves_pending') {
               var cnt = Store._pendingLeavesCount || 0;
               if (cnt > 0) badgeHtml = '<span class="sb-nav-badge">' + cnt + '</span>';
+            } else if (it.badge === 'rentals_expiring') {
+              var cnt = Store._expiringRentalsCount || 0;
+              if (cnt > 0) badgeHtml = '<span class="sb-nav-badge" style="background:#f59e0b; color:#fff">' + cnt + '</span>';
             }
             return '<a href="' + it.hash + '" class="sb-link' + active + '"><i class="bi bi-' + it.icon + '"></i> ' + esc(it.label) + badgeHtml + '</a>';
           }).join('');
@@ -5368,7 +5403,12 @@ async function api(req) {
       }
 
       // 6) Modal backdrop click → close
-      if (e.target.id === 'modal-host') { Modal.close(); return; }
+      if (e.target.id === 'modal-host') {
+        var hostEl = $('#modal-host');
+        if (hostEl && hostEl.getAttribute('data-prevent-close') === 'true') return;
+        Modal.close();
+        return;
+      }
 
       // 7) Hash links
       var a = e.target.closest && e.target.closest('a[href]');
@@ -5510,6 +5550,25 @@ async function api(req) {
         }).catch(function () {})
       );
     }
+    promises.push(
+      new Promise(function (res) {
+        try {
+          var raw = localStorage.getItem('lms_rentals_data');
+          var list = raw ? JSON.parse(raw) : (window.__getInitialRentalsData ? window.__getInitialRentalsData() : []);
+          var todayStr = new Date().toISOString().split('T')[0];
+          var nowMs = new Date(todayStr).getTime();
+          var cnt = 0;
+          list.forEach(function (x) {
+            if (x.status === 'renewed' || x.status === 'terminated') return;
+            var endMs = new Date(x.end_date).getTime();
+            var diffDays = Math.ceil((endMs - nowMs) / (1000 * 60 * 60 * 24));
+            if (diffDays <= (x.alert_days || 60)) cnt++;
+          });
+          Store._expiringRentalsCount = cnt;
+        } catch (e) { Store._expiringRentalsCount = 0; }
+        res();
+      })
+    );
     if (promises.length > 0) {
       Promise.all(promises).then(function () {
         var nav = $('.sb-nav');
@@ -8481,6 +8540,11 @@ async function api(req) {
     var isSalesSupervisor = LMS.Store.user.role === 'supervisor' && (LMS.Store.user.department === 'ฝ่ายขาย' || LMS.Store.user.department === 'ฝ่ายปฏิบัติการ' || LMS.Store.user.department === 'ฝ่ายขายและการตลาด');
     var isAdmin = LMS.Store.user.role === 'admin';
     var canEdit = isAdmin || isSalesSupervisor;
+
+    // Batch Edit State
+    var isBatchMode = false;
+    var selectedCells = {}; // key: uid_dateStr -> cellObj
+    var pendingBatchEdits = {}; // key: uid_dateStr -> editObj
     
     var daysNamesShort = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
     var daysFullNames = ['วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'];
@@ -8553,6 +8617,8 @@ async function api(req) {
       + '  .cell-worked-offday { background: #ecfdf5 !important; color: #065f46; font-weight: 700; font-size: 10px; }'
       + '  .cell-clickable { cursor: pointer; transition: background 0.15s; }'
       + '  .cell-clickable:hover { filter: brightness(0.93); }'
+      + '  .cell-selected { outline: 2px solid #6366f1 !important; background: #e0e7ff !important; box-shadow: inset 0 0 0 2px #4f46e5 !important; position: relative; }'
+      + '  .cell-pending-edit { background: #fffbeb !important; border: 1.5px solid #f59e0b !important; position: relative; }'
       + '  .badge-swap { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: rgba(99,102,241,.15); color: #4f46e5; font-size: 9px; margin-left: 2px; }'
       + '  .off-day-badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; background: #f1f5f9; color: #475569; }'
       + '  .off-day-badge.editable { cursor: pointer; transition: all 0.2s; }'
@@ -8605,8 +8671,10 @@ async function api(req) {
       + '    <select class="select" id="sched-year" style="width:95px;"></select>'
       + '    <button class="btn btn-ghost" id="sched-next"><i class="bi bi-chevron-right"></i></button>'
       + '    <div class="sched-controls-sep"></div>'
+      + (canEdit ? '    <button class="btn btn-outline" id="sched-batch-edit-btn" style="border-color:#6366f1; color:#4f46e5; font-weight:700;"><i class="bi bi-pencil-square"></i> แก้ไขหลายวันพร้อมกัน</button>' : '')
       + '    <button class="btn btn-primary" id="sched-print" style="margin-left:auto"><i class="bi bi-printer"></i> พิมพ์ตาราง</button>'
       + '  </div>'
+      + '  <div id="sched-batch-toolbar-container"></div>'
       + '  <div class="stats-grid" id="sched-stats"></div>'
       + '  <div class="sched-card">'
       + '    <div class="sched-card-head">'
@@ -8747,6 +8815,25 @@ async function api(req) {
       window.print();
     });
 
+    if (canEdit && $('#sched-batch-edit-btn')) {
+      $('#sched-batch-edit-btn').addEventListener('click', function () {
+        isBatchMode = !isBatchMode;
+        if (isBatchMode) {
+          this.style.background = '#4f46e5';
+          this.style.color = '#fff';
+          this.style.borderColor = '#4f46e5';
+          toast('เปิดโหมดแก้ไขหลายวัน (Batch Edit)', 'info');
+        } else {
+          this.style.background = 'transparent';
+          this.style.color = '#4f46e5';
+          this.style.borderColor = '#6366f1';
+          selectedCells = {};
+        }
+        updateBatchToolbar();
+        renderTable();
+      });
+    }
+
     $$('.btn-view-mode').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var mode = btn.getAttribute('data-mode');
@@ -8764,6 +8851,307 @@ async function api(req) {
       weekSelect.addEventListener('change', function () {
         curWeekIdx = Number(weekSelect.value);
         renderTable();
+      });
+    }
+
+    function updateBatchToolbar() {
+      var container = $('#sched-batch-toolbar-container');
+      if (!container) return;
+      if (!isBatchMode) {
+        container.innerHTML = '';
+        return;
+      }
+      var selCount = Object.keys(selectedCells).length;
+      var pendCount = Object.keys(pendingBatchEdits).length;
+
+      var html = '<div id="sched-batch-toolbar" style="background: linear-gradient(135deg, #1e1b4b, #312e81); border-radius: 16px; padding: 14px 20px; color: #fff; margin-bottom: 16px; box-shadow: 0 4px 20px rgba(49,46,129,0.25); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;">'
+        + '  <div style="display:flex; align-items:center; gap:12px;">'
+        + '    <span style="background:rgba(255,255,255,0.15); padding:6px 12px; border-radius:8px; font-weight:700; font-size:13px; display:inline-flex; align-items:center; gap:6px;">'
+        + '      <i class="bi bi-ui-checks-grid" style="color:#a5b4fc;"></i> โหมดแก้ไขหลายวัน'
+        + '    </span>'
+        + '    <span style="font-size:13px; color:#e0e7ff;">คลิกเลือกช่องในตาราง (เลือกได้หลายช่อง/หลายคน) แล้วเลือกสถานะเพื่อปรับเปลี่ยน</span>'
+        + '  </div>'
+        + '  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">'
+        + '    <button class="btn btn-sm" id="batch-bulk-range-btn" style="background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.25); color:#fff; font-weight:600;"><i class="bi bi-calendar-range"></i> เลือกตามช่วงวันที่/พนักงาน</button>'
+        + '    <div style="width:1px; height:24px; background:rgba(255,255,255,0.2);"></div>'
+        + '    <select class="select" id="batch-action-select" style="height:34px; font-size:12px; border-radius:8px; background:#fff; color:#0f172a; max-width:240px;">'
+        + '      <option value="">-- เลือกสถานะที่จะเปลี่ยน --</option>'
+        + '      <option value="work_offday">🟢 ทำงาน (ชดเชยวันหยุด)</option>'
+        + '      <option value="compensatory">🔵 วันหยุดชดเชย (หักโควตา)</option>'
+        + '      <option value="off_no_sub">🔴 หยุดงาน (OFF - ไม่มีคนแทน)</option>'
+        + '      <option value="sub_ราชพฤกษ์">🟣 พนักงานแทน -> ปฏิบัติงานแทน ราชพฤกษ์</option>'
+        + '      <option value="sub_ปอโต">🟣 พนักงานแทน -> ปฏิบัติงานแทน ปอโต</option>'
+        + '      <option value="sub_วิรันด้า">🟣 พนักงานแทน -> ปฏิบัติงานแทน วิรันด้า</option>'
+        + '      <option value="reset">⚪ คืนค่าปกติ (ลบ Override)</option>'
+        + '    </select>'
+        + '    <button class="btn btn-sm btn-primary" id="batch-apply-btn" style="background:linear-gradient(135deg,#6366f1,#8b5cf6); border:none; font-weight:700;"><i class="bi bi-check-lg"></i> ปรับใช้ (' + selCount + ' ช่อง)</button>'
+        + '    <div style="width:1px; height:24px; background:rgba(255,255,255,0.2);"></div>'
+        + '    <button class="btn btn-sm" id="batch-save-all-btn" style="background:#10b981; color:#fff; border:none; font-weight:700; box-shadow:0 4px 14px rgba(16,185,129,0.4);"><i class="bi bi-floppy-fill"></i> บันทึกข้อมูลทั้งหมด (' + pendCount + ')</button>'
+        + '    <button class="btn btn-sm" id="batch-cancel-btn" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff;">ออกโหมดแก้ไข</button>'
+        + '  </div>'
+        + '</div>';
+
+      container.innerHTML = html;
+      wireBatchToolbarEvents();
+    }
+
+    function wireBatchToolbarEvents() {
+      var applyBtn = $('#batch-apply-btn');
+      if (applyBtn) {
+        applyBtn.addEventListener('click', function () {
+          var selKeys = Object.keys(selectedCells);
+          if (selKeys.length === 0) {
+            toast('กรุณาลองคลิกเลือกช่องในตารางก่อนปรับสถานะ', 'warning');
+            return;
+          }
+          var actionSelect = $('#batch-action-select');
+          var action = actionSelect ? actionSelect.value : '';
+          if (!action) {
+            toast('กรุณาเลือกสถานะที่จะปรับจากเมนูดรอปดาวน์', 'warning');
+            return;
+          }
+
+          selKeys.forEach(function (key) {
+            var item = selectedCells[key];
+            pendingBatchEdits[key] = {
+              uid: item.uid,
+              empName: item.empName,
+              dateStr: item.dateStr,
+              action: action,
+              leaveId: item.leaveId,
+              leaveType: item.leaveType,
+              empBranch: item.empBranch
+            };
+          });
+
+          selectedCells = {};
+          toast('ปรับสถานะ ' + selKeys.length + ' ช่องเรียบร้อยแล้ว (กดบันทึกเพื่อบันทึกลงระบบ)', 'success');
+          updateBatchToolbar();
+          renderTable();
+        });
+      }
+
+      var bulkRangeBtn = $('#batch-bulk-range-btn');
+      if (bulkRangeBtn) {
+        bulkRangeBtn.addEventListener('click', function () {
+          openBatchBulkRangeModal();
+        });
+      }
+
+      var saveAllBtn = $('#batch-save-all-btn');
+      if (saveAllBtn) {
+        saveAllBtn.addEventListener('click', function () {
+          saveBatchEdits();
+        });
+      }
+
+      var cancelBtn = $('#batch-cancel-btn');
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', function () {
+          isBatchMode = false;
+          selectedCells = {};
+          pendingBatchEdits = {};
+          var btn = $('#sched-batch-edit-btn');
+          if (btn) {
+            btn.style.background = 'transparent';
+            btn.style.color = '#4f46e5';
+            btn.style.borderColor = '#6366f1';
+          }
+          updateBatchToolbar();
+          renderTable();
+        });
+      }
+    }
+
+    function openBatchBulkRangeModal() {
+      if (!loadedData || !loadedData.dates || loadedData.dates.length === 0) return;
+      var dates = loadedData.dates;
+      var startDateDef = dates[0].date;
+      var endDateDef = dates[dates.length - 1].date;
+
+      var empOptions = '<option value="all">👥 พนักงานทั้งหมดทุกสาขา</option>'
+        + '<option value="branch_ราชพฤกษ์">🏢 เฉพาะสาขา ราชพฤกษ์</option>'
+        + '<option value="branch_ปอโต">🏢 เฉพาะสาขา ปอโต</option>'
+        + '<option value="branch_วิรันด้า">🏢 เฉพาะสาขา วิรันด้า</option>'
+        + '<option value="branch_พนักงานแทน">👤 เฉพาะกลุ่มพนักงานแทน</option>';
+
+      Object.keys(branchGroups).forEach(function (b) {
+        branchGroups[b].forEach(function (x) {
+          empOptions += '<option value="emp_' + esc(x.id) + '">👤 ' + esc(x.full_name) + ' (' + esc(b) + ')</option>';
+        });
+      });
+
+      var html = '<div style="text-align:left; display:flex; flex-direction:column; gap:12px; font-size:13px;">'
+        + '  <div>'
+        + '    <label style="font-weight:700; color:#334155; display:block; margin-bottom:4px;">1. เลือกพนักงาน / กลุ่มเป้าหมาย</label>'
+        + '    <select class="select" id="bulk-emp-select" style="width:100%; height:38px;">' + empOptions + '</select>'
+        + '  </div>'
+
+        + '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">'
+        + '    <div>'
+        + '      <label style="font-weight:700; color:#334155; display:block; margin-bottom:4px;">วันที่เริ่มต้น</label>'
+        + '      <input type="date" class="input" id="bulk-start-date" value="' + startDateDef + '" style="height:38px;">'
+        + '    </div>'
+        + '    <div>'
+        + '      <label style="font-weight:700; color:#334155; display:block; margin-bottom:4px;">วันที่สิ้นสุด</label>'
+        + '      <input type="date" class="input" id="bulk-end-date" value="' + endDateDef + '" style="height:38px;">'
+        + '    </div>'
+        + '  </div>'
+
+        + '  <div>'
+        + '    <label style="font-weight:700; color:#334155; display:block; margin-bottom:4px;">2. เลือกสถานะวันทำงานใหม่ที่จะปรับ</label>'
+        + '    <select class="select" id="bulk-action-select" style="width:100%; height:38px;">'
+        + '      <option value="work_offday">🟢 ทำงาน (ชดเชยวันหยุด)</option>'
+        + '      <option value="compensatory">🔵 วันหยุดชดเชย (หักโควตา)</option>'
+        + '      <option value="off_no_sub">🔴 หยุดงาน (OFF - ไม่มีคนแทน)</option>'
+        + '      <option value="sub_ราชพฤกษ์">🟣 พนักงานแทน -> ปฏิบัติงานแทน ราชพฤกษ์</option>'
+        + '      <option value="sub_ปอโต">🟣 พนักงานแทน -> ปฏิบัติงานแทน ปอโต</option>'
+        + '      <option value="sub_วิรันด้า">🟣 พนักงานแทน -> ปฏิบัติงานแทน วิรันด้า</option>'
+        + '      <option value="reset">⚪ คืนค่าปกติ (ลบ Override)</option>'
+        + '    </select>'
+        + '  </div>'
+        + '</div>';
+
+      Swal.fire({
+        title: 'เลือกปรับสถานะตามช่วงวัน',
+        html: html,
+        showCancelButton: true,
+        confirmButtonText: 'เพิ่มเข้าคิวรอเซฟ',
+        cancelButtonText: 'ยกเลิก',
+        confirmButtonColor: '#6366f1',
+        cancelButtonColor: '#64748b'
+      }).then(function (res) {
+        if (!res.isConfirmed) return;
+        var empVal = $('#bulk-emp-select').value;
+        var startD = $('#bulk-start-date').value;
+        var endD = $('#bulk-end-date').value;
+        var action = $('#bulk-action-select').value;
+
+        if (!startD || !endD) { toast('กรุณาระบุวันที่เริ่มต้นและสิ้นสุด', 'warning'); return; }
+
+        var targetEmps = [];
+        if (empVal === 'all') {
+          Object.keys(branchGroups).forEach(function (b) {
+            branchGroups[b].forEach(function (x) { targetEmps.push(x); });
+          });
+        } else if (empVal.indexOf('branch_') === 0) {
+          var bName = empVal.replace('branch_', '');
+          (branchGroups[bName] || []).forEach(function (x) { targetEmps.push(x); });
+        } else if (empVal.indexOf('emp_') === 0) {
+          var eId = empVal.replace('emp_', '');
+          Object.keys(branchGroups).forEach(function (b) {
+            branchGroups[b].forEach(function (x) {
+              if (String(x.id) === String(eId)) targetEmps.push(x);
+            });
+          });
+        }
+
+        var addedCount = 0;
+        dates.forEach(function (dObj) {
+          if (dObj.date >= startD && dObj.date <= endD) {
+            targetEmps.forEach(function (emp) {
+              var key = emp.id + '_' + dObj.date;
+              pendingBatchEdits[key] = {
+                uid: emp.id,
+                empName: emp.full_name,
+                dateStr: dObj.date,
+                action: action,
+                leaveId: '',
+                leaveType: '',
+                empBranch: emp.branch
+              };
+              addedCount++;
+            });
+          }
+        });
+
+        toast('เพิ่มรายการปรับสถานะ ' + addedCount + ' วันเข้าคิวรอเซฟแล้ว', 'success');
+        updateBatchToolbar();
+        renderTable();
+      });
+    }
+
+    function saveBatchEdits() {
+      var editItems = Object.values(pendingBatchEdits);
+      if (editItems.length === 0) {
+        toast('ไม่มีรายการแก้ไขที่รอการบันทึก', 'warning');
+        return;
+      }
+
+      Swal.fire({
+        title: 'ยืนยันบันทึกตารางทำงานหลายวัน',
+        html: 'คุณต้องการบันทึกการเปลี่ยนแปลงตารางปฏิบัติงานจำนวน <strong>' + editItems.length + ' รายการ</strong> ทั้งหมดลงระบบใช่หรือไม่?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'บันทึกทั้งหมด',
+        cancelButtonText: 'ยกเลิก',
+        confirmButtonColor: '#10b981',
+        cancelButtonColor: '#64748b'
+      }).then(function (res) {
+        if (!res.isConfirmed) return;
+
+        Spinner.show('กำลังบันทึกข้อมูลตารางทำงาน (' + editItems.length + ' รายการ)...');
+
+        var promises = editItems.map(function (item) {
+          var uid = item.uid;
+          var dateStr = item.dateStr;
+          var action = item.action;
+          var leaveId = item.leaveId;
+
+          if (action === 'work_offday') {
+            var p = leaveId ? call('leave.delete', { id: leaveId }) : Promise.resolve();
+            return p.then(function () {
+              return call('leave.create', {
+                requester_id: uid,
+                leave_type: 'work_offday',
+                start_date: dateStr,
+                end_date: dateStr,
+                days: 1,
+                status: 'approved',
+                reason: 'มาทำงานในวันหยุดชดเชย (แก้ไขกลุ่มหลายวัน)'
+              });
+            });
+          } else if (action === 'compensatory') {
+            var p = leaveId ? call('leave.delete', { id: leaveId }) : Promise.resolve();
+            return p.then(function () {
+              return call('leave.create', {
+                requester_id: uid,
+                leave_type: 'compensatory',
+                start_date: dateStr,
+                end_date: dateStr,
+                days: 1,
+                status: 'approved',
+                reason: 'ใช้สิทธิ์วันหยุดชดเชย (แก้ไขกลุ่มหลายวัน)'
+              });
+            });
+          } else if (action === 'off_no_sub' || action.indexOf('sub_') === 0) {
+            return call('schedule.save_override', { user_id: uid, date: dateStr, value: action });
+          } else if (action === 'reset') {
+            var p = leaveId ? call('leave.delete', { id: leaveId }) : Promise.resolve();
+            return p.then(function () {
+              return call('schedule.save_override', { user_id: uid, date: dateStr, value: '' });
+            });
+          }
+          return Promise.resolve();
+        });
+
+        Promise.all(promises).then(function () {
+          Spinner.hide();
+          isBatchMode = false;
+          pendingBatchEdits = {};
+          selectedCells = {};
+          var btn = $('#sched-batch-edit-btn');
+          if (btn) {
+            btn.style.background = 'transparent';
+            btn.style.color = '#4f46e5';
+            btn.style.borderColor = '#6366f1';
+          }
+          toast('บันทึกตารางทำงานหลายวันเรียบร้อยแล้ว', 'success');
+          load();
+        }).catch(function (err) {
+          Spinner.hide();
+          alertError('เกิดข้อผิดพลาดในการบันทึก', err.message);
+        });
       });
     }
 
@@ -9030,9 +9418,29 @@ async function api(req) {
             }
             var clickableClass = isClickable ? ' cell-clickable' : '';
             
-            tbl += '<td class="' + cellClass + clickableClass + '" title="' + esc(cellTitle) + '"'
+            var cellKey = emp.id + '_' + dObj.date;
+            var isSelected = isBatchMode && !!selectedCells[cellKey];
+            var pendingEdit = pendingBatchEdits[cellKey];
+            var selectedClass = isSelected ? ' cell-selected' : '';
+            var pendingClass = pendingEdit ? ' cell-pending-edit' : '';
+
+            var pendingBadge = '';
+            if (pendingEdit) {
+              var actionLabels = {
+                'work_offday': 'ทำงานชดเชย',
+                'compensatory': 'หยุดชดเชย',
+                'off_no_sub': 'OFF',
+                'sub_ราชพฤกษ์': 'แทน ราชพฤกษ์',
+                'sub_ปอโต': 'แทน ปอโต',
+                'sub_วิรันด้า': 'แทน วิรันด้า',
+                'reset': 'คืนค่าปกติ'
+              };
+              pendingBadge = '<div style="font-size:8.5px; font-weight:800; color:#b45309; background:#fef3c7; border:1px solid #f59e0b; border-radius:3px; padding:1px 2px; margin-top:2px;">[รอเซฟ: ' + (actionLabels[pendingEdit.action]||pendingEdit.action) + ']</div>';
+            }
+
+            tbl += '<td class="' + cellClass + clickableClass + selectedClass + pendingClass + '" title="' + esc(cellTitle) + '"'
               + (isClickable ? ' data-action="toggle-cell" data-uid="' + esc(emp.id) + '" data-date="' + esc(dObj.date) + '" data-status="' + esc(dayState.status) + '" data-leavetype="' + esc(dayState.leave_info ? dayState.leave_info.leave_type : '') + '" data-leaveid="' + esc(dayState.leave_info ? dayState.leave_info.id : '') + '" data-branch="' + esc(emp.branch) + '" data-override="' + esc(dayState.override_value || '') + '"' : '')
-              + '>' + cellContent + '</td>';
+              + '>' + cellContent + pendingBadge + '</td>';
           });
           
           tbl += '</tr>';
@@ -9094,6 +9502,27 @@ async function api(req) {
     }
 
     function handleCellClick(uid, empName, dateStr, currentStatus, leaveType, leaveId, empBranch, currentOverride) {
+      if (isBatchMode) {
+        var key = uid + '_' + dateStr;
+        if (selectedCells[key]) {
+          delete selectedCells[key];
+        } else {
+          selectedCells[key] = {
+            uid: uid,
+            dateStr: dateStr,
+            empName: empName,
+            currentStatus: currentStatus,
+            leaveType: leaveType,
+            leaveId: leaveId,
+            empBranch: empBranch,
+            currentOverride: currentOverride
+          };
+        }
+        updateBatchToolbar();
+        renderTable();
+        return;
+      }
+
       if (empBranch === 'พนักงานแทน') {
         var options = {
           "": "ให้ระบบจัดสรรอัตโนมัติ (สแตนด์บาย)",
@@ -11835,6 +12264,936 @@ async function api(req) {
       });
     }
   }
+
+  // ── Rentals & Expiries Module (#/rentals) ──────────────────────────
+  function getInitialRentalsData() {
+    return [
+      {
+        id: 'RNT-1001',
+        name: 'MacBook Pro M3 Max 16" (สมชาย)',
+        type: 'employee',
+        category: 'คอมพิวเตอร์ / โน้ตบุ๊ก',
+        holder_name: 'นายสมชาย วงศ์ดี',
+        department: 'IT & Development',
+        contract_no: 'C02GX0F0MD6M',
+        vendor_name: 'Apple Enterprise Lease (Thailand)',
+        vendor_contact: '02-123-4567 (คุณวิชัย)',
+        start_date: '2024-08-15',
+        end_date: '2026-08-15',
+        monthly_cost: 3500,
+        payment_cycle: 'monthly',
+        alert_days: 60,
+        status: 'expiring_soon',
+        notes: 'เช่าระยะยาว 24 เดือน พร้อมประกัน AppleCare+ Enterprise'
+      },
+      {
+        id: 'RNT-1002',
+        name: 'สัญญาเช่าอาคารสำนักงานใหญ่ (ชั้น 4-5)',
+        type: 'office',
+        category: 'สถานที่ / อาคาร',
+        holder_name: 'ฝ่ายบริหารและสถานที่',
+        department: 'ฝ่ายบริหาร',
+        contract_no: 'RENT-2024-009',
+        vendor_name: 'อาคารภิรัชทาวเวอร์ สุขุมวิท',
+        vendor_contact: '02-999-8888 (คุณนภา)',
+        start_date: '2024-01-01',
+        end_date: '2026-12-31',
+        monthly_cost: 185000,
+        payment_cycle: 'monthly',
+        alert_days: 90,
+        status: 'active',
+        notes: 'สัญญาเช่าสถานที่ 3 ปี มัดจำ 3 เดือน ลิฟต์ส่วนตัว'
+      },
+      {
+        id: 'RNT-1003',
+        name: 'Adobe Creative Cloud Enterprise (10 Lic)',
+        type: 'employee',
+        category: 'ลิขสิทธิ์ซอฟต์แวร์',
+        holder_name: 'ทีมการตลาด & UX/UI',
+        department: 'การตลาด',
+        contract_no: 'ADB-CC-8849-ENT',
+        vendor_name: 'Adobe Systems Software',
+        vendor_contact: 'support@adobe-distributor.th',
+        start_date: '2025-07-10',
+        end_date: '2026-07-10',
+        monthly_cost: 14900,
+        payment_cycle: 'yearly',
+        alert_days: 30,
+        status: 'expired',
+        notes: 'หมดอายุเมื่อต้นเดือน กรุณาต่อสัญญารายปีใหม่'
+      },
+      {
+        id: 'RNT-1004',
+        name: 'เครื่องถ่ายเอกสาร Fuji Xerox C3375 (ชั้น 2)',
+        type: 'office',
+        category: 'เครื่องใช้สำนักงาน',
+        holder_name: 'ฝ่ายบริหารทั่วไป',
+        department: 'บริหารทั่วไป',
+        contract_no: 'FX-C3375-9921',
+        vendor_name: 'Fuji Film Business Innovation',
+        vendor_contact: '02-664-3000 Call Center',
+        start_date: '2023-10-01',
+        end_date: '2026-09-30',
+        monthly_cost: 8500,
+        payment_cycle: 'monthly',
+        alert_days: 60,
+        status: 'active',
+        notes: 'รวมผงหมึกและช่างซ่อมบำรุง 24 ชม.'
+      },
+      {
+        id: 'RNT-1005',
+        name: 'รถยนต์เช่าประจำตำแหน่ง (Camry Hybrid)',
+        type: 'employee',
+        category: 'ยานพาหนะ',
+        holder_name: 'ดร.อนันต์ สุขเกษม (ผอ.)',
+        department: 'ผู้บริหาร',
+        contract_no: '3กข-9988 BKK',
+        vendor_name: 'KPN Rental Car Thailand',
+        vendor_contact: '02-777-1111 (คุณเมธี)',
+        start_date: '2024-04-01',
+        end_date: '2027-03-31',
+        monthly_cost: 28000,
+        payment_cycle: 'monthly',
+        alert_days: 60,
+        status: 'active',
+        notes: 'สัญญาเช่า 3 ปี รวมประกันชั้น 1 และรถเปลี่ยนระหว่างซ่อม'
+      },
+      {
+        id: 'RNT-1006',
+        name: 'AWS Cloud Hosting (Production Server)',
+        type: 'office',
+        category: 'ระบบคลาวด์ / โดเมน',
+        holder_name: 'ทีม IT & Infrastructure',
+        department: 'IT & DevOps',
+        contract_no: 'AWS-TH-994112',
+        vendor_name: 'Amazon Web Services (AWS)',
+        vendor_contact: 'aws-support@amazon.com',
+        start_date: '2025-08-01',
+        end_date: '2026-08-01',
+        monthly_cost: 42000,
+        payment_cycle: 'monthly',
+        alert_days: 30,
+        status: 'expiring_soon',
+        notes: 'Reserved Instance 1 ปี ลดราคา 35% ต้องต่อสัญญาล่วงหน้า'
+      },
+      {
+        id: 'RNT-1007',
+        name: 'สัญญา MA Firewall & Cisco Core Switch',
+        type: 'office',
+        category: 'MA / ประกันอุปกรณ์',
+        holder_name: 'ฝ่ายเทคโนโลยีสารสนเทศ',
+        department: 'IT & Network',
+        contract_no: 'MA-CISCO-2025',
+        vendor_name: 'Metro Systems Corporation',
+        vendor_contact: '02-089-4000',
+        start_date: '2025-01-15',
+        end_date: '2027-01-15',
+        monthly_cost: 12000,
+        payment_cycle: 'yearly',
+        alert_days: 60,
+        status: 'active',
+        notes: 'ประกันอะไหล่ 8x5xNBD พร้อมวิศวกรเข้าซ่อมใน 4 ชม.'
+      },
+      {
+        id: 'RNT-1008',
+        name: 'Microsoft 365 Business Premium (50 Users)',
+        type: 'employee',
+        category: 'ลิขสิทธิ์ซอฟต์แวร์',
+        holder_name: 'พนักงานทุกคน',
+        department: 'ทั้งองค์กร',
+        contract_no: 'MS365-AVARIN-50',
+        vendor_name: 'Microsoft Thailand (CSP Partner)',
+        vendor_contact: '02-263-6888',
+        start_date: '2025-11-01',
+        end_date: '2026-10-31',
+        monthly_cost: 22500,
+        payment_cycle: 'monthly',
+        alert_days: 45,
+        status: 'active',
+        notes: 'สัญญา CSP รายปี ชำระรายเดือน มี Teams, SharePoint, Intune'
+      }
+    ];
+  }
+  window.__getInitialRentalsData = getInitialRentalsData;
+
+  function getRentalsData() {
+    try {
+      var raw = localStorage.getItem('lms_rentals_data');
+      if (!raw) {
+        var initial = getInitialRentalsData();
+        localStorage.setItem('lms_rentals_data', JSON.stringify(initial));
+        return initial;
+      }
+      return JSON.parse(raw);
+    } catch(e) {
+      return getInitialRentalsData();
+    }
+  }
+
+  function saveRentalsData(list) {
+    try {
+      localStorage.setItem('lms_rentals_data', JSON.stringify(list));
+      if (typeof LMS.refreshShell === 'function') LMS.refreshShell();
+    } catch(e) {}
+  }
+
+  Routes['#/rentals'] = function (hash) {
+    var rentalsState = {
+      type: 'all',
+      status: '',
+      category: '',
+      q: '',
+      viewMode: 'table'
+    };
+
+    function calcItemMeta(item) {
+      var todayStr = new Date().toISOString().split('T')[0];
+      var nowMs = new Date(todayStr).getTime();
+      var endMs = new Date(item.end_date).getTime();
+      var diffDays = Math.ceil((endMs - nowMs) / (1000 * 60 * 60 * 24));
+      
+      var computedStatus = item.status;
+      if (item.status !== 'renewed' && item.status !== 'terminated') {
+        if (diffDays < 0) computedStatus = 'expired';
+        else if (diffDays <= (item.alert_days || 60)) computedStatus = 'expiring_soon';
+        else computedStatus = 'active';
+      }
+
+      var badgeClass = 'badge b-slate';
+      var badgeText = 'ใช้งานอยู่';
+      var icon = 'check-circle-fill';
+
+      if (computedStatus === 'active') {
+        badgeClass = 'badge b-success';
+        badgeText = 'ใช้งานปกติ';
+        icon = 'check-circle-fill';
+      } else if (computedStatus === 'expiring_soon') {
+        badgeClass = 'badge b-warning';
+        badgeText = 'ใกล้หมดอายุ (' + diffDays + ' วัน)';
+        icon = 'exclamation-triangle-fill';
+      } else if (computedStatus === 'expired') {
+        badgeClass = 'badge b-danger';
+        badgeText = 'หมดอายุแล้ว (' + Math.abs(diffDays) + ' วัน)';
+        icon = 'x-circle-fill';
+      } else if (computedStatus === 'renewed') {
+        badgeClass = 'badge b-info';
+        badgeText = 'ต่อสัญญาแล้ว';
+        icon = 'arrow-repeat';
+      } else if (computedStatus === 'terminated') {
+        badgeClass = 'badge b-secondary';
+        badgeText = 'ยกเลิกการเช่า';
+        icon = 'dash-circle';
+      }
+
+      return {
+        diffDays: diffDays,
+        computedStatus: computedStatus,
+        badgeClass: badgeClass,
+        badgeText: badgeText,
+        icon: icon
+      };
+    }
+
+    function formatDate(v) {
+      if (!v) return '-';
+      return (typeof TH !== 'undefined' && TH.date) ? TH.date(v) : String(v);
+    }
+
+    function renderPage() {
+      var allItems = getRentalsData();
+
+      var totalCnt = allItems.length;
+      var empCnt = 0, offCnt = 0, expiringCnt = 0, expiredCnt = 0, totalCost = 0;
+
+      allItems.forEach(function (x) {
+        var meta = calcItemMeta(x);
+        if (x.type === 'employee') empCnt++;
+        if (x.type === 'office') offCnt++;
+        if (meta.computedStatus === 'expiring_soon') expiringCnt++;
+        if (meta.computedStatus === 'expired') expiredCnt++;
+        totalCost += Number(x.monthly_cost || 0);
+      });
+
+      var categories = Array.from(new Set(allItems.map(function(x){ return x.category; }))).filter(Boolean);
+
+      var html = '<div class="rentals-container" style="max-width:1400px; margin:0 auto; padding-bottom:40px;">'
+        + '<div class="card" style="margin-bottom:16px; background:#ffffff !important; border:1px solid #e2e8f0 !important; color:#0f172a !important; border-radius:18px; box-shadow:0 4px 20px rgba(0,0,0,0.04);">'
+        + '  <div class="card-body" style="padding:22px 24px;">'
+        + '    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">'
+        + '      <div style="display:flex; align-items:center; gap:14px;">'
+        + '        <div style="width:48px; height:48px; border-radius:14px; background:linear-gradient(135deg,#3b82f6,#6366f1); display:flex; align-items:center; justify-content:center; color:#fff; font-size:24px; box-shadow:0 6px 18px rgba(99,102,241,0.3);">'
+        + '          <i class="bi bi-calendar-range-fill"></i>'
+        + '        </div>'
+        + '        <div>'
+        + '          <h2 style="margin:0; font-size:20px; font-weight:800; color:#0f172a !important;">การเช่า & วันหมดอายุ (Rentals & Expiries)</h2>'
+        + '          <div style="font-size:13px; color:#64748b !important; margin-top:2px;">ระบบบริหารจัดการสัญญาเช่า ซอฟต์แวร์ และติดตามวันหมดอายุทรัพย์สินพนักงานและสำนักงาน</div>'
+        + '        </div>'
+        + '      </div>'
+        + '      <div style="display:flex; gap:10px; flex-wrap:wrap;">'
+        + '        <button class="btn btn-outline" id="rnt-btn-export" style="border-color:#cbd5e1; color:#334155; font-weight:600;"><i class="bi bi-download"></i> ส่งออกข้อมูล (CSV)</button>'
+        + '        <button class="btn btn-primary" id="rnt-btn-add" style="background:linear-gradient(135deg,#6366f1,#8b5cf6); border:none; font-weight:700; box-shadow:0 6px 20px rgba(99,102,241,0.35);"><i class="bi bi-plus-lg"></i> เพิ่มรายการเช่า / สัญญา</button>'
+        + '      </div>'
+        + '    </div>'
+
+        + '    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-top:22px;">'
+        + '      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:14px 16px;">'
+        + '        <div style="font-size:12px; color:#64748b; font-weight:600; display:flex; justify-content:space-between; align-items:center;">'
+        + '          <span>รายการเช่าทั้งหมด</span><i class="bi bi-box-seam" style="color:#3b82f6; font-size:16px;"></i>'
+        + '        </div>'
+        + '        <div style="font-size:26px; font-weight:800; color:#0f172a; margin-top:4px;">' + totalCnt + ' <span style="font-size:13px; font-weight:500; color:#64748b">รายการ</span></div>'
+        + '        <div style="font-size:11px; color:#64748b; margin-top:2px;">พนักงาน ' + empCnt + ' · สำนักงาน ' + offCnt + '</div>'
+        + '      </div>'
+
+        + '      <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:14px; padding:14px 16px;">'
+        + '        <div style="font-size:12px; color:#b45309; font-weight:600; display:flex; justify-content:space-between; align-items:center;">'
+        + '          <span>ใกล้หมดอายุ (≤ 60 วัน)</span><i class="bi bi-exclamation-triangle-fill" style="color:#d97706; font-size:16px;"></i>'
+        + '        </div>'
+        + '        <div style="font-size:26px; font-weight:800; color:#d97706; margin-top:4px;">' + expiringCnt + ' <span style="font-size:13px; font-weight:500; color:#b45309">รายการ</span></div>'
+        + '        <div style="font-size:11px; color:#b45309; margin-top:2px;">ต้องเตรียมดำเนินการต่อสัญญา</div>'
+        + '      </div>'
+
+        + '      <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:14px; padding:14px 16px;">'
+        + '        <div style="font-size:12px; color:#991b1b; font-weight:600; display:flex; justify-content:space-between; align-items:center;">'
+        + '          <span>หมดอายุแล้ว</span><i class="bi bi-x-circle-fill" style="color:#dc2626; font-size:16px;"></i>'
+        + '        </div>'
+        + '        <div style="font-size:26px; font-weight:800; color:#dc2626; margin-top:4px;">' + expiredCnt + ' <span style="font-size:13px; font-weight:500; color:#991b1b">รายการ</span></div>'
+        + '        <div style="font-size:11px; color:#991b1b; margin-top:2px;">เกินกำหนดการต่อสัญญา</div>'
+        + '      </div>'
+
+        + '      <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:14px; padding:14px 16px;">'
+        + '        <div style="font-size:12px; color:#047857; font-weight:600; display:flex; justify-content:space-between; align-items:center;">'
+        + '          <span>ค่าเช่ารวม / เดือน</span><i class="bi bi-cash-stack" style="color:#059669; font-size:16px;"></i>'
+        + '        </div>'
+        + '        <div style="font-size:24px; font-weight:800; color:#059669; margin-top:4px;">฿' + totalCost.toLocaleString() + '</div>'
+        + '        <div style="font-size:11px; color:#047857; margin-top:2px;">ภาระผูกพันคงที่ต่อเดือน</div>'
+        + '      </div>'
+        + '    </div>'
+        + '  </div>'
+        + '</div>'
+
+        + '<div class="card" style="margin-bottom:16px; border-radius:16px; background:#ffffff !important; border:1px solid #e2e8f0 !important;">'
+        + '  <div class="card-body" style="padding:16px; display:flex; flex-direction:column; gap:12px;">'
+        + '    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">'
+        + '      <div class="btn-group" style="display:inline-flex; background:rgba(0,0,0,0.04); padding:3px; border-radius:10px;">'
+        + '        <button class="btn btn-sm ' + (rentalsState.type === 'all' ? 'btn-primary' : 'btn-ghost') + '" id="tab-type-all" style="border-radius:8px; font-weight:600;">ทั้งหมด (' + totalCnt + ')</button>'
+        + '        <button class="btn btn-sm ' + (rentalsState.type === 'employee' ? 'btn-primary' : 'btn-ghost') + '" id="tab-type-emp" style="border-radius:8px; font-weight:600;"><i class="bi bi-person-fill"></i> รายการพนักงาน (' + empCnt + ')</button>'
+        + '        <button class="btn btn-sm ' + (rentalsState.type === 'office' ? 'btn-primary' : 'btn-ghost') + '" id="tab-type-off" style="border-radius:8px; font-weight:600;"><i class="bi bi-building"></i> ระบบสำนักงาน (' + offCnt + ')</button>'
+        + '      </div>'
+
+        + '      <div style="display:flex; gap:6px; align-items:center;">'
+        + '        <span style="font-size:12px; color:#64748b; font-weight:600;">มุมมอง:</span>'
+        + '        <button class="btn btn-sm ' + (rentalsState.viewMode === 'table' ? 'btn-primary' : 'btn-ghost') + '" id="btn-view-table" title="ตารางข้อมูล"><i class="bi bi-table"></i> ตาราง</button>'
+        + '        <button class="btn btn-sm ' + (rentalsState.viewMode === 'card' ? 'btn-primary' : 'btn-ghost') + '" id="btn-view-card" title="การ์ดสรุป"><i class="bi bi-grid-fill"></i> การ์ด</button>'
+        + '      </div>'
+        + '    </div>'
+
+        + '    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">'
+        + '      <div style="flex:1; min-width:240px; position:relative;">'
+        + '        <input type="text" class="input" id="rnt-search" placeholder="ค้นหาชื่อรายการ, ผู้ถือครอง, เลขที่สัญญา, Vendor..." value="' + esc(rentalsState.q) + '" style="padding-left:36px;">'
+        + '        <i class="bi bi-search" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94a3b8;"></i>'
+        + '      </div>'
+        + '      <select class="select" id="rnt-status-filter" style="max-width:180px;">'
+        + '        <option value="">ทุกสถานะ</option>'
+        + '        <option value="active"' + (rentalsState.status === 'active' ? ' selected' : '') + '>🟢 ใช้งานปกติ</option>'
+        + '        <option value="expiring_soon"' + (rentalsState.status === 'expiring_soon' ? ' selected' : '') + '>🟡 ใกล้หมดอายุ</option>'
+        + '        <option value="expired"' + (rentalsState.status === 'expired' ? ' selected' : '') + '>🔴 หมดอายุแล้ว</option>'
+        + '        <option value="renewed"' + (rentalsState.status === 'renewed' ? ' selected' : '') + '>🔵 ต่อสัญญาแล้ว</option>'
+        + '        <option value="terminated"' + (rentalsState.status === 'terminated' ? ' selected' : '') + '>⚪ ยกเลิกการเช่า</option>'
+        + '      </select>'
+        + '      <select class="select" id="rnt-category-filter" style="max-width:200px;">'
+        + '        <option value="">ทุกหมวดหมู่</option>'
+        + categories.map(function (c) {
+            return '<option value="' + esc(c) + '"' + (rentalsState.category === c ? ' selected' : '') + '>' + esc(c) + '</option>';
+          }).join('')
+        + '      </select>'
+        + '    </div>'
+        + '  </div>'
+        + '</div>'
+
+        + '<div id="rnt-content-area"></div>'
+        + '</div>';
+
+      setPage(html);
+      wireEvents();
+      renderContent();
+    }
+
+    function getFilteredItems() {
+      var all = getRentalsData();
+      return all.filter(function (item) {
+        var meta = calcItemMeta(item);
+        if (rentalsState.type !== 'all' && item.type !== rentalsState.type) return false;
+        if (rentalsState.status && meta.computedStatus !== rentalsState.status) return false;
+        if (rentalsState.category && item.category !== rentalsState.category) return false;
+        if (rentalsState.q) {
+          var q = rentalsState.q.toLowerCase();
+          var match = (item.name || '').toLowerCase().indexOf(q) >= 0 ||
+                      (item.holder_name || '').toLowerCase().indexOf(q) >= 0 ||
+                      (item.contract_no || '').toLowerCase().indexOf(q) >= 0 ||
+                      (item.vendor_name || '').toLowerCase().indexOf(q) >= 0 ||
+                      (item.department || '').toLowerCase().indexOf(q) >= 0 ||
+                      (item.notes || '').toLowerCase().indexOf(q) >= 0;
+          if (!match) return false;
+        }
+        return true;
+      });
+    }
+
+    function renderContent() {
+      var container = $('#rnt-content-area');
+      if (!container) return;
+
+      var items = getFilteredItems();
+      if (items.length === 0) {
+        container.innerHTML = '<div class="card" style="text-align:center; padding:50px 20px; border-radius:16px; background:#ffffff !important; border:1px solid #e2e8f0 !important;">'
+          + '<div style="font-size:48px; color:#cbd5e1; margin-bottom:12px;"><i class="bi bi-box-seam"></i></div>'
+          + '<h4 style="font-size:16px; font-weight:700; color:#475569; margin:0 0 6px;">ไม่พบรายการเช่าตามเงื่อนไขที่เลือก</h4>'
+          + '<p style="font-size:13px; color:#94a3b8; margin:0;">ลองปรับเปลี่ยนคำค้นหา หรือกดเพิ่มรายการเช่าใหม่</p>'
+          + '</div>';
+        return;
+      }
+
+      if (rentalsState.viewMode === 'table') {
+        renderTable(container, items);
+      } else {
+        renderCards(container, items);
+      }
+    }
+
+    function renderTable(container, items) {
+      var rows = items.map(function (item) {
+        var meta = calcItemMeta(item);
+        var typeBadge = item.type === 'employee' 
+          ? '<span class="badge b-info" style="font-size:11px;"><i class="bi bi-person"></i> พนักงาน</span>' 
+          : '<span class="badge b-purple" style="font-size:11px;"><i class="bi bi-building"></i> สำนักงาน</span>';
+
+        return '<tr>'
+          + '  <td>'
+          + '    <div style="font-weight:700; font-size:14px; color:#1e293b;">' + esc(item.name) + '</div>'
+          + '    <div style="font-size:12px; color:#64748b; margin-top:2px;">'
+          + '      <span style="font-family:monospace; background:rgba(0,0,0,0.04); padding:2px 6px; border-radius:4px;">' + esc(item.contract_no || '-') + '</span>'
+          + '    </div>'
+          + '  </td>'
+          + '  <td>'
+          + '    <div>' + typeBadge + '</div>'
+          + '    <div style="font-size:12px; color:#64748b; margin-top:4px;">' + esc(item.category || '-') + '</div>'
+          + '  </td>'
+          + '  <td>'
+          + '    <div style="font-weight:600; font-size:13px;">' + esc(item.holder_name || '-') + '</div>'
+          + '    <div style="font-size:11px; color:#94a3b8;">' + esc(item.department || '-') + '</div>'
+          + '  </td>'
+          + '  <td>'
+          + '    <div style="font-size:13px; font-weight:600;">' + esc(item.vendor_name || '-') + '</div>'
+          + '    <div style="font-size:11px; color:#94a3b8;">' + esc(item.vendor_contact || '-') + '</div>'
+          + '  </td>'
+          + '  <td>'
+          + '    <div style="font-weight:700; font-size:13px;">' + formatDate(item.end_date) + '</div>'
+          + '    <div style="margin-top:4px;"><span class="' + meta.badgeClass + '"><i class="bi bi-' + meta.icon + '"></i> ' + esc(meta.badgeText) + '</span></div>'
+          + '  </td>'
+          + '  <td style="text-align:right;">'
+          + '    <div style="font-weight:800; font-size:14px; color:#0f172a;">฿' + Number(item.monthly_cost || 0).toLocaleString() + '</div>'
+          + '    <div style="font-size:10px; color:#94a3b8;">/' + (item.payment_cycle === 'yearly' ? 'ปี' : 'เดือน') + '</div>'
+          + '  </td>'
+          + '  <td style="text-align:right;">'
+          + '    <div style="display:inline-flex; gap:4px;">'
+          + '      <button class="btn btn-sm btn-ghost rnt-act-detail" data-id="' + item.id + '" title="ดูรายละเอียด"><i class="bi bi-eye-fill"></i></button>'
+          + '      <button class="btn btn-sm btn-outline rnt-act-renew" data-id="' + item.id + '" title="ต่อสัญญา" style="color:#6366f1; border-color:#c7d2fe;"><i class="bi bi-arrow-repeat"></i> ต่อสัญญา</button>'
+          + '      <button class="btn btn-sm btn-ghost rnt-act-edit" data-id="' + item.id + '" title="แก้ไข"><i class="bi bi-pencil-fill"></i></button>'
+          + '      <button class="btn btn-sm btn-ghost rnt-act-del" data-id="' + item.id + '" style="color:#ef4444;" title="ลบ"><i class="bi bi-trash-fill"></i></button>'
+          + '    </div>'
+          + '  </td>'
+          + '</tr>';
+      }).join('');
+
+      container.innerHTML = '<div class="card" style="border-radius:16px; overflow:hidden; background:#ffffff !important; border:1px solid #e2e8f0 !important;">'
+        + '<div class="table-responsive">'
+        + '  <table class="table" style="margin:0; width:100%; vertical-align:middle;">'
+        + '    <thead>'
+        + '      <tr style="background:rgba(0,0,0,0.02); border-bottom:2px solid rgba(0,0,0,0.05); font-size:12px; color:#64748b;">'
+        + '        <th>รายการ / สัญญา</th>'
+        + '        <th>ประเภท / หมวดหมู่</th>'
+        + '        <th>ผู้รับผิดชอบ / แผนก</th>'
+        + '        <th>ผู้ให้บริการ (Vendor)</th>'
+        + '        <th>วันหมดอายุ & สถานะ</th>'
+        + '        <th style="text-align:right;">ค่าเช่า</th>'
+        + '        <th style="text-align:right;">จัดการ</th>'
+        + '      </tr>'
+        + '    </thead>'
+        + '    <tbody>' + rows + '</tbody>'
+        + '  </table>'
+        + '</div>'
+        + '</div>';
+
+      wireActionButtons(container);
+    }
+
+    function renderCards(container, items) {
+      var cardsHtml = items.map(function (item) {
+        var meta = calcItemMeta(item);
+        var typeBadge = item.type === 'employee' 
+          ? '<span class="badge b-info" style="font-size:11px;"><i class="bi bi-person"></i> พนักงาน</span>' 
+          : '<span class="badge b-purple" style="font-size:11px;"><i class="bi bi-building"></i> สำนักงาน</span>';
+
+        return '<div class="card" style="border-radius:16px; background:#ffffff !important; border:1px solid #e2e8f0 !important; transition:transform 0.2s, box-shadow 0.2s; display:flex; flex-direction:column; justify-content:space-between;" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 10px 25px rgba(0,0,0,0.08)\';" onmouseout="this.style.transform=\'none\';this.style.boxShadow=\'none\';">'
+          + '  <div class="card-body" style="padding:18px;">'
+          + '    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">'
+          + '      <div>' + typeBadge + ' <span style="font-size:11px; color:#64748b; font-weight:600; margin-left:6px;">' + esc(item.category || '') + '</span></div>'
+          + '      <span class="' + meta.badgeClass + '"><i class="bi bi-' + meta.icon + '"></i> ' + esc(meta.badgeText) + '</span>'
+          + '    </div>'
+
+          + '    <h3 style="font-size:15px; font-weight:800; color:#0f172a; margin:0 0 4px; line-height:1.3;">' + esc(item.name) + '</h3>'
+          + '    <div style="font-size:11px; font-family:monospace; color:#64748b; margin-bottom:12px;">เลขที่: ' + esc(item.contract_no || '-') + '</div>'
+
+          + '    <div style="background:rgba(0,0,0,0.02); border-radius:10px; padding:10px; font-size:12px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">'
+          + '      <div style="display:flex; justify-content:space-between;"><span style="color:#64748b;">ผู้ถือครอง:</span><strong style="color:#334155;">' + esc(item.holder_name || '-') + ' (' + esc(item.department || '-') + ')</strong></div>'
+          + '      <div style="display:flex; justify-content:space-between;"><span style="color:#64748b;">Vendor:</span><span style="color:#334155;">' + esc(item.vendor_name || '-') + '</span></div>'
+          + '      <div style="display:flex; justify-content:space-between;"><span style="color:#64748b;">วันหมดอายุ:</span><strong style="color:#0f172a;">' + formatDate(item.end_date) + '</strong></div>'
+          + '    </div>'
+
+          + '    <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid rgba(0,0,0,0.06); padding-top:10px;">'
+          + '      <div>'
+          + '        <div style="font-size:10px; color:#94a3b8;">ค่าเช่าต่อเดือน</div>'
+          + '        <div style="font-size:16px; font-weight:800; color:#10b981;">฿' + Number(item.monthly_cost || 0).toLocaleString() + '</div>'
+          + '      </div>'
+          + '      <div style="display:flex; gap:6px;">'
+          + '        <button class="btn btn-sm btn-ghost rnt-act-detail" data-id="' + item.id + '" title="ดูรายละเอียด"><i class="bi bi-eye-fill"></i></button>'
+          + '        <button class="btn btn-sm btn-primary rnt-act-renew" data-id="' + item.id + '" style="background:linear-gradient(135deg,#6366f1,#8b5cf6); border:none;" title="ต่อสัญญา"><i class="bi bi-arrow-repeat"></i> ต่อสัญญา</button>'
+          + '        <button class="btn btn-sm btn-ghost rnt-act-edit" data-id="' + item.id + '" title="แก้ไข"><i class="bi bi-pencil-fill"></i></button>'
+          + '        <button class="btn btn-sm btn-ghost rnt-act-del" data-id="' + item.id + '" style="color:#ef4444;" title="ลบ"><i class="bi bi-trash-fill"></i></button>'
+          + '      </div>'
+          + '    </div>'
+          + '  </div>'
+          + '</div>';
+      }).join('');
+
+      container.innerHTML = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:16px;">' + cardsHtml + '</div>';
+
+      wireActionButtons(container);
+    }
+
+    function wireEvents() {
+      $('#tab-type-all').addEventListener('click', function () { rentalsState.type = 'all'; renderPage(); });
+      $('#tab-type-emp').addEventListener('click', function () { rentalsState.type = 'employee'; renderPage(); });
+      $('#tab-type-off').addEventListener('click', function () { rentalsState.type = 'office'; renderPage(); });
+
+      $('#btn-view-table').addEventListener('click', function () { rentalsState.viewMode = 'table'; renderPage(); });
+      $('#btn-view-card').addEventListener('click', function () { rentalsState.viewMode = 'card'; renderPage(); });
+
+      $('#rnt-search').addEventListener('input', function (e) { rentalsState.q = e.target.value; renderContent(); });
+      $('#rnt-status-filter').addEventListener('change', function (e) { rentalsState.status = e.target.value; renderContent(); });
+      $('#rnt-category-filter').addEventListener('change', function (e) { rentalsState.category = e.target.value; renderContent(); });
+
+      $('#rnt-btn-add').addEventListener('click', function () { openAddEditRentalModal(null); });
+      $('#rnt-btn-export').addEventListener('click', function () { exportRentalsCSV(); });
+    }
+
+    function wireActionButtons(container) {
+      var allData = getRentalsData();
+      function getItem(id) {
+        return allData.find(function (x) { return String(x.id) === String(id); });
+      }
+
+      container.querySelectorAll('.rnt-act-detail').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var item = getItem(btn.getAttribute('data-id'));
+          if (item) openRentalDetailModal(item);
+        });
+      });
+
+      container.querySelectorAll('.rnt-act-renew').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var item = getItem(btn.getAttribute('data-id'));
+          if (item) openQuickRenewModal(item);
+        });
+      });
+
+      container.querySelectorAll('.rnt-act-edit').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var item = getItem(btn.getAttribute('data-id'));
+          if (item) openAddEditRentalModal(item);
+        });
+      });
+
+      container.querySelectorAll('.rnt-act-del').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          deleteRentalItem(btn.getAttribute('data-id'));
+        });
+      });
+    }
+
+    function openAddEditRentalModal(item) {
+      var isEdit = !!item;
+      var title = isEdit ? 'แก้ไขรายการเช่า / สัญญา' : 'เพิ่มรายการเช่า / สัญญาใหม่';
+      var d = item || {
+        name: '', type: 'employee', category: 'คอมพิวเตอร์ / โน้ตบุ๊ก',
+        holder_name: '', department: '', contract_no: '', vendor_name: '', vendor_contact: '',
+        start_date: new Date().toISOString().split('T')[0],
+        end_date: new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0],
+        monthly_cost: 0, payment_cycle: 'monthly', alert_days: 60, status: 'active', notes: ''
+      };
+
+      var categories = [
+        'คอมพิวเตอร์ / โน้ตบุ๊ก', 'ยานพาหนะ', 'อุปกรณ์สื่อสาร', 'ลิขสิทธิ์ซอฟต์แวร์',
+        'สถานที่ / อาคาร', 'ระบบคลาวด์ / โดเมน', 'MA / ประกันอุปกรณ์', 'เครื่องใช้สำนักงาน', 'อื่นๆ'
+      ];
+
+      var html = '<form id="rnt-form" style="display:flex; flex-direction:column; gap:14px;">'
+        + '<div class="grid grid-2" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">'
+        + '  <div class="field" style="grid-column: span 2;"><label>ชื่อรายการ / ชื่อสัญญา <span class="req">*</span></label>'
+        + '    <input type="text" name="name" class="input" placeholder="เช่น MacBook Pro M3 (สมชาย), สัญญาเช่าชั้น 4" value="' + esc(d.name) + '" required></div>'
+
+        + '  <div class="field"><label>ประเภทการเช่า <span class="req">*</span></label>'
+        + '    <select name="type" class="select">'
+        + '      <option value="employee"' + (d.type === 'employee' ? ' selected' : '') + '>👤 รายการของพนักงาน</option>'
+        + '      <option value="office"' + (d.type === 'office' ? ' selected' : '') + '>🏢 ระบบและทรัพย์สินสำนักงาน</option>'
+        + '    </select></div>'
+
+        + '  <div class="field"><label>หมวดหมู่ <span class="req">*</span></label>'
+        + '    <select name="category" class="select">'
+        + categories.map(function(c){ return '<option value="' + esc(c) + '"' + (d.category === c ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('')
+        + '    </select></div>'
+
+        + '  <div class="field"><label>ผู้ถือครอง / ผู้รับผิดชอบ <span class="req">*</span></label>'
+        + '    <div style="display:flex; gap:6px;">'
+        + '      <input type="text" name="holder_name" id="rnt-holder-input" class="input" placeholder="ชื่อพนักงาน หรือ ชื่อแผนก" value="' + esc(d.holder_name) + '" list="rnt-emp-datalist" required style="flex:1;">'
+        + '      <select id="rnt-emp-select" class="select" style="max-width:140px; font-size:12px;"><option value="">-- เลือกจากรายชื่อ --</option></select>'
+        + '    </div>'
+        + '    <datalist id="rnt-emp-datalist"></datalist>'
+        + '  </div>'
+
+        + '  <div class="field"><label>สังกัด / แผนก</label>'
+        + '    <input type="text" name="department" class="input" placeholder="เช่น IT, ฝ่ายขาย, การตลาด" value="' + esc(d.department) + '"></div>'
+
+        + '  <div class="field"><label>เลขที่สัญญา / Serial No.</label>'
+        + '    <input type="text" name="contract_no" class="input" placeholder="เช่น RENT-2024-001 หรือ Serial" value="' + esc(d.contract_no) + '"></div>'
+
+        + '  <div class="field"><label>ผู้ให้บริการ (Vendor)</label>'
+        + '    <input type="text" name="vendor_name" class="input" placeholder="บริษัทคู่ค้า หรือ ผู้ให้เช่า" value="' + esc(d.vendor_name) + '"></div>'
+
+        + '  <div class="field" style="grid-column: span 2;"><label>เบอร์โทรศัพท์ / ข้อมูลติดต่อ Vendor</label>'
+        + '    <input type="text" name="vendor_contact" class="input" placeholder="เบอร์โทรศัพท์ หรือ อีเมลผู้ติดต่อ" value="' + esc(d.vendor_contact) + '"></div>'
+
+        + '  <div class="field"><label>วันเริ่มสัญญา / เช่า <span class="req">*</span></label>'
+        + '    <input type="date" name="start_date" class="input" value="' + esc(d.start_date) + '" required></div>'
+
+        + '  <div class="field"><label>วันสิ้นสุด / หมดอายุ <span class="req">*</span></label>'
+        + '    <input type="date" name="end_date" class="input" value="' + esc(d.end_date) + '" required></div>'
+
+        + '  <div class="field"><label>ค่าเช่า (บาท) <span class="req">*</span></label>'
+        + '    <input type="number" name="monthly_cost" class="input" placeholder="0" value="' + (d.monthly_cost || 0) + '" required></div>'
+
+        + '  <div class="field"><label>รอบการชำระเงิน</label>'
+        + '    <select name="payment_cycle" class="select">'
+        + '      <option value="monthly"' + (d.payment_cycle === 'monthly' ? ' selected' : '') + '>รายเดือน</option>'
+        + '      <option value="yearly"' + (d.payment_cycle === 'yearly' ? ' selected' : '') + '>รายปี</option>'
+        + '      <option value="quarterly"' + (d.payment_cycle === 'quarterly' ? ' selected' : '') + '>รายไตรมาส</option>'
+        + '    </select></div>'
+
+        + '  <div class="field"><label>แจ้งเตือนล่วงหน้า (วัน)</label>'
+        + '    <input type="number" name="alert_days" class="input" value="' + (d.alert_days || 60) + '"></div>'
+
+        + '  <div class="field"><label>สถานะ</label>'
+        + '    <select name="status" class="select">'
+        + '      <option value="active"' + (d.status === 'active' ? ' selected' : '') + '>🟢 ใช้งานปกติ</option>'
+        + '      <option value="expiring_soon"' + (d.status === 'expiring_soon' ? ' selected' : '') + '>🟡 ใกล้หมดอายุ</option>'
+        + '      <option value="expired"' + (d.status === 'expired' ? ' selected' : '') + '>🔴 หมดอายุแล้ว</option>'
+        + '      <option value="renewed"' + (d.status === 'renewed' ? ' selected' : '') + '>🔵 ต่อสัญญาแล้ว</option>'
+        + '      <option value="terminated"' + (d.status === 'terminated' ? ' selected' : '') + '>⚪ ยกเลิกการเช่า</option>'
+        + '    </select></div>'
+
+        + '  <div class="field" style="grid-column: span 2;"><label>หมายเหตุ / รายละเอียดเพิ่มเติม</label>'
+        + '    <textarea name="notes" class="input" rows="2" placeholder="รายละเอียดประกัน, เงื่อนไขต่อสัญญา...">' + esc(d.notes || '') + '</textarea></div>'
+        + '</div></form>';
+
+      var footer = '<button class="btn btn-ghost" data-modal-close>ยกเลิก</button>'
+        + '<button class="btn btn-primary" id="rnt-submit-btn"><i class="bi bi-check-circle-fill"></i> บันทึกข้อมูล</button>';
+
+      Modal.open({
+        title: title,
+        large: true,
+        preventBackdropClose: true,
+        html: html,
+        footer: footer,
+        onOpen: function () {
+          call('user.list', { limit: 1000, per_page: 1000 }).then(function (res) {
+            var users = (res && res.items) || (res && res.users) || res || [];
+            if (!Array.isArray(users) && res && res.data) users = res.data;
+            if (!Array.isArray(users)) users = [];
+            
+            var sel = $('#rnt-emp-select');
+            var dl = $('#rnt-emp-datalist');
+            
+            users.forEach(function (u) {
+              var name = u.full_name || u.name || (u.first_name ? (u.first_name + ' ' + (u.last_name || '')) : '');
+              var dept = u.department || u.dept || u.branch || '';
+              if (!name) return;
+              
+              if (sel) {
+                var opt = document.createElement('option');
+                opt.value = name;
+                opt.setAttribute('data-dept', dept);
+                opt.textContent = name + (dept ? ' (' + dept + ')' : '');
+                sel.appendChild(opt);
+              }
+              if (dl) {
+                var opt2 = document.createElement('option');
+                opt2.value = name;
+                dl.appendChild(opt2);
+              }
+            });
+          }).catch(function () {});
+
+          var empSel = $('#rnt-emp-select');
+          if (empSel) {
+            empSel.addEventListener('change', function () {
+              var selectedOpt = empSel.options[empSel.selectedIndex];
+              if (!selectedOpt || !selectedOpt.value) return;
+              var name = selectedOpt.value;
+              var dept = selectedOpt.getAttribute('data-dept') || '';
+              
+              var holderInput = $('#rnt-holder-input');
+              var form = $('#rnt-form');
+              var deptInput = form ? form.querySelector('[name="department"]') : null;
+              
+              if (holderInput) holderInput.value = name;
+              if (deptInput && dept) deptInput.value = dept;
+            });
+          }
+
+          $('#rnt-submit-btn').addEventListener('click', function () {
+            var form = $('#rnt-form');
+            if (!form) return;
+            
+            function val(n) { var el = form.querySelector('[name="' + n + '"]'); return el ? el.value.trim() : ''; }
+
+            var name = val('name');
+            var holder_name = val('holder_name');
+            var start_date = val('start_date');
+            var end_date = val('end_date');
+
+            if (!name) { toast('กรุณากรอกชื่อรายการ / ชื่อสัญญา', 'warning'); return; }
+            if (!holder_name) { toast('กรุณากรอกผู้ถือครอง / ผู้รับผิดชอบ', 'warning'); return; }
+            if (!start_date || !end_date) { toast('กรุณากรอกวันที่เช่าและวันหมดอายุ', 'warning'); return; }
+
+            var list = getRentalsData();
+            var newItem = {
+              id: isEdit ? d.id : ('RNT-' + Math.floor(1000 + Math.random() * 9000)),
+              name: name,
+              type: val('type'),
+              category: val('category'),
+              holder_name: holder_name,
+              department: val('department'),
+              contract_no: val('contract_no'),
+              vendor_name: val('vendor_name'),
+              vendor_contact: val('vendor_contact'),
+              start_date: start_date,
+              end_date: end_date,
+              monthly_cost: Number(val('monthly_cost') || 0),
+              payment_cycle: val('payment_cycle'),
+              alert_days: Number(val('alert_days') || 60),
+              status: val('status'),
+              notes: val('notes')
+            };
+
+            if (isEdit) {
+              var idx = list.findIndex(function (x) { return String(x.id) === String(d.id); });
+              if (idx >= 0) list[idx] = newItem;
+            } else {
+              list.unshift(newItem);
+            }
+
+            saveRentalsData(list);
+            Modal.close();
+            toast(isEdit ? 'แก้ไขข้อมูลเรียบร้อย' : 'เพิ่มรายการเช่าใหม่สำเร็จ', 'success');
+            renderPage();
+          });
+        }
+      });
+    }
+
+    function openRentalDetailModal(item) {
+      var meta = calcItemMeta(item);
+      var typeBadge = item.type === 'employee' 
+        ? '<span class="badge b-info"><i class="bi bi-person"></i> รายการของพนักงาน</span>' 
+        : '<span class="badge b-purple"><i class="bi bi-building"></i> ระบบและทรัพย์สินสำนักงาน</span>';
+
+      var html = '<div style="display:flex; flex-direction:column; gap:16px;">'
+        + '<div style="background:linear-gradient(135deg,#1e293b,#0f172a); color:#fff; padding:18px; border-radius:14px;">'
+        + '  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">'
+        + '    ' + typeBadge
+        + '    <span class="' + meta.badgeClass + '"><i class="bi bi-' + meta.icon + '"></i> ' + esc(meta.badgeText) + '</span>'
+        + '  </div>'
+        + '  <h3 style="margin:0; font-size:18px; font-weight:800;">' + esc(item.name) + '</h3>'
+        + '  <div style="font-size:12px; color:#94a3b8; margin-top:4px;">เลขที่สัญญา/ซีเรียล: <span style="font-family:monospace; color:#60a5fa;">' + esc(item.contract_no || '-') + '</span></div>'
+        + '</div>'
+
+        + '<div class="grid grid-2" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:13px;">'
+        + '  <div style="background:rgba(0,0,0,0.03); padding:12px; border-radius:10px;">'
+        + '    <div style="color:#64748b; font-size:11px;">ผู้ถือครอง / ผู้รับผิดชอบ</div>'
+        + '    <strong style="color:#0f172a; font-size:14px;">' + esc(item.holder_name || '-') + '</strong>'
+        + '    <div style="color:#94a3b8; font-size:11px;">' + esc(item.department || '-') + '</div>'
+        + '  </div>'
+
+        + '  <div style="background:rgba(0,0,0,0.03); padding:12px; border-radius:10px;">'
+        + '    <div style="color:#64748b; font-size:11px;">ผู้ให้บริการ (Vendor)</div>'
+        + '    <strong style="color:#0f172a; font-size:14px;">' + esc(item.vendor_name || '-') + '</strong>'
+        + '    <div style="color:#94a3b8; font-size:11px;">' + esc(item.vendor_contact || '-') + '</div>'
+        + '  </div>'
+
+        + '  <div style="background:rgba(0,0,0,0.03); padding:12px; border-radius:10px;">'
+        + '    <div style="color:#64748b; font-size:11px;">ระยะเวลาสัญญา</div>'
+        + '    <strong style="color:#0f172a;">' + formatDate(item.start_date) + ' ถึง ' + formatDate(item.end_date) + '</strong>'
+        + '    <div style="color:#d97706; font-size:11px; margin-top:2px;">แจ้งเตือนล่วงหน้า ' + item.alert_days + ' วัน</div>'
+        + '  </div>'
+
+        + '  <div style="background:rgba(0,0,0,0.03); padding:12px; border-radius:10px;">'
+        + '    <div style="color:#64748b; font-size:11px;">ค่าเช่า / สัญญา</div>'
+        + '    <strong style="color:#10b981; font-size:16px;">฿' + Number(item.monthly_cost || 0).toLocaleString() + '</strong>'
+        + '    <span style="color:#94a3b8; font-size:11px;"> /' + (item.payment_cycle === 'yearly' ? 'ปี' : 'เดือน') + '</span>'
+        + '  </div>'
+        + '</div>'
+
+        + (item.notes ? '<div style="background:#f8fafc; border:1px solid #e2e8f0; padding:12px; border-radius:10px; font-size:13px;"><strong style="color:#334155; display:block; margin-bottom:4px;">หมายเหตุ:</strong> ' + esc(item.notes) + '</div>' : '')
+        + '</div>';
+
+      var footer = '<button class="btn btn-ghost" data-modal-close>ปิด</button>'
+        + '<button class="btn btn-outline" id="dt-btn-renew" style="color:#6366f1; border-color:#c7d2fe;"><i class="bi bi-arrow-repeat"></i> ต่อสัญญาด่วน</button>'
+        + '<button class="btn btn-primary" id="dt-btn-edit"><i class="bi bi-pencil-fill"></i> แก้ไขข้อมูล</button>';
+
+      Modal.open({
+        title: 'รายละเอียดสัญญาเช่า',
+        large: false,
+        html: html,
+        footer: footer,
+        onOpen: function () {
+          $('#dt-btn-renew').addEventListener('click', function () {
+            Modal.close();
+            openQuickRenewModal(item);
+          });
+          $('#dt-btn-edit').addEventListener('click', function () {
+            Modal.close();
+            openAddEditRentalModal(item);
+          });
+        }
+      });
+    }
+
+    function openQuickRenewModal(item) {
+      var nextYear = new Date(item.end_date);
+      nextYear.setFullYear(nextYear.getFullYear() + 1);
+      var defaultNewDate = nextYear.toISOString().split('T')[0];
+
+      var html = '<div style="display:flex; flex-direction:column; gap:14px;">'
+        + '<div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:12px; padding:12px; font-size:13px; color:#0369a1;">'
+        + '  <i class="bi bi-info-circle-fill"></i> ต่อสัญญาเช่าสำหรับ <strong>' + esc(item.name) + '</strong>'
+        + '</div>'
+
+        + '<div class="field"><label>วันหมดอายุสัญญาใหม่ <span class="req">*</span></label>'
+        + '  <input type="date" id="renew-end-date" class="input" value="' + defaultNewDate + '" required></div>'
+
+        + '<div class="field"><label>ค่าเช่าใหม่ / เดือน (บาท)</label>'
+        + '  <input type="number" id="renew-cost" class="input" value="' + (item.monthly_cost || 0) + '"></div>'
+
+        + '<div class="field"><label>บันทึกการต่อสัญญาเพิ่มเติม</label>'
+        + '  <textarea id="renew-note" class="input" rows="2" placeholder="เช่น ต่อสัญญาเพิ่ม 1 ปี ได้ส่วนลด 5%..."></textarea></div>'
+        + '</div>';
+
+      var footer = '<button class="btn btn-ghost" data-modal-close>ยกเลิก</button>'
+        + '<button class="btn btn-primary" id="renew-submit-btn" style="background:linear-gradient(135deg,#6366f1,#8b5cf6); border:none;"><i class="bi bi-check-circle-fill"></i> ยืนยันการต่อสัญญา</button>';
+
+      Modal.open({
+        title: 'ต่อสัญญาเช่าด่วน',
+        large: false,
+        html: html,
+        footer: footer,
+        onOpen: function () {
+          $('#renew-submit-btn').addEventListener('click', function () {
+            var newEndDate = $('#renew-end-date').value;
+            var newCost = Number($('#renew-cost').value || 0);
+            var note = $('#renew-note').value.trim();
+
+            if (!newEndDate) { toast('กรุณาระบุวันหมดอายุใหม่', 'warning'); return; }
+
+            var list = getRentalsData();
+            var idx = list.findIndex(function (x) { return String(x.id) === String(item.id); });
+            if (idx >= 0) {
+              list[idx].end_date = newEndDate;
+              list[idx].monthly_cost = newCost;
+              list[idx].status = 'renewed';
+              if (note) {
+                list[idx].notes = (list[idx].notes ? list[idx].notes + '\n' : '') + '[ต่อสัญญาเมื่อ ' + formatDate(new Date()) + ']: ' + note;
+              }
+              saveRentalsData(list);
+              Modal.close();
+              toast('ต่อสัญญาเรียบร้อยแล้ว', 'success');
+              renderPage();
+            }
+          });
+        }
+      });
+    }
+
+    function deleteRentalItem(id) {
+      var list = getRentalsData();
+      var item = list.find(function (x) { return String(x.id) === String(id); });
+      if (!item) return;
+
+      confirmModal({
+        title: 'ลบรายการเช่า',
+        message: 'คุณต้องการลบรายการเช่า <strong>"' + esc(item.name) + '"</strong> ใช่หรือไม่?',
+        danger: true,
+        okText: 'ลบรายการ'
+      }).then(function (res) {
+        if (res) {
+          var newList = list.filter(function (x) { return String(x.id) !== String(id); });
+          saveRentalsData(newList);
+          toast('ลบรายการเช่าเรียบร้อยแล้ว', 'success');
+          renderPage();
+        }
+      });
+    }
+
+    function exportRentalsCSV() {
+      var items = getFilteredItems();
+      if (items.length === 0) { toast('ไม่มีข้อมูลสำหรับส่งออก', 'warning'); return; }
+
+      var headers = ['ID', 'ชื่อรายการ/สัญญา', 'ประเภท', 'หมวดหมู่', 'ผู้ถือครอง', 'แผนก', 'เลขที่สัญญา', 'Vendor', 'วันเริ่มเช่า', 'วันหมดอายุ', 'ค่าเช่าต่อเดือน', 'สถานะ', 'หมายเหตุ'];
+      var csvRows = [headers.join(',')];
+
+      items.forEach(function (x) {
+        var meta = calcItemMeta(x);
+        var row = [
+          '"' + (x.id || '') + '"',
+          '"' + (x.name || '').replace(/"/g, '""') + '"',
+          '"' + (x.type === 'employee' ? 'พนักงาน' : 'สำนักงาน') + '"',
+          '"' + (x.category || '') + '"',
+          '"' + (x.holder_name || '').replace(/"/g, '""') + '"',
+          '"' + (x.department || '').replace(/"/g, '""') + '"',
+          '"' + (x.contract_no || '') + '"',
+          '"' + (x.vendor_name || '').replace(/"/g, '""') + '"',
+          '"' + (x.start_date || '') + '"',
+          '"' + (x.end_date || '') + '"',
+          x.monthly_cost || 0,
+          '"' + meta.badgeText + '"',
+          '"' + (x.notes || '').replace(/"/g, '""') + '"'
+        ];
+        csvRows.push(row.join(','));
+      });
+
+      var csvContent = '\uFEFF' + csvRows.join('\n');
+      var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', 'rentals_export_' + new Date().toISOString().split('T')[0] + '.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast('ส่งออกไฟล์ CSV สำเร็จ', 'success');
+    }
+
+    renderPage();
+  };
 
   // ── Standalone Expenses End ──
 
