@@ -11145,37 +11145,34 @@ async function api(req) {
               
               var img = new Image();
               img.onload = function () {
-                // Low-quality compression strictly to fit Sheets cell (<= 48000 characters)
-                var max_size = 600;
-                var quality = 0.5;
-                var lowQualityDataUrl = '';
-                var attempt = 0;
-                while (attempt < 5) {
+                // High-quality image processing preserving original resolution (up to 1600px)
+                var max_size = 1600;
+                var quality = 0.85;
+                var processedDataUrl = '';
+                try {
                   var canvas = document.createElement('canvas');
                   var w = img.width;
                   var h = img.height;
-                  if (w > h) {
-                    if (w > max_size) { h *= max_size / w; w = max_size; }
-                  } else {
-                    if (h > max_size) { w *= max_size / h; h = max_size; }
+                  if (w > max_size || h > max_size) {
+                    if (w > h) {
+                      h = Math.round(h * (max_size / w));
+                      w = max_size;
+                    } else {
+                      w = Math.round(w * (max_size / h));
+                      h = max_size;
+                    }
                   }
-                  canvas.width = w; canvas.height = h;
+                  canvas.width = w;
+                  canvas.height = h;
                   var ctx = canvas.getContext('2d');
                   ctx.drawImage(img, 0, 0, w, h);
-                  try {
-                    lowQualityDataUrl = canvas.toDataURL('image/jpeg', quality);
-                  } catch (err) {
-                    lowQualityDataUrl = originalBase64;
-                    break;
-                  }
-                  if (lowQualityDataUrl.length <= 48000) break;
-                  max_size = Math.round(max_size * 0.8);
-                  quality = Math.max(0.2, quality - 0.1);
-                  attempt++;
+                  processedDataUrl = canvas.toDataURL('image/jpeg', quality);
+                } catch (err) {
+                  processedDataUrl = originalBase64;
                 }
                 
                 var idx = chosenReceipts.length;
-                var fallbackData = lowQualityDataUrl || originalBase64;
+                var fallbackData = processedDataUrl || originalBase64;
                 chosenReceipts.push(fallbackData);
                 loadedCount++;
                 if (loadedCount === toAdd) {
