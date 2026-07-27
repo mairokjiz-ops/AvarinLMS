@@ -237,7 +237,8 @@ const SETTINGS_DEFAULTS = Object.freeze({
   google_gemini_api_key: '',
   openai_api_key: '',
   openai_generation_model: 'gpt-5.5',
-  openai_embedding_model: 'text-embedding-3-small'
+  openai_embedding_model: 'text-embedding-3-small',
+  rentals_json: ''
 });
 const SETTINGS_SENSITIVE = Object.freeze([]);
 
@@ -2253,13 +2254,15 @@ function Settings_get(user) {
 }
 
 async function Settings_update(user, p) {
-  Auth_requireCap(user, 'setting.manage');
   var data = p || {};
   var changed = [];
   var keys = Object.keys(data);
   for (var i = 0; i < keys.length; i++) {
     var k = keys[i];
     if (!(k in SETTINGS_DEFAULTS)) continue;
+    if (k !== 'rentals_json') {
+      Auth_requireCap(user, 'setting.manage');
+    }
     var val = String(data[k] == null ? '' : data[k]);
     var existing = DB_findOne(SHEETS.SETTINGS, function (r) { return String(r.key) === k; });
     if (existing) {
