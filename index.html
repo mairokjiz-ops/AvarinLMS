@@ -11141,36 +11141,32 @@ async function api(req) {
           (function (file) {
             var reader = new FileReader();
             reader.onload = function (e) {
-              var originalBase64 = e.target.result;
+              var rawBase64 = e.target.result;
               var idx = chosenReceipts.length;
-              chosenReceipts.push(originalBase64);
-              loadedCount++;
-              if (loadedCount === toAdd) {
-                updateReceiptsPreview();
-                if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> อัปโหลดรูปภาพสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
-                fi.value = '';
-              }
+              chosenReceipts.push(rawBase64);
+              updateReceiptsPreview();
 
-              // Upload original raw image file to Cloudflare R2 / Storage
-              (function (currentIdx, rawDataUrl) {
-                uploadsInProgress++;
-                call('r2.upload', { filename: file.name || 'receipt.jpg', contentType: file.type || 'image/jpeg', base64: rawDataUrl })
-                  .then(function (r2Data) {
-                    uploadsInProgress--;
-                    if (r2Data && r2Data.publicUrl) {
-                      chosenReceipts[currentIdx] = r2Data.publicUrl;
-                      console.log('Receipt uploaded to R2:', r2Data.publicUrl);
-                      var container = document.getElementById('fe-previews-container');
-                      if (container) {
-                        var imgs = container.querySelectorAll('img');
-                        if (imgs[currentIdx]) imgs[currentIdx].src = r2Data.publicUrl;
-                      }
-                    }
-                  }).catch(function (err) {
-                    uploadsInProgress--;
-                    console.warn('R2 upload failed, keeping raw original image file:', err);
-                  });
-              })(idx, originalBase64);
+              uploadsInProgress++;
+              if (note) note.innerHTML = '<span style="color:#3b82f6"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="width:12px;height:12px;margin-right:4px;"></span> กำลังส่งไฟล์เข้าเซิร์ฟเวอร์ R2...</span>';
+
+              call('r2.upload', { filename: file.name || 'receipt.jpg', contentType: file.type || 'image/jpeg', base64: rawBase64 })
+                .then(function (r2Data) {
+                  uploadsInProgress--;
+                  if (r2Data && r2Data.publicUrl && r2Data.publicUrl.indexOf('http') === 0) {
+                    chosenReceipts[idx] = r2Data.publicUrl;
+                    console.log('Receipt successfully set to R2 URL:', r2Data.publicUrl);
+                    updateReceiptsPreview();
+                  }
+                  if (uploadsInProgress === 0 && note) {
+                    note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> อัปโหลดรูปภาพเข้า Cloudflare R2 สำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
+                  }
+                }).catch(function (err) {
+                  uploadsInProgress--;
+                  console.warn('R2 upload failed, keeping base64 fallback:', err);
+                  if (uploadsInProgress === 0 && note) {
+                    note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> แนบรูปภาพสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
+                  }
+                });
             };
             reader.readAsDataURL(file);
           })(files[i]);
