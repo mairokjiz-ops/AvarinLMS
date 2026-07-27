@@ -12996,24 +12996,56 @@ async function api(req) {
       });
     }
 
+    function calculateNextRenewalDate(currentEndDateStr, cycle) {
+      if (!currentEndDateStr) currentEndDateStr = new Date().toISOString().split('T')[0];
+      var parts = currentEndDateStr.split('-');
+      var year = parseInt(parts[0]);
+      var month = parseInt(parts[1]) - 1;
+      var day = parseInt(parts[2]);
+      var d = new Date(year, month, day);
+      
+      if (cycle === '1m' || cycle === 'monthly' || cycle === 1) {
+        d.setMonth(d.getMonth() + 1);
+      } else if (cycle === '3m' || cycle === 'quarterly' || cycle === 3) {
+        d.setMonth(d.getMonth() + 3);
+      } else if (cycle === '6m' || cycle === 'semi_annual' || cycle === 'half_year' || cycle === 6) {
+        d.setMonth(d.getMonth() + 6);
+      } else if (cycle === '1y' || cycle === 'annual' || cycle === 'yearly' || cycle === 12) {
+        d.setFullYear(d.getFullYear() + 1);
+      } else {
+        d.setMonth(d.getMonth() + 1);
+      }
+      
+      var y = d.getFullYear();
+      var m = String(d.getMonth() + 1).padStart(2, '0');
+      var da = String(d.getDate()).padStart(2, '0');
+      return y + '-' + m + '-' + da;
+    }
+
     function openQuickRenewModal(item) {
-      var nextYear = new Date(item.end_date);
-      nextYear.setFullYear(nextYear.getFullYear() + 1);
-      var defaultNewDate = nextYear.toISOString().split('T')[0];
+      var defaultCycle = item.payment_cycle || 'monthly';
+      var defaultNewDate = calculateNextRenewalDate(item.end_date, defaultCycle);
 
       var html = '<div style="display:flex; flex-direction:column; gap:14px;">'
         + '<div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:12px; padding:12px; font-size:13px; color:#0369a1;">'
-        + '  <i class="bi bi-info-circle-fill"></i> ต่อสัญญาเช่าสำหรับ <strong>' + esc(item.name) + '</strong>'
+        + '  <i class="bi bi-info-circle-fill"></i> ต่อสัญญาเช่าสำหรับ <strong>' + esc(item.name) + '</strong> (หมดอายุเดิม: <strong>' + formatDate(item.end_date) + '</strong>)'
         + '</div>'
 
         + '<div class="field"><label>วันหมดอายุสัญญาใหม่ <span class="req">*</span></label>'
-        + '  <input type="date" id="renew-end-date" class="input" value="' + defaultNewDate + '" required></div>'
+        + '  <input type="date" id="renew-end-date" class="input" value="' + defaultNewDate + '" required>'
+        + '  <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">'
+        + '    <button type="button" class="btn btn-sm btn-renew-pill" data-cycle="1m" style="font-size:11.5px; padding:3px 10px; border-radius:6px; background:#f1f5f9; border:1px solid #cbd5e1; font-weight:600;">+1 เดือน</button>'
+        + '    <button type="button" class="btn btn-sm btn-renew-pill" data-cycle="3m" style="font-size:11.5px; padding:3px 10px; border-radius:6px; background:#f1f5f9; border:1px solid #cbd5e1; font-weight:600;">+3 เดือน</button>'
+        + '    <button type="button" class="btn btn-sm btn-renew-pill" data-cycle="6m" style="font-size:11.5px; padding:3px 10px; border-radius:6px; background:#f1f5f9; border:1px solid #cbd5e1; font-weight:600;">+6 เดือน</button>'
+        + '    <button type="button" class="btn btn-sm btn-renew-pill" data-cycle="1y" style="font-size:11.5px; padding:3px 10px; border-radius:6px; background:#f1f5f9; border:1px solid #cbd5e1; font-weight:600;">+1 ปี</button>'
+        + '  </div>'
+        + '</div>'
 
         + '<div class="field"><label>ค่าเช่าใหม่ / เดือน (บาท)</label>'
         + '  <input type="number" id="renew-cost" class="input" value="' + (item.monthly_cost || 0) + '"></div>'
 
         + '<div class="field"><label>บันทึกการต่อสัญญาเพิ่มเติม</label>'
-        + '  <textarea id="renew-note" class="input" rows="2" placeholder="เช่น ต่อสัญญาเพิ่ม 1 ปี ได้ส่วนลด 5%..."></textarea></div>'
+        + '  <textarea id="renew-note" class="input" rows="2" placeholder="เช่น ต่อสัญญาเพิ่ม 1 เดือน / ได้ส่วนลดพิเศษ..."></textarea></div>'
         + '</div>';
 
       var footer = '<button class="btn btn-ghost" data-modal-close>ยกเลิก</button>'
@@ -13025,6 +13057,17 @@ async function api(req) {
         html: html,
         footer: footer,
         onOpen: function () {
+          var pills = document.querySelectorAll('.btn-renew-pill');
+          if (pills.length > 0) {
+            [].forEach.call(pills, function (btn) {
+              btn.addEventListener('click', function () {
+                var c = this.getAttribute('data-cycle');
+                var calculated = calculateNextRenewalDate(item.end_date, c);
+                if ($('#renew-end-date')) $('#renew-end-date').value = calculated;
+              });
+            });
+          }
+
           $('#renew-submit-btn').addEventListener('click', function () {
             var newEndDate = $('#renew-end-date').value;
             var newCost = Number($('#renew-cost').value || 0);
