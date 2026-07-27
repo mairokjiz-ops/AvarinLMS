@@ -7109,24 +7109,28 @@ async function api(req) {
     }
   }
   // ── Reports ────────────────────────────────────────
-  Routes['#/reports'] = function () {
+  Routes['#/reports'] = function (hash) {
     if (!hasCap('report.view_own')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
+    hash = hash || location.hash || '';
     var canAll = hasCap('report.view_all');
-    var st = { tab: canAll ? 'overview' : 'mine', selected_user_id: LMS.Store.user.id, fy: '' };
+    var initialTab = (hash.indexOf('expenses') >= 0 || hash.indexOf('tab=expenses') >= 0) ? 'expenses' : (canAll ? 'overview' : 'mine');
+    var st = { tab: initialTab, selected_user_id: LMS.Store.user.id, fy: '' };
+    
     function render() {
-      var tabsHtml = '';
-      if (canAll) {
-        tabsHtml = '<div class="toolbar">'
-          + '<div style="display:flex;gap:6px;background:#f1f5f9;padding:3px;border-radius:10px">'
-          + '<button class="btn btn-sm ' + (st.tab === 'overview' ? 'btn-primary' : 'btn-ghost') + '" data-tab="overview"><i class="bi bi-bar-chart"></i> ภาพรวม</button>'
-          + '<button class="btn btn-sm ' + (st.tab === 'mine' ? 'btn-primary' : 'btn-ghost') + '" data-tab="mine"><i class="bi bi-person"></i> รายบุคคล</button>'
-          + '</div>'
-          + '<button class="btn btn-ghost" onclick="window.print()" style="margin-left:auto"><i class="bi bi-printer"></i> พิมพ์</button>'
-          + '</div>';
-      }
+      var tabsHtml = '<div class="toolbar" style="margin-bottom:14px;">'
+        + '<div style="display:flex;gap:6px;background:#f1f5f9;padding:3px;border-radius:10px;flex-wrap:wrap;">'
+        + (canAll ? '<button class="btn btn-sm ' + (st.tab === 'overview' ? 'btn-primary' : 'btn-ghost') + '" data-tab="overview"><i class="bi bi-bar-chart"></i> สถิติการลา</button>' : '')
+        + '<button class="btn btn-sm ' + (st.tab === 'expenses' ? 'btn-primary' : 'btn-ghost') + '" data-tab="expenses" style="font-weight:700;"><i class="bi bi-cash-coin"></i> รายงานการเบิกค่าใช้จ่าย</button>'
+        + '<button class="btn btn-sm ' + (st.tab === 'mine' ? 'btn-primary' : 'btn-ghost') + '" data-tab="mine"><i class="bi bi-person"></i> สถิติรายบุคคล</button>'
+        + '</div>'
+        + '<button class="btn btn-ghost" onclick="window.print()" style="margin-left:auto"><i class="bi bi-printer"></i> พิมพ์รายงาน</button>'
+        + '</div>';
+        
       setPage(tabsHtml + '<div id="rpt-content">' + skBlocks(2, 200) + '</div>');
       $$('[data-tab]').forEach(function (b) { b.addEventListener('click', function () { st.tab = b.getAttribute('data-tab'); render(); }); });
+      
       if (st.tab === 'overview') loadOverview();
+      else if (st.tab === 'expenses') loadExpensesReport();
       else loadMine();
     }
     function loadOverview() {
@@ -7142,6 +7146,106 @@ async function api(req) {
         Spinner.hide();
         renderUserReport(d, canAll);
       }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
+    }
+    function loadExpensesReport() {
+      Spinner.show('กำลังโหลดรายงานสถิติการเบิกค่าใช้จ่าย...');
+      call('expense.list', { per_page: 500 }).then(function (res) {
+        Spinner.hide();
+        var items = (res && res.items) ? res.items : (Array.isArray(res) ? res : []);
+        renderExpenseReport(items);
+      }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
+    }
+    function renderExpenseReport(items) {
+      var totalAmt = 0;
+      var approvedAmt = 0;
+      var pendingAmt = 0;
+      var totalCount = items.length;
+      var approvedCount = 0;
+      var pendingCount = 0;
+
+      var byType = {};
+      var byCompany = {};
+      var byDept = {};
+
+      items.forEach(function (ex) {
+        var amt = Number(ex.amount || 0);
+        totalAmt += amt;
+
+        if (ex.status === 'approved') {
+          var appAmt = ex.approved_amount != null && ex.approved_amount !== '' ? Number(ex.approved_amount) : amt;
+          approvedAmt += appAmt;
+          approvedCount++;
+        } else if (ex.status === 'pending') {
+          pendingAmt += amt;
+          pendingCount++;
+        }
+
+        var typeKey = ex.expense_type || 'อื่นๆ';
+        if (!byType[typeKey]) byType[typeKey] = { count: 0, amount: 0 };
+        byType[typeKey].count++;
+        byType[typeKey].amount += amt;
+
+        var compKey = 'ไม่ระบุบริษัท';
+        var match = (ex.description || '').match(/^\[([^\]]+)\]/);
+        if (match) compKey = match[1];
+        if (!byCompany[compKey]) byCompany[compKey] = { count: 0, amount: 0 };
+        byCompany[compKey].count++;
+        byCompany[compKey].amount += amt;
+
+        var deptKey = (ex.requester && ex.requester.department) || 'ไม่ระบุสังกัด';
+        if (!byDept[deptKey]) byDept[deptKey] = { count: 0, amount: 0 };
+        byDept[deptKey].count++;
+        byDept[deptKey].amount += amt;
+      });
+
+      var statHtml = ''
+        + statBox('ยอดเบิกเงินรวมทั้งหมด', '฿' + totalAmt.toLocaleString('th-TH', {minimumFractionDigits:2, maximumFractionDigits:2}), 'cash-coin', 'indigo')
+        + statBox('ยอดอนุมัติจ่ายแล้ว (' + approvedCount + ' รายการ)', '฿' + approvedAmt.toLocaleString('th-TH', {minimumFractionDigits:2, maximumFractionDigits:2}), 'check-circle-fill', 'emerald')
+        + statBox('ยอดรอดำเนินการ (' + pendingCount + ' รายการ)', '฿' + pendingAmt.toLocaleString('th-TH', {minimumFractionDigits:2, maximumFractionDigits:2}), 'hourglass-split', 'amber')
+        + statBox('จำนวนใบเบิกทั้งหมด', totalCount + ' ใบ', 'files', 'sky');
+
+      var typeRows = Object.keys(byType).sort(function(a,b){ return byType[b].amount - byType[a].amount; }).map(function(k) {
+        var t = byType[k];
+        var pct = totalAmt > 0 ? ((t.amount / totalAmt) * 100).toFixed(1) : '0';
+        return '<tr><td><strong>' + esc(k) + '</strong></td><td style="text-align:right;">' + t.count + ' ใบ</td><td style="text-align:right;font-weight:700;color:#0369a1;">฿' + t.amount.toLocaleString('th-TH',{minimumFractionDigits:2}) + '</td><td style="text-align:right;"><span class="badge b-blue">' + pct + '%</span></td></tr>';
+      }).join('');
+
+      var compRows = Object.keys(byCompany).sort(function(a,b){ return byCompany[b].amount - byCompany[a].amount; }).map(function(k) {
+        var c = byCompany[k];
+        return '<tr><td><strong>' + esc(k) + '</strong></td><td style="text-align:right;">' + c.count + ' ใบ</td><td style="text-align:right;font-weight:700;color:#10b981;">฿' + c.amount.toLocaleString('th-TH',{minimumFractionDigits:2}) + '</td></tr>';
+      }).join('');
+
+      var deptRows = Object.keys(byDept).sort(function(a,b){ return byDept[b].amount - byDept[a].amount; }).map(function(k) {
+        var d = byDept[k];
+        return '<tr><td><strong>' + esc(k) + '</strong></td><td style="text-align:right;">' + d.count + ' ใบ</td><td style="text-align:right;font-weight:700;color:#6366f1;">฿' + d.amount.toLocaleString('th-TH',{minimumFractionDigits:2}) + '</td></tr>';
+      }).join('');
+
+      var listRows = items.map(function(ex) {
+        return '<tr class="clickable" onclick="location.hash=\'#/expenses/view?id=' + ex.id + '\'">'
+          + '<td><code>' + esc(ex.expense_no) + '</code></td>'
+          + '<td>' + esc((ex.requester && ex.requester.full_name) || '-') + '</td>'
+          + '<td>' + esc(ex.expense_type || '-') + '</td>'
+          + '<td>' + TH.date(ex.expense_date) + '</td>'
+          + '<td style="text-align:right;font-weight:700;color:#ef4444;">฿' + Number(ex.amount || 0).toLocaleString('th-TH', {minimumFractionDigits:2}) + '</td>'
+          + '<td><span class="badge b-' + esc(ex.status_tone) + '">' + esc(ex.status_label) + '</span></td>'
+          + '</tr>';
+      }).join('');
+
+      var html = '<div class="hero" style="margin-bottom:14px">'
+        + '<span class="hero-pill"><i class="bi bi-graph-up-arrow"></i> รายงานสถิติค่าใช้จ่าย</span>'
+        + '<div class="hero-greet">สรุปรายงานการเบิกค่าใช้จ่ายและการอนุมัติ</div>'
+        + '<div class="hero-sub">รวมข้อมูลสถิติการยื่นเบิกค่าใช้จ่ายแยกตามประเภท บริษัท และสังกัด/แผนก</div>'
+        + '</div>'
+        + '<div class="grid-4" style="margin-bottom:14px">' + statHtml + '</div>'
+        + '<div class="grid-2" style="margin-bottom:14px">'
+        + '  <div class="card"><div class="card-head"><i class="bi bi-tags-fill" style="color:#0284c7"></i> <span class="card-title">สรุปตามหมวดหมู่ค่าใช้จ่าย</span></div><div class="card-body"><table class="data-table"><thead><tr><th>ประเภทค่าใช้จ่าย</th><th style="text-align:right;">จำนวน</th><th style="text-align:right;">รวมยอดเงิน</th><th style="text-align:right;">สัดส่วน</th></tr></thead><tbody>' + (typeRows || '<tr><td colspan="4" style="text-align:center;color:#94a3b8">ไม่มีข้อมูล</td></tr>') + '</tbody></table></div></div>'
+        + '  <div class="card"><div class="card-head"><i class="bi bi-building" style="color:#10b981"></i> <span class="card-title">สรุปตามบริษัทที่ยื่นเบิก</span></div><div class="card-body"><table class="data-table"><thead><tr><th>บริษัท</th><th style="text-align:right;">จำนวน</th><th style="text-align:right;">รวมยอดเงิน</th></tr></thead><tbody>' + (compRows || '<tr><td colspan="3" style="text-align:center;color:#94a3b8">ไม่มีข้อมูล</td></tr>') + '</tbody></table></div></div>'
+        + '</div>'
+        + '<div class="card" style="margin-bottom:14px"><div class="card-head"><i class="bi bi-diagram-3-fill" style="color:#6366f1"></i> <span class="card-title">สรุปตามแผนก / สังกัด</span></div><div class="card-body"><table class="data-table"><thead><tr><th>แผนก / ฝ่าย</th><th style="text-align:right;">จำนวนใบเบิก</th><th style="text-align:right;">รวมยอดเงินเบิก</th></tr></thead><tbody>' + (deptRows || '<tr><td colspan="3" style="text-align:center;color:#94a3b8">ไม่มีข้อมูล</td></tr>') + '</tbody></table></div></div>'
+        + '<div class="card"><div class="card-head"><i class="bi bi-receipt"></i> <span class="card-title">รายการใบเบิกทั้งหมด (' + items.length + ' รายการ)</span></div>'
+        + '<div class="card-body">' + (listRows ? '<table class="data-table"><thead><tr><th>เลขที่</th><th>ผู้ขอเบิก</th><th>ประเภท</th><th>วันที่</th><th style="text-align:right">จำนวนเงิน</th><th>สถานะ</th></tr></thead><tbody>' + listRows + '</tbody></table>' : emptyState('inbox', 'ยังไม่มีประวัติการยื่นเบิกค่าใช้จ่าย')) + '</div></div>';
+
+      $('#rpt-content').innerHTML = html;
     }
     function renderOverview(d) {
       var statHtml = ''
@@ -7255,6 +7359,7 @@ async function api(req) {
     }
     render();
   };
+  Routes['#/reports/expenses'] = Routes['#/reports'];
   function statBox(label, value, icon, tone) {
     return '<div class="stat-card tone-' + tone + '">'
       + '<div class="stat-icon"><i class="bi bi-' + icon + '"></i></div>'
