@@ -4413,7 +4413,7 @@ body {
   <div class="bl-card">
     <div class="bl-logo"><i class="bi bi-calendar2-check-fill"></i></div>
     <div class="bl-title">ระบบบันทึกการลาออนไลน์</div>
-    <span class="bl-version">LMS v1.2.1 (DIRECT_RAW_VIEW)</span>
+    <span class="bl-version">LMS v1.2.5 Final</span>
     <div class="bl-bar"><div class="bl-bar-fill"></div></div>
     <div id="bl-text" class="bl-text">กำลังโหลดระบบ...</div>
   </div>
@@ -4457,7 +4457,7 @@ const APP = Object.freeze({
   NAME: 'ระบบบันทึกการลาออนไลน์',
   SHORT: 'LMS',
   TITLE: 'LMS · ระบบบันทึกการลาออนไลน์',
-  VERSION: '1.1.0',
+  VERSION: '1.2.5 Final',
   LAST_UPDATED: '2026-06-19',
   ORG: 'บริษัท เอวริณทร์ อินเตอร์กรุ๊ป จำกัด',
   ORGA: 'บริษัท เอวริณทร์ อินเตอร์กรุ๊ป จำกัด',
@@ -4862,7 +4862,7 @@ async function api(req) {
   function renderLogin() {
     var settings = (Store.boot && Store.boot.settings) || {};
     var dev = (Store.boot && Store.boot.dev) || APP_DEV;
-    var app = (Store.boot && Store.boot.app) || { name: 'ระบบบันทึกการลา', version: '1.0.0' };
+    var app = (Store.boot && Store.boot.app) || { name: 'ระบบบันทึกการลา', version: '1.2.5 Final' };
     var showDemo = String(settings.show_demo_users || 'yes').toLowerCase() === 'yes';
     var year = new Date().getFullYear();
 
@@ -4954,7 +4954,7 @@ async function api(req) {
       + '  </div>'
       + '</div>'
       + '<div class="login-footer">'
-      + '  <div class="lf-copy">' + year + ' © ' + esc(app.name) + ' <span class="lf-version">v1.2.1 (DIRECT_RAW_VIEW)</span></div>'
+      + '  <div class="lf-copy">' + year + ' © ' + esc(app.name) + ' <span class="lf-version">v1.2.5 Final</span></div>'
       + '  <div class="lf-dev">'
       + '    <a href="' + esc(dev.URL) + '" target="_blank" rel="noopener noreferrer" class="lf-dev-link">'
       + '      <img class="lf-dev-logo" src="' + esc(dev.LOGO || '') + '" alt="" referrerpolicy="no-referrer">'
@@ -5321,7 +5321,7 @@ async function api(req) {
 
   function appFooterHtml(year, app, dev) {
     return '<div class="app-footer">'
-      + '<div><span class="af-year">' + year + '</span> © ' + esc(app.name) + ' <span class="af-version">v' + esc(app.version || '1.0.0') + '</span></div>'
+      + '<div><span class="af-year">' + year + '</span> © ' + esc(app.name) + ' <span class="af-version">v' + esc(app.version || '1.2.5 Final') + '</span></div>'
       + '<div class="af-dev">'
       + '  <a class="af-dev-link" href="' + esc(dev.URL) + '" target="_blank" rel="noopener noreferrer">'
       + '    <img class="af-dev-logo" src="' + esc(dev.LOGO || '') + '" alt="" referrerpolicy="no-referrer">'
