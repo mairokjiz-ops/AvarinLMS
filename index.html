@@ -12267,166 +12267,19 @@ async function api(req) {
 
   // ── Rentals & Expiries Module (#/rentals) ──────────────────────────
   function getInitialRentalsData() {
-    return [
-      {
-        id: 'RNT-1001',
-        name: 'MacBook Pro M3 Max 16" (สมชาย)',
-        type: 'employee',
-        category: 'คอมพิวเตอร์ / โน้ตบุ๊ก',
-        holder_name: 'นายสมชาย วงศ์ดี',
-        department: 'IT & Development',
-        contract_no: 'C02GX0F0MD6M',
-        vendor_name: 'Apple Enterprise Lease (Thailand)',
-        vendor_contact: '02-123-4567 (คุณวิชัย)',
-        start_date: '2024-08-15',
-        end_date: '2026-08-15',
-        monthly_cost: 3500,
-        payment_cycle: 'monthly',
-        alert_days: 60,
-        status: 'expiring_soon',
-        notes: 'เช่าระยะยาว 24 เดือน พร้อมประกัน AppleCare+ Enterprise'
-      },
-      {
-        id: 'RNT-1002',
-        name: 'สัญญาเช่าอาคารสำนักงานใหญ่ (ชั้น 4-5)',
-        type: 'office',
-        category: 'สถานที่ / อาคาร',
-        holder_name: 'ฝ่ายบริหารและสถานที่',
-        department: 'ฝ่ายบริหาร',
-        contract_no: 'RENT-2024-009',
-        vendor_name: 'อาคารภิรัชทาวเวอร์ สุขุมวิท',
-        vendor_contact: '02-999-8888 (คุณนภา)',
-        start_date: '2024-01-01',
-        end_date: '2026-12-31',
-        monthly_cost: 185000,
-        payment_cycle: 'monthly',
-        alert_days: 90,
-        status: 'active',
-        notes: 'สัญญาเช่าสถานที่ 3 ปี มัดจำ 3 เดือน ลิฟต์ส่วนตัว'
-      },
-      {
-        id: 'RNT-1003',
-        name: 'Adobe Creative Cloud Enterprise (10 Lic)',
-        type: 'employee',
-        category: 'ลิขสิทธิ์ซอฟต์แวร์',
-        holder_name: 'ทีมการตลาด & UX/UI',
-        department: 'การตลาด',
-        contract_no: 'ADB-CC-8849-ENT',
-        vendor_name: 'Adobe Systems Software',
-        vendor_contact: 'support@adobe-distributor.th',
-        start_date: '2025-07-10',
-        end_date: '2026-07-10',
-        monthly_cost: 14900,
-        payment_cycle: 'yearly',
-        alert_days: 30,
-        status: 'expired',
-        notes: 'หมดอายุเมื่อต้นเดือน กรุณาต่อสัญญารายปีใหม่'
-      },
-      {
-        id: 'RNT-1004',
-        name: 'เครื่องถ่ายเอกสาร Fuji Xerox C3375 (ชั้น 2)',
-        type: 'office',
-        category: 'เครื่องใช้สำนักงาน',
-        holder_name: 'ฝ่ายบริหารทั่วไป',
-        department: 'บริหารทั่วไป',
-        contract_no: 'FX-C3375-9921',
-        vendor_name: 'Fuji Film Business Innovation',
-        vendor_contact: '02-664-3000 Call Center',
-        start_date: '2023-10-01',
-        end_date: '2026-09-30',
-        monthly_cost: 8500,
-        payment_cycle: 'monthly',
-        alert_days: 60,
-        status: 'active',
-        notes: 'รวมผงหมึกและช่างซ่อมบำรุง 24 ชม.'
-      },
-      {
-        id: 'RNT-1005',
-        name: 'รถยนต์เช่าประจำตำแหน่ง (Camry Hybrid)',
-        type: 'employee',
-        category: 'ยานพาหนะ',
-        holder_name: 'ดร.อนันต์ สุขเกษม (ผอ.)',
-        department: 'ผู้บริหาร',
-        contract_no: '3กข-9988 BKK',
-        vendor_name: 'KPN Rental Car Thailand',
-        vendor_contact: '02-777-1111 (คุณเมธี)',
-        start_date: '2024-04-01',
-        end_date: '2027-03-31',
-        monthly_cost: 28000,
-        payment_cycle: 'monthly',
-        alert_days: 60,
-        status: 'active',
-        notes: 'สัญญาเช่า 3 ปี รวมประกันชั้น 1 และรถเปลี่ยนระหว่างซ่อม'
-      },
-      {
-        id: 'RNT-1006',
-        name: 'AWS Cloud Hosting (Production Server)',
-        type: 'office',
-        category: 'ระบบคลาวด์ / โดเมน',
-        holder_name: 'ทีม IT & Infrastructure',
-        department: 'IT & DevOps',
-        contract_no: 'AWS-TH-994112',
-        vendor_name: 'Amazon Web Services (AWS)',
-        vendor_contact: 'aws-support@amazon.com',
-        start_date: '2025-08-01',
-        end_date: '2026-08-01',
-        monthly_cost: 42000,
-        payment_cycle: 'monthly',
-        alert_days: 30,
-        status: 'expiring_soon',
-        notes: 'Reserved Instance 1 ปี ลดราคา 35% ต้องต่อสัญญาล่วงหน้า'
-      },
-      {
-        id: 'RNT-1007',
-        name: 'สัญญา MA Firewall & Cisco Core Switch',
-        type: 'office',
-        category: 'MA / ประกันอุปกรณ์',
-        holder_name: 'ฝ่ายเทคโนโลยีสารสนเทศ',
-        department: 'IT & Network',
-        contract_no: 'MA-CISCO-2025',
-        vendor_name: 'Metro Systems Corporation',
-        vendor_contact: '02-089-4000',
-        start_date: '2025-01-15',
-        end_date: '2027-01-15',
-        monthly_cost: 12000,
-        payment_cycle: 'yearly',
-        alert_days: 60,
-        status: 'active',
-        notes: 'ประกันอะไหล่ 8x5xNBD พร้อมวิศวกรเข้าซ่อมใน 4 ชม.'
-      },
-      {
-        id: 'RNT-1008',
-        name: 'Microsoft 365 Business Premium (50 Users)',
-        type: 'employee',
-        category: 'ลิขสิทธิ์ซอฟต์แวร์',
-        holder_name: 'พนักงานทุกคน',
-        department: 'ทั้งองค์กร',
-        contract_no: 'MS365-AVARIN-50',
-        vendor_name: 'Microsoft Thailand (CSP Partner)',
-        vendor_contact: '02-263-6888',
-        start_date: '2025-11-01',
-        end_date: '2026-10-31',
-        monthly_cost: 22500,
-        payment_cycle: 'monthly',
-        alert_days: 45,
-        status: 'active',
-        notes: 'สัญญา CSP รายปี ชำระรายเดือน มี Teams, SharePoint, Intune'
-      }
-    ];
+    return [];
   }
   window.__getInitialRentalsData = getInitialRentalsData;
 
   function getRentalsData() {
     try {
       var raw = localStorage.getItem('lms_rentals_data');
-      if (!raw) {
-        var initial = getInitialRentalsData();
-        localStorage.setItem('lms_rentals_data', JSON.stringify(initial));
-        return initial;
+      if (raw !== null) {
+        return JSON.parse(raw);
       }
-      return JSON.parse(raw);
+      return [];
     } catch(e) {
-      return getInitialRentalsData();
+      return [];
     }
   }
 
@@ -12531,7 +12384,6 @@ async function api(req) {
         + '        </div>'
         + '      </div>'
         + '      <div style="display:flex; gap:10px; flex-wrap:wrap;">'
-        + '        <button class="btn btn-outline" id="rnt-btn-reset-demo" style="border-color:#cbd5e1; color:#475569; font-weight:600;"><i class="bi bi-arrow-counterclockwise"></i> ดึงข้อมูลตั้งต้น (8 รายการ)</button>'
         + '        <button class="btn btn-outline" id="rnt-btn-export" style="border-color:#cbd5e1; color:#334155; font-weight:600;"><i class="bi bi-download"></i> ส่งออกข้อมูล (CSV)</button>'
         + '        <button class="btn btn-primary" id="rnt-btn-add" style="background:linear-gradient(135deg,#6366f1,#8b5cf6); border:none; font-weight:700; box-shadow:0 6px 20px rgba(99,102,241,0.35);"><i class="bi bi-plus-lg"></i> เพิ่มรายการเช่า / สัญญา</button>'
         + '      </div>'
@@ -12787,22 +12639,6 @@ async function api(req) {
 
       $('#rnt-btn-add').addEventListener('click', function () { openAddEditRentalModal(null); });
       $('#rnt-btn-export').addEventListener('click', function () { exportRentalsCSV(); });
-      if ($('#rnt-btn-reset-demo')) {
-        $('#rnt-btn-reset-demo').addEventListener('click', function () {
-          confirmModal({
-            title: 'รีเซ็ตกลับเป็นข้อมูลตัวอย่างตั้งต้น',
-            message: 'คุณต้องการโหลดข้อมูลตัวอย่างมาตรฐาน (8 รายการ) กลับคืนมาหรือไม่?',
-            okText: 'โหลดข้อมูลตั้งต้น'
-          }).then(function (ok) {
-            if (ok) {
-              var initial = getInitialRentalsData();
-              saveRentalsData(initial);
-              toast('โหลดข้อมูลตัวอย่าง 8 รายการเรียบร้อยแล้ว', 'success');
-              renderPage();
-            }
-          });
-        });
-      }
     }
 
     function wireActionButtons(container) {
