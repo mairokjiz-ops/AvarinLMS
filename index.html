@@ -12035,36 +12035,28 @@ async function api(req) {
         
         var slipImg = '';
         if (receipts.length > 0) {
-          slipImg += '<div class="evidence-wrap">';
+          slipImg += '<div class="evidence-wrap" style="margin-top:6px;page-break-inside:avoid;break-inside:avoid;">';
           if (receipts.length === 1) {
-            slipImg += '<div class="evidence-grid grid-1" style="width:100%;">'
-              + '<div class="evidence-img-box large-box" style="width:100%;max-height:160px;"><img src="' + esc(receipts[0]) + '" class="evidence-img" style="max-height:160px;"></div>'
+            slipImg += '<div class="evidence-grid" style="width:100%;">'
+              + '<div class="evidence-img-box" style="width:100%;height:360px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;"><img src="' + esc(receipts[0]) + '" class="evidence-img" style="max-width:100%;max-height:350px;width:auto;height:auto;object-fit:contain;display:block;"></div>'
               + '</div>';
           } else if (receipts.length === 2) {
-            slipImg += '<div class="evidence-grid grid-2">'
-              + '<div class="evidence-img-box medium-box" style="max-height:120px;"><img src="' + esc(receipts[0]) + '" class="evidence-img" style="max-height:120px;"></div>'
-              + '<div class="evidence-img-box medium-box" style="max-height:120px;"><img src="' + esc(receipts[1]) + '" class="evidence-img" style="max-height:120px;"></div>'
+            slipImg += '<div class="evidence-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;">'
+              + '<div class="evidence-img-box" style="width:100%;height:250px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;"><img src="' + esc(receipts[0]) + '" class="evidence-img" style="max-width:100%;max-height:240px;width:auto;height:auto;object-fit:contain;display:block;"></div>'
+              + '<div class="evidence-img-box" style="width:100%;height:250px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;"><img src="' + esc(receipts[1]) + '" class="evidence-img" style="max-width:100%;max-height:240px;width:auto;height:auto;object-fit:contain;display:block;"></div>'
               + '</div>';
           } else if (receipts.length === 3) {
-            slipImg += '<div class="evidence-grid grid-3">'
-              + '<div class="evidence-row">'
-              + '  <div class="evidence-img-box medium-box" style="max-height:95px;"><img src="' + esc(receipts[0]) + '" class="evidence-img" style="max-height:95px;"></div>'
-              + '  <div class="evidence-img-box medium-box" style="max-height:95px;"><img src="' + esc(receipts[1]) + '" class="evidence-img" style="max-height:95px;"></div>'
-              + '</div>'
-              + '<div class="evidence-row row-center" style="margin-top:4px;">'
-              + '  <div class="evidence-img-box large-box" style="max-height:95px;"><img src="' + esc(receipts[2]) + '" class="evidence-img" style="max-height:95px;"></div>'
-              + '</div>'
+            slipImg += '<div class="evidence-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;">'
+              + '<div class="evidence-img-box" style="width:100%;height:175px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;"><img src="' + esc(receipts[0]) + '" class="evidence-img" style="max-width:100%;max-height:168px;width:auto;height:auto;object-fit:contain;display:block;"></div>'
+              + '<div class="evidence-img-box" style="width:100%;height:175px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;"><img src="' + esc(receipts[1]) + '" class="evidence-img" style="max-width:100%;max-height:168px;width:auto;height:auto;object-fit:contain;display:block;"></div>'
+              + '<div class="evidence-img-box" style="grid-column:1 / -1;width:100%;height:175px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;"><img src="' + esc(receipts[2]) + '" class="evidence-img" style="max-width:100%;max-height:168px;width:auto;height:auto;object-fit:contain;display:block;"></div>'
               + '</div>';
           } else {
-            slipImg += '<div class="evidence-grid grid-4">'
-              + '<div class="evidence-row">'
-              + '  <div class="evidence-img-box medium-box" style="max-height:95px;"><img src="' + esc(receipts[0]) + '" class="evidence-img" style="max-height:95px;"></div>'
-              + '  <div class="evidence-img-box medium-box" style="max-height:95px;"><img src="' + esc(receipts[1]) + '" class="evidence-img" style="max-height:95px;"></div>'
-              + '</div>'
-              + '<div class="evidence-row" style="margin-top:4px;">'
-              + '  <div class="evidence-img-box medium-box" style="max-height:95px;"><img src="' + esc(receipts[2]) + '" class="evidence-img" style="max-height:95px;"></div>'
-              + '  <div class="evidence-img-box medium-box" style="max-height:95px;"><img src="' + esc(receipts[3]) + '" class="evidence-img" style="max-height:95px;"></div>'
-              + '</div>'
+            slipImg += '<div class="evidence-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;">'
+              + '<div class="evidence-img-box" style="width:100%;height:175px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;"><img src="' + esc(receipts[0]) + '" class="evidence-img" style="max-width:100%;max-height:168px;width:auto;height:auto;object-fit:contain;display:block;"></div>'
+              + '<div class="evidence-img-box" style="width:100%;height:175px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;"><img src="' + esc(receipts[1]) + '" class="evidence-img" style="max-width:100%;max-height:168px;width:auto;height:auto;object-fit:contain;display:block;"></div>'
+              + '<div class="evidence-img-box" style="width:100%;height:175px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;"><img src="' + esc(receipts[2]) + '" class="evidence-img" style="max-width:100%;max-height:168px;width:auto;height:auto;object-fit:contain;display:block;"></div>'
+              + '<div class="evidence-img-box" style="width:100%;height:175px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4px;"><img src="' + esc(receipts[3]) + '" class="evidence-img" style="max-width:100%;max-height:168px;width:auto;height:auto;object-fit:contain;display:block;"></div>'
               + '</div>';
           }
           slipImg += '</div>';
@@ -12072,31 +12064,25 @@ async function api(req) {
         
         var html = '<html><head><title>ใบเบิกเงินและขออนุมัติค่าใช้จ่าย</title><style>'
           + '@import url("https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600&display=swap");'
-          + '@page{size:A4 portrait;margin:4mm 8mm;}'
+          + '@page{size:A4 portrait;margin:5mm 8mm;}'
           + '*{box-sizing:border-box;}'
-          + 'html,body{font-family:"Sarabun",sans-serif;padding:0;margin:0;font-size:11px;color:#000;line-height:1.2;height:100%;overflow:hidden;}'
-          + '.header{text-align:center;font-weight:bold;font-size:15px;margin:6px 0 8px;text-transform:uppercase;letter-spacing:.3px;}'
+          + 'html,body{font-family:"Sarabun",sans-serif;padding:0;margin:0;font-size:11px;color:#000;line-height:1.2;}'
+          + '.header{text-align:center;font-weight:bold;font-size:15px;margin:4px 0 6px;text-transform:uppercase;letter-spacing:.3px;}'
           + '.company-title{font-size:13px;font-weight:bold;margin-bottom:2px;}'
-          + 'table{width:100%;border-collapse:collapse;margin:6px 0 4px;}th,td{border:1px solid #000;padding:4px 6px;text-align:left;vertical-align:top;}th{text-align:center;background:#f8fafc;}'
+          + 'table{width:100%;border-collapse:collapse;margin:4px 0 4px;}th,td{border:1px solid #000;padding:4px 6px;text-align:left;vertical-align:top;}th{text-align:center;background:#f8fafc;}'
           + '.center{text-align:center;}.right{text-align:right;}'
-          + '.signature-box{display:flex;justify-content:space-around;margin-top:10px;}'
+          + '.signature-box{display:flex;justify-content:space-around;margin-top:8px;}'
           + '.sig-line{text-align:center;width:200px;font-size:10.5px;}.sig-line div{border-bottom:1px dotted #000;height:14px;margin-bottom:2px;}'
           + '.dotted{border-bottom:1px dotted #000;display:inline-block;padding:0 6px;}'
           + '.evidence-title{font-weight:bold;font-size:11px;margin:4px 0 2px;}'
           + '.evidence-wrap{margin-top:2px;page-break-inside:avoid;break-inside:avoid;}'
-          + '.evidence-grid{display:flex;flex-direction:column;gap:4px;align-items:center;width:100%;}'
-          + '.evidence-row{display:flex;justify-content:center;gap:8px;width:100%;}'
-          + '.row-center{justify-content:center;}'
-          + '.grid-2{display:flex;flex-direction:row;justify-content:center;gap:8px;width:100%;}'
           + '.evidence-img-box{border:1px solid #cbd5e1;border-radius:4px;overflow:hidden;background:#f8fafc;display:flex;align-items:center;justify-content:center;page-break-inside:avoid;padding:2px;}'
-          + '.large-box{width:100%;margin:0 auto;}'
-          + '.medium-box{width:49%;}'
           + '.evidence-img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block;margin:0 auto;}'
           + '@media print{'
-          + '@page{size:A4 portrait;margin:4mm 8mm;}'
-          + 'html,body{height:100% !important;overflow:hidden !important;page-break-after:avoid !important;break-after:avoid !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
-          + '.evidence-img{max-width:100% !important;width:auto !important;height:auto !important;max-height:95px !important;object-fit:contain !important;image-rendering:high-quality;}'
-          + '.evidence-img-box{page-break-inside:avoid !important;max-height:100px !important;border:1px solid #cbd5e1 !important;}'
+          + '@page{size:A4 portrait;margin:5mm 8mm;}'
+          + 'html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
+          + '.evidence-img{object-fit:contain !important;image-rendering:high-quality;}'
+          + '.evidence-img-box{page-break-inside:avoid !important;border:1px solid #cbd5e1 !important;}'
           + '}'
           + '</style></head><body>'
           + '<div>'
