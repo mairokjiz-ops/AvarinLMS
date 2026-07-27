@@ -5320,8 +5320,9 @@ async function api(req) {
   }
 
   function appFooterHtml(year, app, dev) {
+    var ver = (app && app.version && app.version !== '1.1.0' && app.version !== '1.0.0') ? app.version : '1.2.5 Final';
     return '<div class="app-footer">'
-      + '<div><span class="af-year">' + year + '</span> © ' + esc(app.name) + ' <span class="af-version">v' + esc(app.version || '1.2.5 Final') + '</span></div>'
+      + '<div><span class="af-year">' + year + '</span> © ' + esc(app.name) + ' <span class="af-version">v' + esc(ver) + '</span></div>'
       + '<div class="af-dev">'
       + '  <a class="af-dev-link" href="' + esc(dev.URL) + '" target="_blank" rel="noopener noreferrer">'
       + '    <img class="af-dev-logo" src="' + esc(dev.LOGO || '') + '" alt="" referrerpolicy="no-referrer">'
@@ -5634,6 +5635,7 @@ async function api(req) {
     call('app.bootstrap', {}).then(function (data) {
       try {
         if (!data || typeof data !== 'object') throw new Error('ข้อมูล bootstrap ไม่ถูกต้อง');
+        if (data.app) data.app.version = '1.2.5 Final';
         Store.boot = data;
         Store.user = data.me || null;
         Store.caps = data.caps || [];
