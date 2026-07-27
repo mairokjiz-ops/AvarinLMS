@@ -10790,6 +10790,14 @@ async function api(req) {
     
     var isPendingExpenseView = (hash.split('?')[0] === '#/expenses/pending' || params.status === 'pending');
     var isAllExpenseView = (hash.split('?')[0] === '#/expenses/all');
+
+    // Auto-run legacy R2 data migration for all existing expenses in background once per session
+    if (!window._r2MigratedSession) {
+      window._r2MigratedSession = true;
+      call('r2.migrate_legacy_data', {}).then(function (res) {
+        console.log('R2 legacy data migration result:', res);
+      }).catch(function () {});
+    }
     var st = { q: '', status: isPendingExpenseView ? 'pending' : (params.status || ''), month: (isPendingExpenseView || isAllExpenseView) ? '' : _mkMonthKey(new Date()) };
     var pageTitle = isPendingExpenseView ? 'ใบเบิกรอดำเนินการ' : 'ระบบเบิกค่าใช้จ่าย';
     var pageSub = isPendingExpenseView ? 'รายการใบเบิกที่รอตรวจสอบและอนุมัติ' : 'จัดการและติดตามคำขอเบิกเงินสะสม/ค่าเดินทาง';
