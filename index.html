@@ -12434,6 +12434,7 @@ async function api(req) {
     try {
       localStorage.setItem('lms_rentals_data', JSON.stringify(list));
       if (typeof LMS.refreshShell === 'function') LMS.refreshShell();
+      call('setting.update', { rentals_json: JSON.stringify(list) }).catch(function () {});
     } catch(e) {}
   }
 
@@ -13210,6 +13211,21 @@ async function api(req) {
     }
 
     renderPage();
+
+    call('setting.get', {}).then(function (s) {
+      if (s && typeof s.rentals_json === 'string') {
+        try {
+          var remoteList = JSON.parse(s.rentals_json);
+          if (Array.isArray(remoteList)) {
+            localStorage.setItem('lms_rentals_data', s.rentals_json);
+            renderPage();
+          }
+        } catch(e) {}
+      } else if (s && (s.rentals_json === undefined || s.rentals_json === null)) {
+        var currentData = getRentalsData();
+        call('setting.update', { rentals_json: JSON.stringify(currentData) }).catch(function () {});
+      }
+    }).catch(function () {});
   };
 
   // ── Standalone Expenses End ──
