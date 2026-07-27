@@ -12267,7 +12267,44 @@ async function api(req) {
 
   // ── Rentals & Expiries Module (#/rentals) ──────────────────────────
   function getInitialRentalsData() {
-    return [];
+    return [
+      {
+        id: 'RNT-2001',
+        name: 'Railway API',
+        type: 'office',
+        category: 'ระบบคลาวด์ / โดเมน',
+        holder_name: 'พงศกร ศรีสุข',
+        department: 'ฝ่ายขาย',
+        contract_no: '-',
+        vendor_name: 'Railway',
+        vendor_contact: '-',
+        start_date: '2025-08-02',
+        end_date: '2027-08-02',
+        monthly_cost: 170,
+        payment_cycle: 'monthly',
+        alert_days: 60,
+        status: 'active',
+        notes: ''
+      },
+      {
+        id: 'RNT-2002',
+        name: 'AI',
+        type: 'employee',
+        category: 'ลิขสิทธิ์ซอฟต์แวร์',
+        holder_name: 'พงศกร ศรีสุข',
+        department: 'ฝ่ายขาย',
+        contract_no: '-',
+        vendor_name: 'Gemini',
+        vendor_contact: '-',
+        start_date: '2025-08-09',
+        end_date: '2027-08-09',
+        monthly_cost: 189,
+        payment_cycle: 'monthly',
+        alert_days: 60,
+        status: 'active',
+        notes: ''
+      }
+    ];
   }
   window.__getInitialRentalsData = getInitialRentalsData;
 
@@ -12275,11 +12312,12 @@ async function api(req) {
     try {
       var raw = localStorage.getItem('lms_rentals_data');
       if (raw !== null) {
-        return JSON.parse(raw);
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
-      return [];
+      return getInitialRentalsData();
     } catch(e) {
-      return [];
+      return getInitialRentalsData();
     }
   }
 
@@ -13052,14 +13090,22 @@ async function api(req) {
       if (s && typeof s.rentals_json === 'string') {
         try {
           var remoteList = JSON.parse(s.rentals_json);
-          if (Array.isArray(remoteList)) {
+          var hasOldMockup = Array.isArray(remoteList) && remoteList.some(function (x) { return x.id === 'RNT-1001' || (x.name && x.name.indexOf('MacBook Pro') >= 0); });
+          if (hasOldMockup || !Array.isArray(remoteList) || remoteList.length === 0) {
+            var freshData = getInitialRentalsData();
+            localStorage.setItem('lms_rentals_data', JSON.stringify(freshData));
+            call('setting.update', { rentals_json: JSON.stringify(freshData) }).catch(function () {});
+            renderPage();
+          } else {
             localStorage.setItem('lms_rentals_data', s.rentals_json);
             renderPage();
           }
         } catch(e) {}
-      } else if (s && (s.rentals_json === undefined || s.rentals_json === null)) {
-        var currentData = getRentalsData();
-        call('setting.update', { rentals_json: JSON.stringify(currentData) }).catch(function () {});
+      } else {
+        var freshData = getInitialRentalsData();
+        localStorage.setItem('lms_rentals_data', JSON.stringify(freshData));
+        call('setting.update', { rentals_json: JSON.stringify(freshData) }).catch(function () {});
+        renderPage();
       }
     }).catch(function () {});
   };
