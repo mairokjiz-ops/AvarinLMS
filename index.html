@@ -12530,6 +12530,7 @@ async function api(req) {
         + '        </div>'
         + '      </div>'
         + '      <div style="display:flex; gap:10px; flex-wrap:wrap;">'
+        + '        <button class="btn btn-outline" id="rnt-btn-reset-demo" style="border-color:#cbd5e1; color:#475569; font-weight:600;"><i class="bi bi-arrow-counterclockwise"></i> ดึงข้อมูลตั้งต้น (8 รายการ)</button>'
         + '        <button class="btn btn-outline" id="rnt-btn-export" style="border-color:#cbd5e1; color:#334155; font-weight:600;"><i class="bi bi-download"></i> ส่งออกข้อมูล (CSV)</button>'
         + '        <button class="btn btn-primary" id="rnt-btn-add" style="background:linear-gradient(135deg,#6366f1,#8b5cf6); border:none; font-weight:700; box-shadow:0 6px 20px rgba(99,102,241,0.35);"><i class="bi bi-plus-lg"></i> เพิ่มรายการเช่า / สัญญา</button>'
         + '      </div>'
@@ -12785,6 +12786,22 @@ async function api(req) {
 
       $('#rnt-btn-add').addEventListener('click', function () { openAddEditRentalModal(null); });
       $('#rnt-btn-export').addEventListener('click', function () { exportRentalsCSV(); });
+      if ($('#rnt-btn-reset-demo')) {
+        $('#rnt-btn-reset-demo').addEventListener('click', function () {
+          confirmModal({
+            title: 'รีเซ็ตกลับเป็นข้อมูลตัวอย่างตั้งต้น',
+            message: 'คุณต้องการโหลดข้อมูลตัวอย่างมาตรฐาน (8 รายการ) กลับคืนมาหรือไม่?',
+            okText: 'โหลดข้อมูลตั้งต้น'
+          }).then(function (ok) {
+            if (ok) {
+              var initial = getInitialRentalsData();
+              saveRentalsData(initial);
+              toast('โหลดข้อมูลตัวอย่าง 8 รายการเรียบร้อยแล้ว', 'success');
+              renderPage();
+            }
+          });
+        });
+      }
     }
 
     function wireActionButtons(container) {
