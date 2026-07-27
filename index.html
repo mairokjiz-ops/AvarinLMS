@@ -11701,6 +11701,34 @@ async function api(req) {
         receipts = [ex.receipt_url];
       }
     }
+
+    // Auto-migrate legacy Base64 images to R2 storage URLs in background
+    if (Array.isArray(receipts) && receipts.length > 0) {
+      var hasBase64 = receipts.some(function (u) { return typeof u === 'string' && u.indexOf('data:') === 0; });
+      if (hasBase64) {
+        var updatedReceipts = receipts.slice(0);
+        var pendingMigrate = 0;
+        receipts.forEach(function (url, idx) {
+          if (typeof url === 'string' && url.indexOf('data:') === 0) {
+            pendingMigrate++;
+            call('r2.upload', { filename: 'migrated_receipt_' + idx + '.jpg', contentType: 'image/jpeg', base64: url })
+              .then(function (r2Data) {
+                pendingMigrate--;
+                if (r2Data && r2Data.publicUrl) {
+                  updatedReceipts[idx] = r2Data.publicUrl;
+                }
+                if (pendingMigrate === 0) {
+                  var newJson = JSON.stringify(updatedReceipts);
+                  call('expense.update', { id: ex.id, receipt_url: newJson }).then(function () {
+                    ex.receipt_url = newJson;
+                    console.log('Successfully auto-migrated base64 images to R2');
+                  }).catch(function () {});
+                }
+              }).catch(function () { pendingMigrate--; });
+          }
+        });
+      }
+    }
     
     var receiptHtml = '';
     if (receipts.length > 0) {
