@@ -11142,51 +11142,22 @@ async function api(req) {
             var reader = new FileReader();
             reader.onload = function (e) {
               var originalBase64 = e.target.result;
-              
-              var img = new Image();
-              img.onload = function () {
-                // High-quality image processing preserving original resolution (up to 1600px)
-                var max_size = 1600;
-                var quality = 0.85;
-                var processedDataUrl = '';
-                try {
-                  var canvas = document.createElement('canvas');
-                  var w = img.width;
-                  var h = img.height;
-                  if (w > max_size || h > max_size) {
-                    if (w > h) {
-                      h = Math.round(h * (max_size / w));
-                      w = max_size;
-                    } else {
-                      w = Math.round(w * (max_size / h));
-                      h = max_size;
-                    }
-                  }
-                  canvas.width = w;
-                  canvas.height = h;
-                  var ctx = canvas.getContext('2d');
-                  ctx.drawImage(img, 0, 0, w, h);
-                  processedDataUrl = canvas.toDataURL('image/jpeg', quality);
-                } catch (err) {
-                  processedDataUrl = originalBase64;
-                }
-                
-                var idx = chosenReceipts.length;
-                var fallbackData = processedDataUrl || originalBase64;
-                chosenReceipts.push(fallbackData);
-                loadedCount++;
-                if (loadedCount === toAdd) {
-                  updateReceiptsPreview();
-                  if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> อัปโหลดรูปภาพสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
-                  fi.value = '';
-                }
+              var idx = chosenReceipts.length;
+              chosenReceipts.push(originalBase64);
+              loadedCount++;
+              if (loadedCount === toAdd) {
+                updateReceiptsPreview();
+                if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> อัปโหลดรูปภาพสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
+                fi.value = '';
+              }
 
-                // Upload the original, high-quality, raw image file to Cloudflare R2
-                (function (currentIdx, rawDataUrl) {
-                  uploadsInProgress++;
-                  call('r2.upload', { filename: file.name || 'receipt.jpg', contentType: file.type || 'image/jpeg', base64: rawDataUrl })
-                    .then(function (r2Data) {
-                      uploadsInProgress--;
+              // Upload original raw image file to Cloudflare R2 / Storage
+              (function (currentIdx, rawDataUrl) {
+                uploadsInProgress++;
+                call('r2.upload', { filename: file.name || 'receipt.jpg', contentType: file.type || 'image/jpeg', base64: rawDataUrl })
+                  .then(function (r2Data) {
+                    uploadsInProgress--;
+                    if (r2Data && r2Data.publicUrl) {
                       chosenReceipts[currentIdx] = r2Data.publicUrl;
                       console.log('Receipt uploaded to R2:', r2Data.publicUrl);
                       var container = document.getElementById('fe-previews-container');
@@ -11194,43 +11165,12 @@ async function api(req) {
                         var imgs = container.querySelectorAll('img');
                         if (imgs[currentIdx]) imgs[currentIdx].src = r2Data.publicUrl;
                       }
-                    }).catch(function (err) {
-                      uploadsInProgress--;
-                      console.warn('R2 receipt upload failed:', err);
-                      toast('อัปโหลด R2 ล้มเหลว ระบบใช้ฐานข้อมูลสำรองแทน (' + (err.message || err) + ')', 'warning');
-                    });
-                })(idx, originalBase64);
-              };
-              img.onerror = function () {
-                var idx = chosenReceipts.length;
-                chosenReceipts.push(originalBase64);
-                loadedCount++;
-                if (loadedCount === toAdd) {
-                  updateReceiptsPreview();
-                  if (note) note.innerHTML = '<span style="color:#10b981"><i class="bi bi-check-circle-fill"></i> อัปโหลดรูปภาพสำเร็จ (' + chosenReceipts.length + '/4 รูป)</span>';
-                  fi.value = '';
-                }
-
-                (function (currentIdx, rawDataUrl) {
-                  uploadsInProgress++;
-                  call('r2.upload', { filename: file.name || 'receipt.jpg', contentType: file.type || 'image/jpeg', base64: rawDataUrl })
-                    .then(function (r2Data) {
-                      uploadsInProgress--;
-                      chosenReceipts[currentIdx] = r2Data.publicUrl;
-                      console.log('Receipt uploaded to R2 (fallback path):', r2Data.publicUrl);
-                      var container = document.getElementById('fe-previews-container');
-                      if (container) {
-                        var imgs = container.querySelectorAll('img');
-                        if (imgs[currentIdx]) imgs[currentIdx].src = r2Data.publicUrl;
-                      }
-                    }).catch(function (err) {
-                      uploadsInProgress--;
-                      console.warn('R2 receipt upload failed:', err);
-                      toast('อัปโหลด R2 ล้มเหลว ระบบใช้ฐานข้อมูลสำรองแทน (' + (err.message || err) + ')', 'warning');
-                    });
-                })(idx, originalBase64);
-              };
-              img.src = originalBase64;
+                    }
+                  }).catch(function (err) {
+                    uploadsInProgress--;
+                    console.warn('R2 upload failed, keeping raw original image file:', err);
+                  });
+              })(idx, originalBase64);
             };
             reader.readAsDataURL(file);
           })(files[i]);
