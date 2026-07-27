@@ -11768,13 +11768,15 @@ async function api(req) {
     var receiptHtml = '';
     if (receipts.length > 0) {
       receiptHtml = '<div style="margin-top:10px;">'
-        + '<div style="font-weight:600;font-size:13px;color:#475569;margin-bottom:6px;">หลักฐานการจ่ายเงิน (' + receipts.length + ' รูป)</div>'
-        + '<div style="display:flex;gap:10px;flex-wrap:wrap;">';
+        + '<div style="font-weight:600;font-size:13px;color:#475569;margin-bottom:8px;">หลักฐานการจ่ายเงิน (' + receipts.length + ' รูป)</div>'
+        + '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;">';
       receipts.forEach(function (url, idx) {
-        receiptHtml += '<img src="' + esc(url) + '" class="receipt-preview-item" data-idx="' + idx + '" style="width:110px;height:110px;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer;object-fit:cover;box-shadow:0 2px 6px rgba(0,0,0,0.05);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.05)\'" onmouseout="this.style.transform=\'scale(1)\'">';
+        receiptHtml += '<div class="receipt-preview-item" data-idx="' + idx + '" style="width:120px;height:120px;border-radius:10px;border:1px solid #cbd5e1;cursor:pointer;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);transition:transform 0.2s, box-shadow 0.2s;padding:4px;" onmouseover="this.style.transform=\'scale(1.05)\';this.style.boxShadow=\'0 8px 20px rgba(0,0,0,0.12)\';" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'0 2px 8px rgba(0,0,0,0.06)\';">'
+          + '<img src="' + esc(url) + '" style="max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:6px;display:block;">'
+          + '</div>';
       });
       receiptHtml += '</div>'
-        + '<div style="font-size:11px;color:#94a3b8;margin-top:6px;"><i class="bi bi-zoom-in"></i> คลิกที่รูปเพื่อขยายใหญ่</div></div>';
+        + '<div style="font-size:11px;color:#64748b;margin-top:8px;"><i class="bi bi-zoom-in"></i> คลิกที่รูปเพื่อขยายรูปขนาดจริง</div></div>';
     } else {
       receiptHtml = '<div style="margin-top:10px;color:#94a3b8;font-size:13px;"><i class="bi bi-image-alt"></i> ไม่มีหลักฐานการจ่ายเงินแนบมา</div>';
     }
@@ -11898,18 +11900,17 @@ async function api(req) {
         el.addEventListener('click', function () {
           var idx = parseInt(this.getAttribute('data-idx'));
           var url = receipts[idx];
-          if (url.indexOf('data:') === 0) {
-            Swal.fire({
-              imageUrl: url,
-              imageAlt: 'หลักฐานการจ่ายเงิน',
-              showConfirmButton: false,
-              showCloseButton: true,
-              width: 'auto',
-              maxWidth: '90%'
-            });
-          } else {
-            window.open(url, '_blank');
-          }
+          Swal.fire({
+            imageUrl: url,
+            imageAlt: 'หลักฐานการจ่ายเงิน',
+            showConfirmButton: false,
+            showCloseButton: true,
+            width: 'auto',
+            maxWidth: '92vw',
+            customClass: {
+              popup: 'swal-receipt-modal-popup'
+            }
+          });
         });
       });
     }
@@ -12100,32 +12101,32 @@ async function api(req) {
           slipImg += '<div class="evidence-wrap">';
           if (receipts.length === 1) {
             slipImg += '<div class="evidence-grid grid-1" style="width:100%;">'
-              + '<div class="evidence-img-box large-box" style="width:100%;min-height:400px;"><img src="' + esc(receipts[0]) + '" class="evidence-img" style="width:100%;height:auto;max-height:700px;"></div>'
+              + '<div class="evidence-img-box large-box" style="width:100%;max-height:160px;"><img src="' + esc(receipts[0]) + '" class="evidence-img" style="max-height:160px;"></div>'
               + '</div>';
           } else if (receipts.length === 2) {
             slipImg += '<div class="evidence-grid grid-2">'
-              + '<div class="evidence-img-box medium-box"><img src="' + esc(receipts[0]) + '" class="evidence-img"></div>'
-              + '<div class="evidence-img-box medium-box"><img src="' + esc(receipts[1]) + '" class="evidence-img"></div>'
+              + '<div class="evidence-img-box medium-box" style="max-height:120px;"><img src="' + esc(receipts[0]) + '" class="evidence-img" style="max-height:120px;"></div>'
+              + '<div class="evidence-img-box medium-box" style="max-height:120px;"><img src="' + esc(receipts[1]) + '" class="evidence-img" style="max-height:120px;"></div>'
               + '</div>';
           } else if (receipts.length === 3) {
             slipImg += '<div class="evidence-grid grid-3">'
               + '<div class="evidence-row">'
-              + '  <div class="evidence-img-box medium-box"><img src="' + esc(receipts[0]) + '" class="evidence-img"></div>'
-              + '  <div class="evidence-img-box medium-box"><img src="' + esc(receipts[1]) + '" class="evidence-img"></div>'
+              + '  <div class="evidence-img-box medium-box" style="max-height:95px;"><img src="' + esc(receipts[0]) + '" class="evidence-img" style="max-height:95px;"></div>'
+              + '  <div class="evidence-img-box medium-box" style="max-height:95px;"><img src="' + esc(receipts[1]) + '" class="evidence-img" style="max-height:95px;"></div>'
               + '</div>'
-              + '<div class="evidence-row row-center" style="margin-top:8px;">'
-              + '  <div class="evidence-img-box large-box"><img src="' + esc(receipts[2]) + '" class="evidence-img"></div>'
+              + '<div class="evidence-row row-center" style="margin-top:4px;">'
+              + '  <div class="evidence-img-box large-box" style="max-height:95px;"><img src="' + esc(receipts[2]) + '" class="evidence-img" style="max-height:95px;"></div>'
               + '</div>'
               + '</div>';
           } else {
             slipImg += '<div class="evidence-grid grid-4">'
               + '<div class="evidence-row">'
-              + '  <div class="evidence-img-box medium-box"><img src="' + esc(receipts[0]) + '" class="evidence-img"></div>'
-              + '  <div class="evidence-img-box medium-box"><img src="' + esc(receipts[1]) + '" class="evidence-img"></div>'
+              + '  <div class="evidence-img-box medium-box" style="max-height:95px;"><img src="' + esc(receipts[0]) + '" class="evidence-img" style="max-height:95px;"></div>'
+              + '  <div class="evidence-img-box medium-box" style="max-height:95px;"><img src="' + esc(receipts[1]) + '" class="evidence-img" style="max-height:95px;"></div>'
               + '</div>'
-              + '<div class="evidence-row">'
-              + '  <div class="evidence-img-box medium-box"><img src="' + esc(receipts[2]) + '" class="evidence-img"></div>'
-              + '  <div class="evidence-img-box medium-box"><img src="' + esc(receipts[3]) + '" class="evidence-img"></div>'
+              + '<div class="evidence-row" style="margin-top:4px;">'
+              + '  <div class="evidence-img-box medium-box" style="max-height:95px;"><img src="' + esc(receipts[2]) + '" class="evidence-img" style="max-height:95px;"></div>'
+              + '  <div class="evidence-img-box medium-box" style="max-height:95px;"><img src="' + esc(receipts[3]) + '" class="evidence-img" style="max-height:95px;"></div>'
               + '</div>'
               + '</div>';
           }
@@ -12134,30 +12135,31 @@ async function api(req) {
         
         var html = '<html><head><title>ใบเบิกเงินและขออนุมัติค่าใช้จ่าย</title><style>'
           + '@import url("https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600&display=swap");'
-          + '@page{size:A4 portrait;margin:10mm;}'
+          + '@page{size:A4 portrait;margin:4mm 8mm;}'
           + '*{box-sizing:border-box;}'
-          + 'body{font-family:"Sarabun",sans-serif;padding:0;font-size:12px;color:#000;line-height:1.28;}'
-          + '.header{text-align:center;font-weight:bold;font-size:17px;margin:12px 0 14px;text-transform:uppercase;letter-spacing:.4px;}'
-          + '.company-title{font-size:14px;font-weight:bold;margin-bottom:3px;}'
-          + 'table{width:100%;border-collapse:collapse;margin:10px 0 8px;}th,td{border:1px solid #000;padding:5px 7px;text-align:left;vertical-align:top;}th{text-align:center;background:#f8fafc;}'
+          + 'html,body{font-family:"Sarabun",sans-serif;padding:0;margin:0;font-size:11px;color:#000;line-height:1.2;height:100%;overflow:hidden;}'
+          + '.header{text-align:center;font-weight:bold;font-size:15px;margin:6px 0 8px;text-transform:uppercase;letter-spacing:.3px;}'
+          + '.company-title{font-size:13px;font-weight:bold;margin-bottom:2px;}'
+          + 'table{width:100%;border-collapse:collapse;margin:6px 0 4px;}th,td{border:1px solid #000;padding:4px 6px;text-align:left;vertical-align:top;}th{text-align:center;background:#f8fafc;}'
           + '.center{text-align:center;}.right{text-align:right;}'
-          + '.signature-box{display:flex;justify-content:space-around;margin-top:18px;}'
-          + '.sig-line{text-align:center;width:220px;font-size:11px;}.sig-line div{border-bottom:1px dotted #000;height:18px;margin-bottom:4px;}'
-          + '.dotted{border-bottom:1px dotted #000;display:inline-block;padding:0 8px;}'
-          + '.evidence-title{font-weight:bold;margin:8px 0 4px;}'
-          + '.evidence-wrap{margin-top:4px;page-break-inside:avoid;break-inside:avoid;}'
-          + '.evidence-grid{display:flex;flex-direction:column;gap:6px;align-items:center;width:100%;}'
-          + '.evidence-row{display:flex;justify-content:center;gap:10px;width:100%;}'
+          + '.signature-box{display:flex;justify-content:space-around;margin-top:10px;}'
+          + '.sig-line{text-align:center;width:200px;font-size:10.5px;}.sig-line div{border-bottom:1px dotted #000;height:14px;margin-bottom:2px;}'
+          + '.dotted{border-bottom:1px dotted #000;display:inline-block;padding:0 6px;}'
+          + '.evidence-title{font-weight:bold;font-size:11px;margin:4px 0 2px;}'
+          + '.evidence-wrap{margin-top:2px;page-break-inside:avoid;break-inside:avoid;}'
+          + '.evidence-grid{display:flex;flex-direction:column;gap:4px;align-items:center;width:100%;}'
+          + '.evidence-row{display:flex;justify-content:center;gap:8px;width:100%;}'
           + '.row-center{justify-content:center;}'
-          + '.grid-2{display:flex;flex-direction:row;justify-content:center;gap:10px;width:100%;}'
-          + '.evidence-img-box{border:1px solid #ccc;border-radius:4px;overflow:hidden;background:#f8fafc;display:flex;align-items:center;justify-content:center;page-break-inside:avoid;}'
-          + '.large-box{width:100%;height:auto;margin:0 auto;}'
-          + '.medium-box{width:49%;height:auto;}'
-          + '.evidence-img{max-width:100%;width:100%;height:auto;object-fit:contain;display:block;}'
+          + '.grid-2{display:flex;flex-direction:row;justify-content:center;gap:8px;width:100%;}'
+          + '.evidence-img-box{border:1px solid #cbd5e1;border-radius:4px;overflow:hidden;background:#f8fafc;display:flex;align-items:center;justify-content:center;page-break-inside:avoid;padding:2px;}'
+          + '.large-box{width:100%;margin:0 auto;}'
+          + '.medium-box{width:49%;}'
+          + '.evidence-img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block;margin:0 auto;}'
           + '@media print{'
-          + 'body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
-          + '.evidence-img{max-width:100% !important;width:100% !important;height:auto !important;max-height:none !important;image-rendering:high-quality;}'
-          + '.evidence-img-box{page-break-inside:avoid;overflow:visible;}'
+          + '@page{size:A4 portrait;margin:4mm 8mm;}'
+          + 'html,body{height:100% !important;overflow:hidden !important;page-break-after:avoid !important;break-after:avoid !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
+          + '.evidence-img{max-width:100% !important;width:auto !important;height:auto !important;max-height:95px !important;object-fit:contain !important;image-rendering:high-quality;}'
+          + '.evidence-img-box{page-break-inside:avoid !important;max-height:100px !important;border:1px solid #cbd5e1 !important;}'
           + '}'
           + '</style></head><body>'
           + '<div>'
