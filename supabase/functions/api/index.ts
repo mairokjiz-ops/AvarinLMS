@@ -2610,9 +2610,7 @@ function _wf_visibleMissionRows_(user, p) {
 }
 function Calendar_month(user, p) {
   var range = _wf_monthRange_(p && p.month);
-  var scope = 'own';
-  if (hasCap_(user.role, 'calendar.view_all')) scope = 'all';
-  else if (hasCap_(user.role, 'calendar.view_department')) scope = 'department';
+  var scope = 'all';
   var users = DB_buildIndex(SHEETS.USERS);
   var visibleStatuses = {};
   [STATUS.PENDING, STATUS.CHECKED, STATUS.REVIEWED, STATUS.APPROVED].forEach(function (s) { visibleStatuses[s] = true; });
@@ -2623,8 +2621,6 @@ function Calendar_month(user, p) {
     var e = _wf_asLocalDate_(r.end_date);
     if (!s || !e) return false;
     if (!_wf_overlapDays_(s, e, range.start, range.end)) return false;
-    if (scope === 'own') return String(r.requester_id) === String(user.id);
-    if (scope === 'department') { var u = users[r.requester_id] || {}; return String(u.department || '') === String(user.department || ''); }
     return true;
   });
   var byDate = {};
@@ -2637,7 +2633,7 @@ function Calendar_month(user, p) {
     _wf_dateIter_(s < range.start ? range.start : s, e > range.end ? range.end : e).forEach(function (d) {
       var key = cfg_dateOnly_(d);
       if (!byDate[key]) byDate[key] = [];
-      byDate[key].push({ id: r.id, leave_no: r.leave_no, requester_name: u.full_name || '-', department: u.department || '-', leave_type: r.leave_type, leave_type_label: LEAVE_TYPE_LABEL[r.leave_type] || r.leave_type, status: r.status, status_label: STATUS_LABEL[r.status] || r.status, tone: _wf_leaveTone_(r.leave_type) });
+      byDate[key].push({ id: r.id, leave_no: r.leave_no, requester_id: r.requester_id, requester_name: u.full_name || '-', department: u.department || '-', leave_type: r.leave_type, leave_type_label: LEAVE_TYPE_LABEL[r.leave_type] || r.leave_type, status: r.status, status_label: STATUS_LABEL[r.status] || r.status, tone: _wf_leaveTone_(r.leave_type) });
     });
   });
   var days = _wf_monthDays_(range.key).map(function (d) { return Object.assign({}, d, { items: byDate[d.date] || [], count: (byDate[d.date] || []).length }); });
