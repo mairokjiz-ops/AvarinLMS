@@ -137,21 +137,21 @@ const CAPS = Object.freeze({
   supervisor: [
     'leave.view_all','leave.create_own','leave.cancel_own','leave.comment','leave.adjust_quota',
     'report.view_all','report.view_own','file.upload',
-    'calendar.view_department',
+    'calendar.view_all','calendar.view_department','calendar.view_own',
     'mission.view_department','mission.view_own','mission.create_own',
     'expense.create_own','setting.read','schedule.view_all'
   ],
   checker: [
     'leave.view_all','leave.create_own','leave.cancel_own','leave.check',
     'report.view_all','report.view_own','file.upload',
-    'calendar.view_department',
+    'calendar.view_all','calendar.view_department','calendar.view_own',
     'mission.view_own','mission.create_own',
     'expense.create_own','setting.read'
   ],
   employee: [
     'leave.create_own','leave.view_own','leave.cancel_own',
     'report.view_own','file.upload',
-    'calendar.view_own',
+    'calendar.view_all','calendar.view_department','calendar.view_own',
     'mission.view_own','mission.create_own',
     'expense.create_own','setting.read'
   ]
