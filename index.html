@@ -10639,60 +10639,8 @@ async function api(req) {
       Spinner.show('กำลังโหลดปฏิทินทั้งบริษัท...', { stages: ['อ่านใบลาที่อนุมัติแล้ว','สรุปรายวัน','เตรียมมุมมอง'] });
       st.scope = 'all';
       call('calendar.month', st).then(function (r) {
-        if (r && Array.isArray(r.days)) {
-          call('leave.list', { scope: 'all', per_page: 500 }).then(function (lvRes) {
-            if (lvRes && Array.isArray(lvRes.items) && lvRes.items.length > 0) {
-              var leaveItems = lvRes.items.filter(function (x) {
-                return x.status === 'approved' || x.status === 'pending' || x.status === 'checked' || x.status === 'reviewed';
-              });
-              var daysMap = {};
-              r.days.forEach(function (d) { daysMap[d.date] = d; });
-
-              leaveItems.forEach(function (lv) {
-                var sDate = (lv.start_date || '').slice(0, 10);
-                var eDate = (lv.end_date || '').slice(0, 10);
-                if (!sDate || !eDate) return;
-
-                var cur = new Date(sDate);
-                var end = new Date(eDate);
-                while (cur <= end) {
-                  var y = cur.getFullYear();
-                  var m = String(cur.getMonth() + 1).padStart(2, '0');
-                  var da = String(cur.getDate()).padStart(2, '0');
-                  var k = y + '-' + m + '-' + da;
-
-                  if (daysMap[k]) {
-                    var exists = daysMap[k].items.some(function (it) { return String(it.id) === String(lv.id); });
-                    if (!exists) {
-                      daysMap[k].items.push({
-                        id: lv.id,
-                        leave_no: lv.leave_no,
-                        requester_id: lv.requester_id,
-                        requester_name: (lv.requester && lv.requester.full_name) || lv.requester_name || '-',
-                        department: (lv.requester && lv.requester.department) || lv.department || '-',
-                        leave_type: lv.leave_type,
-                        leave_type_label: lv.leave_type_label || lv.leave_type,
-                        status: lv.status,
-                        status_label: lv.status_label || lv.status,
-                        tone: lv.status_tone || 'slate'
-                      });
-                      daysMap[k].count = daysMap[k].items.length;
-                    }
-                  }
-                  cur.setDate(cur.getDate() + 1);
-                }
-              });
-            }
-            Spinner.hide();
-            render(r);
-          }).catch(function () {
-            Spinner.hide();
-            render(r);
-          });
-        } else {
-          Spinner.hide();
-          render(r);
-        }
+        Spinner.hide();
+        render(r);
       }).catch(function (e) { Spinner.hide(); alertError('ผิดพลาด', e.message); });
     }
     $('#cal-prev').addEventListener('click', function () { st.month = _addMonthKey(st.month, -1); load(); });
