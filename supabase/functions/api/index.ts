@@ -87,7 +87,7 @@ const SHEETS = Object.freeze({
 // ── Schemas ─────────────────────────────────────────────────
 const SCHEMAS = Object.freeze({
   Users: ['id','username','password_hash','salt','full_name','position','level','department','role','email','phone','avatar','is_active','created_at','updated_at','line_user_id','line_connect_code','branch','off_day'],
-  Leaves: ['id','leave_no','requester_id','leave_type','reason','start_date','end_date','days','contact_address','contact_phone','last_leave_type','last_leave_start','last_leave_end','last_leave_days','status','checker_id','checker_comment','checker_at','supervisor_id','supervisor_comment','supervisor_at','approver_id','approver_decision','approver_comment','approver_at','written_at','written_place','fiscal_year','attachment_url','created_at','updated_at','leave_unit','start_time','end_time','hours'],
+  Leaves: ['id','leave_no','requester_id','leave_type','reason','start_date','end_date','days','contact_address','contact_phone','last_leave_type','last_leave_start','last_leave_end','last_leave_days','status','checker_id','checker_comment','checker_at','supervisor_id','supervisor_comment','supervisor_at','approver_id','approver_decision','approver_comment','approver_at','written_at','written_place','fiscal_year','attachment_url','appointment_url','created_at','updated_at','leave_unit','start_time','end_time','hours'],
   Sessions: ['token','user_id','created_at','expires_at','user_agent'],
   Settings: ['key','value','updated_at'],
   AuditLog: ['id','user_id','action','entity','entity_id','meta','created_at'],
@@ -103,7 +103,7 @@ const SCHEMAS = Object.freeze({
 
 // ── TEXT_COLUMNS — บังคับ Sheet เก็บเป็น text กัน auto-coercion ─
 const TEXT_COLUMNS = Object.freeze([
-  'phone','contact_phone','leave_no','token','password_hash','salt','attachment_url','avatar',
+  'phone','contact_phone','leave_no','token','password_hash','salt','attachment_url','appointment_url','avatar',
   'mission_no','title','purpose','destination','transport_type','expense_type','description','receipt_url','work_type',
   'holiday_date','expense_no','line_user_id','line_connect_code','question','options','content','ai_summary','ai_modules','ai_quiz','ai_flashcards','ai_key_points','ai_checklist'
 ]);
@@ -1715,7 +1715,8 @@ async function Leaves_create(user, p) {
     written_at: writtenAt,
     written_place: String(data.written_place || '').trim(),
     fiscal_year: fy,
-    attachment_url: String(data.attachment_url || '').trim()
+    attachment_url: String(data.attachment_url || '').trim(),
+    appointment_url: String(data.appointment_url || '').trim()
   });
   await Audit_log_(user, 'leave.create', 'leave', newLv.id, {
     leave_no: leaveNo, type: data.leave_type, days: days, status: targetStatus, over_limit: over
@@ -1731,16 +1732,22 @@ async function Leaves_update(user, p) {
   if (!data.id) throw new Error('ระบุ id ของใบลา');
   var lv = DB_findById(SHEETS.LEAVES, data.id);
   if (!lv) throw new Error('ไม่พบใบลา');
+  
+  var keysToUpdate = Object.keys(data).filter(function(k) { return k !== 'id'; });
+  var isOnlyAttachmentUpdate = keysToUpdate.length > 0 && keysToUpdate.every(function(k) {
+    return k === 'attachment_url' || k === 'appointment_url';
+  });
+
   if (String(lv.requester_id) === String(user.id)) {
-    if (lv.status !== STATUS.DRAFT && lv.status !== STATUS.PENDING) {
-      throw new Error('ใบลาที่อยู่ในขั้นตอนการอนุมัติแล้วไม่สามารถแก้ไขได้');
+    if (lv.status !== STATUS.DRAFT && lv.status !== STATUS.PENDING && !isOnlyAttachmentUpdate) {
+      throw new Error('ใบลาที่อยู่ในขั้นตอนการอนุมัติแล้วไม่สามารถแก้ไขรายละเอียดหลักได้ (สามารถแนบใบรับรองแพทย์/ใบหมอนัดเพิ่มเติมได้)');
     }
   } else {
     Auth_requireCap(user, 'leave.manage');
   }
   if (data.leave_type && ACTIVE_LEAVE_TYPES.indexOf(data.leave_type) < 0) throw new Error('leave_type ไม่ถูกต้อง');
   var patch = {};
-  ['leave_type','reason','contact_address','contact_phone','written_place','attachment_url'].forEach(function (k) {
+  ['leave_type','reason','contact_address','contact_phone','written_place','attachment_url','appointment_url'].forEach(function (k) {
     if (typeof data[k] !== 'undefined') patch[k] = String(data[k] || '').trim();
   });
   if (data.start_date && data.end_date) {

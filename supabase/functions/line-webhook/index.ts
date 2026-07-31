@@ -162,7 +162,7 @@ const SHEETS = Object.freeze({
 // ── Schemas ─────────────────────────────────────────────────
 const SCHEMAS = Object.freeze({
   Users: ['id','username','password_hash','salt','full_name','position','level','department','role','email','phone','avatar','is_active','created_at','updated_at','line_user_id','line_connect_code'],
-  Leaves: ['id','leave_no','requester_id','leave_type','reason','start_date','end_date','days','contact_address','contact_phone','last_leave_type','last_leave_start','last_leave_end','last_leave_days','status','checker_id','checker_comment','checker_at','supervisor_id','supervisor_comment','supervisor_at','approver_id','approver_decision','approver_comment','approver_at','written_at','written_place','fiscal_year','attachment_url','created_at','updated_at','leave_unit','start_time','end_time','hours'],
+  Leaves: ['id','leave_no','requester_id','leave_type','reason','start_date','end_date','days','contact_address','contact_phone','last_leave_type','last_leave_start','last_leave_end','last_leave_days','status','checker_id','checker_comment','checker_at','supervisor_id','supervisor_comment','supervisor_at','approver_id','approver_decision','approver_comment','approver_at','written_at','written_place','fiscal_year','attachment_url','appointment_url','created_at','updated_at','leave_unit','start_time','end_time','hours'],
   Sessions: ['token','user_id','created_at','expires_at','user_agent'],
   Settings: ['key','value','updated_at'],
   AuditLog: ['id','user_id','action','entity','entity_id','meta','created_at'],
@@ -172,7 +172,7 @@ const SCHEMAS = Object.freeze({
 });
 // ── TEXT_COLUMNS — บังคับ Sheet เก็บเป็น text กัน auto-coercion ─
 const TEXT_COLUMNS = Object.freeze([
-  'phone','contact_phone','leave_no','token','password_hash','salt','attachment_url','avatar',
+  'phone','contact_phone','leave_no','token','password_hash','salt','attachment_url','appointment_url','avatar',
   'mission_no','title','purpose','destination','transport_type','expense_type','description','receipt_url','work_type',
   'holiday_date','expense_no','line_user_id','line_connect_code'
 ]);

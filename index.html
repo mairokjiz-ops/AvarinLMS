@@ -4429,6 +4429,49 @@ body {
     flex: 1;
   }
 }
+/* DocScanner CSS */
+.doc-scanner-backdrop {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(8px);
+  z-index: 99999;
+  display: flex; flex-direction: column;
+  animation: fadeIn .2s ease-out;
+  font-family: inherit;
+}
+.doc-scanner-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; background: #1e293b; color: #fff; border-bottom: 1px solid #334155;
+}
+.doc-scanner-title { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.doc-scanner-body {
+  flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center;
+  background: #0f172a; padding: 10px; user-select: none;
+}
+.doc-scanner-canvas-wrap {
+  position: relative; max-width: 100%; max-height: 100%; display: inline-block; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  touch-action: none; border-radius: 4px; overflow: hidden;
+}
+.doc-scanner-corner {
+  position: absolute; width: 28px; height: 28px; border-radius: 50%;
+  background: #3b82f6; border: 3px solid #fff; box-shadow: 0 0 10px rgba(59,130,246,0.8);
+  margin-left: -14px; margin-top: -14px; cursor: move; z-index: 10; touch-action: none;
+  transition: transform .1s;
+}
+.doc-scanner-corner:active { transform: scale(1.3); background: #2563eb; }
+.doc-scanner-toolbar {
+  padding: 12px 16px; background: #1e293b; color: #fff; display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap; justify-content: center; border-top: 1px solid #334155;
+}
+.doc-scan-btn {
+  padding: 8px 14px; border-radius: 8px; border: 1px solid #475569; background: #334155; color: #f8fafc;
+  font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;
+  transition: all .15s;
+}
+.doc-scan-btn:hover { background: #475569; color: #fff; }
+.doc-scan-btn.active { background: #2563eb; border-color: #3b82f6; color: #fff; }
+.doc-scan-btn-primary { background: #10b981; border-color: #059669; color: #fff; }
+.doc-scan-btn-primary:hover { background: #059669; }
   </style>
 </head>
 <body>
@@ -4757,6 +4800,353 @@ async function api(req) {
       reverseButtons: true,
       confirmButtonColor: opts.danger ? '#ef4444' : '#6366f1'
     }).then(function (r) { return !!r.isConfirmed; });
+  }
+
+  // ── DocScanner Module (Document Perspective Deskew & Enhancer) ──
+  window.DocScanner = {
+    open: function (opts) {
+      opts = opts || {};
+      var file = opts.file;
+      var imageSrc = opts.imageSrc;
+      var title = opts.title || 'สแกนและปรับแต่งเอกสาร (DocScanner)';
+      var onSave = opts.onSave;
+
+      function start(src) {
+        var overlay = document.createElement('div');
+        overlay.className = 'doc-scanner-backdrop';
+        overlay.innerHTML =
+          '<div class="doc-scanner-header">' +
+            '<div class="doc-scanner-title"><i class="bi bi-aspect-ratio-fill" style="color:#3b82f6"></i> ' + esc(title) + '</div>' +
+            '<button type="button" class="btn btn-ghost" id="doc-scan-close" style="color:#fff"><i class="bi bi-x-lg"></i></button>' +
+          '</div>' +
+          '<div class="doc-scanner-body" id="doc-scan-body">' +
+            '<div class="doc-scanner-canvas-wrap" id="doc-scan-wrap">' +
+              '<canvas id="doc-scan-canvas"></canvas>' +
+              '<canvas id="doc-scan-overlay" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>' +
+              '<div class="doc-scanner-corner" id="corner-0" data-idx="0"></div>' +
+              '<div class="doc-scanner-corner" id="corner-1" data-idx="1"></div>' +
+              '<div class="doc-scanner-corner" id="corner-2" data-idx="2"></div>' +
+              '<div class="doc-scanner-corner" id="corner-3" data-idx="3"></div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="doc-scanner-toolbar">' +
+            '<button type="button" class="doc-scan-btn" id="btn-scan-rotate"><i class="bi bi-arrow-clockwise"></i> หมุน 90°</button>' +
+            '<button type="button" class="doc-scan-btn active" id="btn-scan-deskew"><i class="bi bi-bounding-box"></i> ปรับเอกสารตรง</button>' +
+            '<button type="button" class="doc-scan-btn active" id="btn-filter-bw"><i class="bi bi-file-earmark-text"></i> สแกนขาวดำ</button>' +
+            '<button type="button" class="doc-scan-btn" id="btn-filter-magic"><i class="bi bi-magic"></i> สีคมชัด</button>' +
+            '<button type="button" class="doc-scan-btn" id="btn-filter-orig"><i class="bi bi-image"></i> ต้นฉบับ</button>' +
+            '<button type="button" class="doc-scan-btn doc-scan-btn-primary" id="btn-scan-save" style="margin-left:auto"><i class="bi bi-check-circle-fill"></i> ยืนยันใช้งานเอกสารนี้</button>' +
+          '</div>';
+        document.body.appendChild(overlay);
+
+        var img = new Image();
+        img.onload = function () { setupWorkspace(img, overlay, onSave); };
+        img.src = src;
+
+        overlay.querySelector('#doc-scan-close').onclick = function () { overlay.remove(); };
+      }
+
+      if (file) {
+        var reader = new FileReader();
+        reader.onload = function (e) { start(e.target.result); };
+        reader.readAsDataURL(file);
+      } else if (imageSrc) {
+        start(imageSrc);
+      }
+    }
+  };
+
+  function setupWorkspace(img, overlay, onSave) {
+    var canvas = overlay.querySelector('#doc-scan-canvas');
+    var overlayCanvas = overlay.querySelector('#doc-scan-overlay');
+    var ctx = canvas.getContext('2d');
+    var octx = overlayCanvas.getContext('2d');
+
+    var filterMode = 'bw';
+    var isDeskew = true;
+
+    var srcCanvas = document.createElement('canvas');
+    srcCanvas.width = img.width;
+    srcCanvas.height = img.height;
+    var sctx = srcCanvas.getContext('2d');
+    sctx.drawImage(img, 0, 0);
+
+    var maxW = Math.min(window.innerWidth * 0.85, 800);
+    var maxH = Math.min(window.innerHeight * 0.60, 600);
+    var scale = Math.min(maxW / img.width, maxH / img.height, 1);
+
+    var dispW = Math.round(img.width * scale);
+    var dispH = Math.round(img.height * scale);
+
+    canvas.width = dispW; canvas.height = dispH;
+    overlayCanvas.width = dispW; overlayCanvas.height = dispH;
+
+    var corners = [
+      { x: Math.round(dispW * 0.05), y: Math.round(dispH * 0.05) },
+      { x: Math.round(dispW * 0.95), y: Math.round(dispH * 0.05) },
+      { x: Math.round(dispW * 0.95), y: Math.round(dispH * 0.95) },
+      { x: Math.round(dispW * 0.05), y: Math.round(dispH * 0.95) }
+    ];
+
+    function updateHandles() {
+      for (var i = 0; i < 4; i++) {
+        var h = overlay.querySelector('#corner-' + i);
+        if (h) {
+          h.style.left = corners[i].x + 'px';
+          h.style.top = corners[i].y + 'px';
+        }
+      }
+      drawOverlay();
+    }
+
+    function renderDisplay() {
+      ctx.clearRect(0, 0, dispW, dispH);
+      ctx.drawImage(srcCanvas, 0, 0, dispW, dispH);
+    }
+
+    function drawOverlay() {
+      octx.clearRect(0, 0, dispW, dispH);
+      if (!isDeskew) return;
+
+      octx.beginPath();
+      octx.moveTo(corners[0].x, corners[0].y);
+      octx.lineTo(corners[1].x, corners[1].y);
+      octx.lineTo(corners[2].x, corners[2].y);
+      octx.lineTo(corners[3].x, corners[3].y);
+      octx.closePath();
+
+      octx.fillStyle = 'rgba(59, 130, 246, 0.20)';
+      octx.fill();
+
+      octx.lineWidth = 2.5;
+      octx.strokeStyle = '#3b82f6';
+      octx.stroke();
+
+      octx.lineWidth = 1;
+      octx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      for (var t = 0.33; t <= 0.67; t += 0.34) {
+        var lx1 = corners[0].x * (1 - t) + corners[3].x * t;
+        var ly1 = corners[0].y * (1 - t) + corners[3].y * t;
+        var lx2 = corners[1].x * (1 - t) + corners[2].x * t;
+        var ly2 = corners[1].y * (1 - t) + corners[2].y * t;
+        octx.beginPath(); octx.moveTo(lx1, ly1); octx.lineTo(lx2, ly2); octx.stroke();
+
+        var vx1 = corners[0].x * (1 - t) + corners[1].x * t;
+        var vy1 = corners[0].y * (1 - t) + corners[1].y * t;
+        var vx2 = corners[3].x * (1 - t) + corners[2].x * t;
+        var vy2 = corners[3].y * (1 - t) + corners[2].y * t;
+        octx.beginPath(); octx.moveTo(vx1, vy1); octx.lineTo(vx2, vy2); octx.stroke();
+      }
+    }
+
+    var activeIdx = -1;
+
+    function handleStart(e, idx) {
+      e.preventDefault();
+      activeIdx = idx;
+    }
+
+    function handleMove(e) {
+      if (activeIdx < 0) return;
+      e.preventDefault();
+      var rect = canvas.getBoundingClientRect();
+      var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      var x = Math.max(0, Math.min(dispW, clientX - rect.left));
+      var y = Math.max(0, Math.min(dispH, clientY - rect.top));
+
+      corners[activeIdx] = { x: x, y: y };
+      updateHandles();
+    }
+
+    function handleEnd() { activeIdx = -1; }
+
+    for (var i = 0; i < 4; i++) {
+      (function(idx) {
+        var h = overlay.querySelector('#corner-' + idx);
+        h.addEventListener('mousedown', function(e) { handleStart(e, idx); });
+        h.addEventListener('touchstart', function(e) { handleStart(e, idx); }, { passive: false });
+      })(i);
+    }
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('touchmove', handleMove, { passive: false });
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchend', handleEnd);
+
+    overlay.querySelector('#btn-scan-rotate').onclick = function() {
+      var tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width = srcCanvas.height;
+      tmpCanvas.height = srcCanvas.width;
+      var tctx = tmpCanvas.getContext('2d');
+      tctx.translate(tmpCanvas.width / 2, tmpCanvas.height / 2);
+      tctx.rotate(Math.PI / 2);
+      tctx.drawImage(srcCanvas, -srcCanvas.width / 2, -srcCanvas.height / 2);
+
+      srcCanvas = tmpCanvas;
+      sctx = srcCanvas.getContext('2d');
+
+      scale = Math.min(maxW / srcCanvas.width, maxH / srcCanvas.height, 1);
+      dispW = Math.round(srcCanvas.width * scale);
+      dispH = Math.round(srcCanvas.height * scale);
+
+      canvas.width = dispW; canvas.height = dispH;
+      overlayCanvas.width = dispW; overlayCanvas.height = dispH;
+
+      corners = [
+        { x: Math.round(dispW * 0.05), y: Math.round(dispH * 0.05) },
+        { x: Math.round(dispW * 0.95), y: Math.round(dispH * 0.05) },
+        { x: Math.round(dispW * 0.95), y: Math.round(dispH * 0.95) },
+        { x: Math.round(dispW * 0.05), y: Math.round(dispH * 0.95) }
+      ];
+
+      renderDisplay();
+      updateHandles();
+    };
+
+    var btnBw = overlay.querySelector('#btn-filter-bw');
+    var btnMagic = overlay.querySelector('#btn-filter-magic');
+    var btnOrig = overlay.querySelector('#btn-filter-orig');
+    var btnDeskew = overlay.querySelector('#btn-scan-deskew');
+
+    function updateFilterButtons() {
+      btnBw.classList.toggle('active', filterMode === 'bw');
+      btnMagic.classList.toggle('active', filterMode === 'magic');
+      btnOrig.classList.toggle('active', filterMode === 'orig');
+      btnDeskew.classList.toggle('active', isDeskew);
+      for (var i = 0; i < 4; i++) {
+        var h = overlay.querySelector('#corner-' + i);
+        if (h) h.style.display = isDeskew ? 'block' : 'none';
+      }
+      drawOverlay();
+    }
+
+    btnBw.onclick = function() { filterMode = 'bw'; updateFilterButtons(); };
+    btnMagic.onclick = function() { filterMode = 'magic'; updateFilterButtons(); };
+    btnOrig.onclick = function() { filterMode = 'orig'; updateFilterButtons(); };
+    btnDeskew.onclick = function() { isDeskew = !isDeskew; updateFilterButtons(); };
+
+    renderDisplay();
+    updateHandles();
+
+    overlay.querySelector('#btn-scan-save').onclick = function() {
+      var saveBtn = this;
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> กำลังอัปโหลด...';
+
+      setTimeout(function() {
+        try {
+          var outCanvas = document.createElement('canvas');
+          var sw = srcCanvas.width;
+          var sh = srcCanvas.height;
+
+          var srcCorners = corners.map(function(c) {
+            return {
+              x: Math.max(0, Math.min(sw, Math.round(c.x / scale))),
+              y: Math.max(0, Math.min(sh, Math.round(c.y / scale)))
+            };
+          });
+
+          if (isDeskew) {
+            function dist(a, b) { return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2)); }
+            var targetW = Math.round((dist(srcCorners[0], srcCorners[1]) + dist(srcCorners[3], srcCorners[2])) / 2);
+            var targetH = Math.round((dist(srcCorners[0], srcCorners[3]) + dist(srcCorners[1], srcCorners[2])) / 2);
+
+            targetW = Math.max(200, Math.min(2400, targetW));
+            targetH = Math.max(200, Math.min(3200, targetH));
+
+            outCanvas.width = targetW;
+            outCanvas.height = targetH;
+
+            var outCtx = outCanvas.getContext('2d');
+            var sData = sctx.getImageData(0, 0, sw, sh).data;
+            var oImgData = outCtx.createImageData(targetW, targetH);
+            var oData = oImgData.data;
+
+            var p0 = srcCorners[0], p1 = srcCorners[1], p2 = srcCorners[2], p3 = srcCorners[3];
+
+            for (var y = 0; y < targetH; y++) {
+              var v = y / (targetH - 1);
+              for (var x = 0; x < targetW; x++) {
+                var u = x / (targetW - 1);
+                var sx = (1-u)*(1-v)*p0.x + u*(1-v)*p1.x + u*v*p2.x + (1-u)*v*p3.x;
+                var sy = (1-u)*(1-v)*p0.y + u*(1-v)*p1.y + u*v*p2.y + (1-u)*v*p3.y;
+
+                var ix = Math.max(0, Math.min(sw - 1, Math.round(sx)));
+                var iy = Math.max(0, Math.min(sh - 1, Math.round(sy)));
+
+                var srcIdx = (iy * sw + ix) * 4;
+                var dstIdx = (y * targetW + x) * 4;
+
+                oData[dstIdx]     = sData[srcIdx];
+                oData[dstIdx + 1] = sData[srcIdx + 1];
+                oData[dstIdx + 2] = sData[srcIdx + 2];
+                oData[dstIdx + 3] = 255;
+              }
+            }
+            outCtx.putImageData(oImgData, 0, 0);
+          } else {
+            outCanvas.width = sw;
+            outCanvas.height = sh;
+            outCanvas.getContext('2d').drawImage(srcCanvas, 0, 0);
+          }
+
+          var oCtxFinal = outCanvas.getContext('2d');
+          var finalImgData = oCtxFinal.getImageData(0, 0, outCanvas.width, outCanvas.height);
+          var fd = finalImgData.data;
+
+          if (filterMode === 'bw') {
+            for (var i = 0; i < fd.length; i += 4) {
+              var lum = 0.299 * fd[i] + 0.587 * fd[i+1] + 0.114 * fd[i+2];
+              if (lum > 135) lum = Math.min(255, lum * 1.3);
+              else lum = Math.max(0, lum * 0.7);
+              var val = lum > 175 ? 255 : (lum < 75 ? 0 : Math.round((lum - 75) * 2.55));
+              fd[i] = val; fd[i+1] = val; fd[i+2] = val;
+            }
+          } else if (filterMode === 'magic') {
+            for (var i = 0; i < fd.length; i += 4) {
+              var r = fd[i], g = fd[i+1], b = fd[i+2];
+              var maxC = Math.max(r, g, b), minC = Math.min(r, g, b);
+              var sat = maxC - minC;
+              var lum = 0.299 * r + 0.587 * g + 0.114 * b;
+              if (sat < 35 && lum > 125) {
+                fd[i] = 255; fd[i+1] = 255; fd[i+2] = 255;
+              } else {
+                fd[i]   = Math.min(255, Math.max(0, (r - 128) * 1.35 + 128));
+                fd[i+1] = Math.min(255, Math.max(0, (g - 128) * 1.35 + 128));
+                fd[i+2] = Math.min(255, Math.max(0, (b - 128) * 1.35 + 128));
+              }
+            }
+          }
+          oCtxFinal.putImageData(finalImgData, 0, 0);
+
+          var rawBase64 = outCanvas.toDataURL('image/jpeg', 0.85);
+
+          if (typeof call === 'function') {
+            call('r2.upload', { filename: 'scanned_document.jpg', contentType: 'image/jpeg', base64: rawBase64 })
+              .then(function(res) {
+                var url = res && (res.public_url || res.url) ? (res.public_url || res.url) : rawBase64;
+                overlay.remove();
+                if (typeof onSave === 'function') onSave(url);
+              })
+              .catch(function(e) {
+                console.warn('R2 upload failed, using base64:', e);
+                overlay.remove();
+                if (typeof onSave === 'function') onSave(rawBase64);
+              });
+          } else {
+            overlay.remove();
+            if (typeof onSave === 'function') onSave(rawBase64);
+          }
+
+        } catch (err) {
+          console.error('DocScanner error:', err);
+          alert('เกิดข้อผิดพลาดในการประมวลผลรูปภาพ: ' + err.message);
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = '<i class="bi bi-check-circle-fill"></i> ยืนยันใช้งานเอกสารนี้';
+        }
+      }, 50);
+    };
   }
 
   // ── Spinner ────────────────────────────────────────
@@ -6360,14 +6750,18 @@ async function api(req) {
   }
   // ── Leaves: New (Wizard) ───────────────────────────
   var WIZ = null;
-  Routes['#/leaves/new'] = function () {
+  Routes['#/leaves/new'] = function (hash) {
     if (!hasCap('leave.create_own')) { toast('ไม่มีสิทธิ์ยื่นใบลา', 'warning'); location.hash = '#/dashboard'; return; }
     var u = LMS.Store.user || {};
+    var urlParams = new URLSearchParams((hash || location.hash).split('?')[1] || '');
+    var initType = urlParams.get('type') || 'sick';
     WIZ = {
       step: 1, max: 4,
       data: {
-        leave_type: '',
+        leave_type: initType,
         reason: '',
+        attachment_url: '',
+        appointment_url: '',
         leave_unit: 'day',
         start_date: TH.iso(new Date()),
         end_date: TH.iso(new Date()),
@@ -6427,6 +6821,48 @@ async function api(req) {
     var types = activeLeaveTypes().map(function (key) {
       return { key: key, icon: leaveTypeIcon(key), name: LMS.LEAVE_TYPE_LABEL[key], sub: typeSubs[key] || 'เลือกประเภทการลา' };
     });
+    var sickAttachHtml = '';
+    if (!d.leave_type || d.leave_type === 'sick') {
+      sickAttachHtml =
+        '<div class="card" style="margin-top:16px;background:#f8fafc;border:1px dashed #cbd5e1;padding:16px;border-radius:12px">' +
+        '  <div style="font-weight:700;font-size:13.5px;color:#1e293b;margin-bottom:12px;display:flex;align-items:center;gap:6px">' +
+        '    <i class="bi bi-paperclip" style="color:#024ad8;font-size:16px"></i> เอกสารประกอบการลาป่วย (สแกน/แนบรูปถ่าย)' +
+        '  </div>' +
+        '  <div class="row-2">' +
+        '    <div class="field" style="margin:0">' +
+        '      <label style="font-size:12px;font-weight:600">ใบหมอนัด (ถ้ามี) <span style="color:#64748b;font-weight:400">*(ไม่บังคับ)</span></label>' +
+        '      <input type="file" id="wiz-app-file" accept="image/*" style="display:none">' +
+        '      <div id="wiz-app-box" style="margin-top:6px">' +
+        (d.appointment_url ?
+          '        <div style="display:flex;align-items:center;gap:8px;padding:8px;background:#fff;border:1px solid #e2e8f0;border-radius:8px">' +
+          '          <img src="' + esc(d.appointment_url) + '" style="width:40px;height:40px;object-fit:cover;border-radius:6px">' +
+          '          <span style="font-size:12px;color:#10b981;font-weight:600"><i class="bi bi-check-circle-fill"></i> แนบแล้ว</span>' +
+          '          <button type="button" class="btn btn-ghost" id="wiz-app-remove" style="margin-left:auto;padding:2px 8px;color:#ef4444"><i class="bi bi-trash"></i></button>' +
+          '        </div>' :
+          '        <button type="button" class="btn btn-ghost" id="wiz-app-trigger" style="width:100%;border:1px dashed #cbd5e1;background:#fff;font-size:12px;height:40px;justify-content:center"><i class="bi bi-camera-fill" style="color:#024ad8"></i> ถ่ายรูป/อัพโหลดใบหมอนัด</button>'
+        ) +
+        '      </div>' +
+        '    </div>' +
+        '    <div class="field" style="margin:0">' +
+        '      <label style="font-size:12px;font-weight:600">ใบรับรองแพทย์ (ถ้ามี) <span style="color:#64748b;font-weight:400">*(ไม่บังคับ)</span></label>' +
+        '      <input type="file" id="wiz-att-file" accept="image/*" style="display:none">' +
+        '      <div id="wiz-att-box" style="margin-top:6px">' +
+        (d.attachment_url ?
+          '        <div style="display:flex;align-items:center;gap:8px;padding:8px;background:#fff;border:1px solid #e2e8f0;border-radius:8px">' +
+          '          <img src="' + esc(d.attachment_url) + '" style="width:40px;height:40px;object-fit:cover;border-radius:6px">' +
+          '          <span style="font-size:12px;color:#10b981;font-weight:600"><i class="bi bi-check-circle-fill"></i> แนบแล้ว</span>' +
+          '          <button type="button" class="btn btn-ghost" id="wiz-att-remove" style="margin-left:auto;padding:2px 8px;color:#ef4444"><i class="bi bi-trash"></i></button>' +
+          '        </div>' :
+          '        <button type="button" class="btn btn-ghost" id="wiz-att-trigger" style="width:100%;border:1px dashed #cbd5e1;background:#fff;font-size:12px;height:40px;justify-content:center"><i class="bi bi-camera-fill" style="color:#10b981"></i> ถ่ายรูป/อัพโหลดใบรับรองแพทย์</button>'
+        ) +
+        '      </div>' +
+        '    </div>' +
+        '  </div>' +
+        '  <div style="font-size:11.5px;color:#64748b;margin-top:10px;display:flex;align-items:center;gap:4px">' +
+        '    <i class="bi bi-magic" style="color:#2563eb"></i> ระบบมีเครื่องมือปรับมุมมองเอกสารให้ตรงและชัดเจนเหมือนสแกนจากเครื่องสแกน' +
+        '  </div>' +
+        '</div>';
+    }
     return wizSection('ประเภทและเหตุผลการลา', 'เลือกประเภท แล้วระบุเหตุผลโดยย่อ', 'file-text-fill')
       + '<div class="field"><label>ประเภทการลา <span class="req">*</span></label>'
       + '<div class="lt-grid" id="lt-grid">'
@@ -6440,7 +6876,8 @@ async function api(req) {
       + '</div></div>'
       + '<div class="field"><label>เหตุผลการลา <span class="req">*</span></label>'
       + '<textarea name="reason" class="textarea" data-field="reason" placeholder="ระบุเหตุผล เช่น เป็นไข้หวัดใหญ่ ต้องพบแพทย์ ฯลฯ" required>' + esc(d.reason) + '</textarea>'
-      + '<div class="field-hint">ระบุข้อเท็จจริงสั้น ๆ — อย่างน้อย 3 ตัวอักษร</div></div>';
+      + '<div class="field-hint">ระบุข้อเท็จจริงสั้น ๆ — อย่างน้อย 3 ตัวอักษร</div></div>'
+      + sickAttachHtml;
   }
   function wizStep2() {
     var d = WIZ.data;
@@ -6497,6 +6934,10 @@ async function api(req) {
       + reviewRow('เขียนที่', esc(d.written_place || '-'))
       + reviewRow('วันที่เขียน', TH.dateLong(d.written_at))
       + reviewRow('โทรศัพท์', esc(d.contact_phone || '-'))
+      + (d.leave_type === 'sick' ? (
+          reviewRow('ใบหมอนัด', d.appointment_url ? '<a href="' + esc(d.appointment_url) + '" target="_blank" style="color:#024ad8;font-weight:600"><i class="bi bi-image"></i> ดูรูปใบหมอนัด</a>' : '<span style="color:#94a3b8">ไม่ได้แนบ (ไม่บังคับ)</span>')
+        + reviewRow('ใบรับรองแพทย์', d.attachment_url ? '<a href="' + esc(d.attachment_url) + '" target="_blank" style="color:#10b981;font-weight:600"><i class="bi bi-file-earmark-check"></i> ดูรูปใบรับรองแพทย์</a>' : '<span style="color:#94a3b8">ไม่ได้แนบ (ไม่บังคับ)</span>')
+        ) : '')
       + '</tbody></table>'
       + '<div id="wiz-warn"></div>'
       + '<div id="wiz-last"></div>'
@@ -6638,9 +7079,37 @@ async function api(req) {
       c.addEventListener('click', function () {
         $$('.lt-card').forEach(function (x) { x.classList.remove('is-selected'); });
         c.classList.add('is-selected');
+        var prevType = WIZ.data.leave_type;
         WIZ.data.leave_type = c.getAttribute('data-type');
+        if (WIZ.step === 1 && (WIZ.data.leave_type === 'sick' || prevType === 'sick')) {
+          renderWizard();
+        }
       });
     });
+    // Wire sick attachments
+    var appTrig = $('#wiz-app-trigger'), appFile = $('#wiz-app-file'), appRem = $('#wiz-app-remove');
+    if (appTrig && appFile) {
+      appTrig.onclick = function() { appFile.click(); };
+      appFile.onchange = function(e) {
+        var f = e.target.files && e.target.files[0];
+        if (f) {
+          DocScanner.open({ file: f, title: 'สแกน/ปรับแต่ง ใบหมอนัด', onSave: function(url) { WIZ.data.appointment_url = url; renderWizard(); } });
+        }
+      };
+    }
+    if (appRem) { appRem.onclick = function() { WIZ.data.appointment_url = ''; renderWizard(); }; }
+
+    var attTrig = $('#wiz-att-trigger'), attFile = $('#wiz-att-file'), attRem = $('#wiz-att-remove');
+    if (attTrig && attFile) {
+      attTrig.onclick = function() { attFile.click(); };
+      attFile.onchange = function(e) {
+        var f = e.target.files && e.target.files[0];
+        if (f) {
+          DocScanner.open({ file: f, title: 'สแกน/ปรับแต่ง ใบรับรองแพทย์', onSave: function(url) { WIZ.data.attachment_url = url; renderWizard(); } });
+        }
+      };
+    }
+    if (attRem) { attRem.onclick = function() { WIZ.data.attachment_url = ''; renderWizard(); }; }
     // step 2 — live preview
     if (WIZ.step === 2) {
       function updatePreview() {
@@ -6837,6 +7306,45 @@ async function api(req) {
         + esc(LMS.LEAVE_TYPE_LABEL[lv.last_leave_type] || lv.last_leave_type) + ' · '
         + TH.date(lv.last_leave_start) + ' — ' + TH.date(lv.last_leave_end) + ' (' + lv.last_leave_days + ' วัน)</div>';
     }
+
+    // Attachments section (Doctor appointment note & Medical cert)
+    if (lv.leave_type === 'sick' || lv.attachment_url || lv.appointment_url) {
+      var canAttach = isMine || hasCap('leave.manage');
+      html += '<div style="margin-top:16px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px">'
+        + '<div style="font-weight:700;font-size:14px;color:#1e293b;margin-bottom:12px;display:flex;align-items:center;gap:8px">'
+        + '  <i class="bi bi-paperclip" style="color:#024ad8"></i> เอกสารและหลักฐานแนบ (ใบหมอนัด / ใบรับรองแพทย์)'
+        + '</div>'
+        + '<div class="grid-2">'
+        + '  <div>'
+        + '    <div style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">ใบหมอนัด (ถ้ามี)</div>'
+        + (lv.appointment_url ?
+            '    <div style="display:flex;align-items:center;gap:10px;padding:10px;background:#fff;border:1px solid #cbd5e1;border-radius:10px">'
+            + '      <a href="' + esc(lv.appointment_url) + '" target="_blank"><img src="' + esc(lv.appointment_url) + '" style="width:50px;height:50px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0"></a>'
+            + '      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#0f172a">ใบหมอนัด</div><a href="' + esc(lv.appointment_url) + '" target="_blank" style="font-size:12px;color:#024ad8"><i class="bi bi-box-arrow-up-right"></i> ดูรูปขนาดเต็ม</a></div>'
+            + (canAttach ? '<button type="button" class="btn btn-ghost" id="detail-app-btn" style="font-size:12px"><i class="bi bi-camera-fill"></i> เปลี่ยน</button>' : '')
+            + '    </div>' :
+            '    <div style="font-size:12.5px;color:#94a3b8;margin-bottom:8px">ยังไม่ได้แนบใบหมอนัด</div>'
+            + (canAttach ? '<button type="button" class="btn btn-ghost" id="detail-app-btn" style="border:1px dashed #cbd5e1;background:#fff;font-size:12px"><i class="bi bi-camera-fill" style="color:#024ad8"></i> ถ่ายรูป/สแกนใบหมอนัด</button>' : '')
+          )
+        + '  </div>'
+        + '  <div>'
+        + '    <div style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">ใบรับรองแพทย์ (แนบย้อนหลังได้)</div>'
+        + (lv.attachment_url ?
+            '    <div style="display:flex;align-items:center;gap:10px;padding:10px;background:#fff;border:1px solid #cbd5e1;border-radius:10px">'
+            + '      <a href="' + esc(lv.attachment_url) + '" target="_blank"><img src="' + esc(lv.attachment_url) + '" style="width:50px;height:50px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0"></a>'
+            + '      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#0f172a">ใบรับรองแพทย์</div><a href="' + esc(lv.attachment_url) + '" target="_blank" style="font-size:12px;color:#10b981"><i class="bi bi-box-arrow-up-right"></i> ดูรูปขนาดเต็ม</a></div>'
+            + (canAttach ? '<button type="button" class="btn btn-ghost" id="detail-att-btn" style="font-size:12px"><i class="bi bi-camera-fill"></i> เปลี่ยน</button>' : '')
+            + '    </div>' :
+            '    <div style="font-size:12.5px;color:#94a3b8;margin-bottom:8px">ยังไม่ได้แนบใบรับรองแพทย์</div>'
+            + (canAttach ? '<button type="button" class="btn btn-primary" id="detail-att-btn" style="font-size:12px;background:#10b981;border-color:#059669"><i class="bi bi-camera-fill"></i> แนบใบรับรองแพทย์ย้อนหลัง (สแกนเอกสาร)</button>' : '')
+          )
+        + '  </div>'
+        + '</div>'
+        + '<input type="file" id="detail-app-file" accept="image/*" style="display:none">'
+        + '<input type="file" id="detail-att-file" accept="image/*" style="display:none">'
+        + '</div>';
+    }
+
     html += '</div></div>'
       + '<div class="grid-2">'
       + '<div class="card"><div class="card-head"><i class="bi bi-diagram-3-fill" style="color:#024ad8"></i> <span class="card-title">สถานะการอนุมัติ</span></div>'
@@ -6978,6 +7486,50 @@ async function api(req) {
         }
       });
     });
+
+    var appBtn = $('#detail-app-btn'), appFile = $('#detail-app-file');
+    if (appBtn && appFile) {
+      appBtn.onclick = function() { appFile.click(); };
+      appFile.onchange = function(e) {
+        var f = e.target.files && e.target.files[0];
+        if (f) {
+          DocScanner.open({
+            file: f,
+            title: 'สแกน/ปรับแต่ง ใบหมอนัด',
+            onSave: function(url) {
+              Spinner.show('กำลังบันทึกใบหมอนัด...');
+              call('leave.update', { id: lv.id, appointment_url: url }).then(function() {
+                Spinner.hide();
+                toast('บันทึกใบหมอนัดเรียบร้อย', 'success');
+                LMS.dispatch();
+              }).catch(function(err) { Spinner.hide(); alertError('ผิดพลาด', err.message); });
+            }
+          });
+        }
+      };
+    }
+
+    var attBtn = $('#detail-att-btn'), attFile = $('#detail-att-file');
+    if (attBtn && attFile) {
+      attBtn.onclick = function() { attFile.click(); };
+      attFile.onchange = function(e) {
+        var f = e.target.files && e.target.files[0];
+        if (f) {
+          DocScanner.open({
+            file: f,
+            title: 'สแกน/ปรับแต่ง ใบรับรองแพทย์',
+            onSave: function(url) {
+              Spinner.show('กำลังบันทึกใบรับรองแพทย์...');
+              call('leave.update', { id: lv.id, attachment_url: url }).then(function() {
+                Spinner.hide();
+                toast('บันทึกใบรับรองแพทย์เรียบร้อย', 'success');
+                LMS.dispatch();
+              }).catch(function(err) { Spinner.hide(); alertError('ผิดพลาด', err.message); });
+            }
+          });
+        }
+      };
+    }
   }
   function openCommentModal(title, placeholder, cb, required) {
     Modal.open({
