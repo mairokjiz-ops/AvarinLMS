@@ -4610,9 +4610,29 @@ async function api(req) {
     parse: function (v) {
       if (!v) return null;
       if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
-      var s = String(v);
+      var s = String(v).trim();
       var d = new Date(s);
       if (!isNaN(d.getTime())) return d;
+      
+      var m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+      if (m) {
+        var day = parseInt(m[1], 10);
+        var month = parseInt(m[2], 10) - 1;
+        var year = parseInt(m[3], 10);
+        if (year > 2400) year -= 543;
+        var d2 = new Date(year, month, day);
+        if (!isNaN(d2.getTime())) return d2;
+      }
+      
+      var m2 = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+      if (m2) {
+        var year = parseInt(m2[1], 10);
+        if (year > 2400) year -= 543;
+        var month = parseInt(m2[2], 10) - 1;
+        var day = parseInt(m2[3], 10);
+        var d3 = new Date(year, month, day);
+        if (!isNaN(d3.getTime())) return d3;
+      }
       return null;
     },
     beYear: function (d) { return d.getFullYear() + 543; },
@@ -11448,6 +11468,8 @@ async function api(req) {
         descText = match[2];
       }
       
+      var defaultDate = presetDate ? (TH.iso(presetDate) || String(presetDate).substring(0, 10)) : '';
+
       if (descText.match(/^\d+\.\s*\[/)) {
         var parts = descText.split(/\s*\|\s*\d+\.\s*\[/);
         parts.forEach(function (part, i) {
@@ -11469,7 +11491,7 @@ async function api(req) {
             items.push({
               type: type,
               desc: desc,
-              date: presetDate,
+              date: defaultDate,
               amount: amount
             });
           }
@@ -11478,7 +11500,7 @@ async function api(req) {
         items.push({
           type: presetType || 'อื่น ๆ',
           desc: descText,
-          date: presetDate,
+          date: defaultDate,
           amount: presetAmount
         });
       }
@@ -11521,6 +11543,21 @@ async function api(req) {
       function addRow(preset) {
         preset = preset || {};
         var idx = list.children.length;
+
+        var rowDate = '';
+        if (preset.date) {
+          rowDate = TH.iso(preset.date) || String(preset.date).substring(0, 10);
+        } else {
+          var existingDates = list.querySelectorAll('.ef-item-date');
+          if (existingDates && existingDates.length > 0 && existingDates[existingDates.length - 1].value) {
+            rowDate = existingDates[existingDates.length - 1].value;
+          } else if (presetItems && presetItems.length > 0 && presetItems[0].date) {
+            rowDate = TH.iso(presetItems[0].date) || String(presetItems[0].date).substring(0, 10);
+          } else {
+            rowDate = TH.iso(new Date());
+          }
+        }
+
         var row = document.createElement('div');
         row.className = 'ef-item-row';
         row.innerHTML =
@@ -11531,7 +11568,7 @@ async function api(req) {
               '<input class="ef-input ef-item-desc" placeholder="รายละเอียด / หัวข้อ" value="' + esc(preset.desc || '') + '">' +
             '</div>' +
             '<div class="ef-item-row-bot">' +
-              '<input class="ef-input ef-item-date" type="date" value="' + (preset.date || TH.iso(new Date())) + '">' +
+              '<input class="ef-input ef-item-date" type="date" value="' + esc(rowDate) + '">' +
               '<div class="ef-input-money">' +
                 '<span class="ef-baht-prefix">฿</span>' +
                 '<input class="ef-input ef-item-amt" type="number" placeholder="0.00" value="' + (preset.amount || '') + '">' +
@@ -11767,7 +11804,8 @@ async function api(req) {
           focusConfirm: false,
           didOpen: function () {
             bindExpenseFileNote(evidenceNote);
-            var items = parseExpenseItems(preset.description, preset.expense_date, preset.amount, preset.expense_type);
+            var dateVal = preset.expense_date || preset.date || preset.created_at || TH.iso(new Date());
+            var items = parseExpenseItems(preset.description, dateVal, preset.amount, preset.expense_type);
             bindExpenseItems(items);
             bindExpenseBank(preset.bank_account);
           },
