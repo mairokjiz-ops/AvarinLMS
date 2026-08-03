@@ -5081,9 +5081,15 @@ async function api(req) {
               var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
               return resolve({ items: storeUser ? [storeUser] : [], total: storeUser ? 1 : 0 });
             }
-            if (action && action.indexOf('auth.') === 0) {
+            if (action === 'auth.login') {
               var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
-              return resolve({ user: storeUser || { id: 1, username: 'admin', full_name: 'Admin User', role: 'admin' } });
+              var uObj = storeUser || { id: 1, username: (payload && payload.username) || 'admin', full_name: (payload && payload.username) || 'ผู้ดูแลระบบ', role: 'admin', branch: 'ราชพฤกษ์' };
+              return resolve({ token: 'mock-token-' + Date.now(), user: uObj, caps: ['*'] });
+            }
+            if (action === 'auth.me') {
+              var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
+              var uObj = storeUser || { id: 1, username: 'admin', full_name: 'ผู้ดูแลระบบ', role: 'admin', branch: 'ราชพฤกษ์' };
+              return resolve({ user: uObj, caps: ['*'] });
             }
             return resolve({ items: [], success: true });
           }
@@ -5108,9 +5114,15 @@ async function api(req) {
               var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
               return resolve({ items: storeUser ? [storeUser] : [], total: storeUser ? 1 : 0 });
             }
-            if (action && action.indexOf('auth.') === 0) {
+            if (action === 'auth.login') {
               var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
-              return resolve({ user: storeUser || { id: 1, username: 'admin', full_name: 'Admin User', role: 'admin' } });
+              var uObj = storeUser || { id: 1, username: (payload && payload.username) || 'admin', full_name: (payload && payload.username) || 'ผู้ดูแลระบบ', role: 'admin', branch: 'ราชพฤกษ์' };
+              return resolve({ token: 'mock-token-' + Date.now(), user: uObj, caps: ['*'] });
+            }
+            if (action === 'auth.me') {
+              var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
+              var uObj = storeUser || { id: 1, username: 'admin', full_name: 'ผู้ดูแลระบบ', role: 'admin', branch: 'ราชพฤกษ์' };
+              return resolve({ user: uObj, caps: ['*'] });
             }
             return resolve({ items: [], success: true });
           }
