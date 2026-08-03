@@ -4717,7 +4717,6 @@ async function SpecialCommission_salesList(user, p) {
     });
   });
 
-  var allowedBranches = ['ปอโต', 'ปอร์โต', 'porto', 'ราชพฤกษ์', 'ratchapreuk', 'วิรันด้า', 'veranda'];
 
   // ── fetch Railway API ─────────────────────────────────────
   var officerSummary = [];
@@ -4739,25 +4738,22 @@ async function SpecialCommission_salesList(user, p) {
     console.warn('Railway API fetch error:', e);
   }
 
-  // ── Build officer map from officerSummary (all allowed branches) ──
-  var officerMap = {};   // key: officerId or name_nick
+  // ── Build officer map — include ALL officers from API (no branch restriction) ──
+  var officerMap = {};   // key: officerId
 
   officerSummary.forEach(function (off) {
-    var bName = String(off.branchName || '').toLowerCase();
-    var inBranch = allowedBranches.some(function (a) { return bName.indexOf(a) >= 0; });
-    if (!inBranch) return;
-
-    var key = String(off.officerId || (off.officerName + '_' + (off.nickName || '')));
+    var key = String(off.officerId);
     if (!officerMap[key]) {
       officerMap[key] = {
-        officerId: String(off.officerId || ''),
+        officerId: String(off.officerId),
         officerName: off.officerName || '',
         nickName: off.nickName || '',
         branch: off.branchName || '',
-        productQty: {}   // productId → qty from API details
+        productQty: {}
       };
       products.forEach(function (pr) { officerMap[key].productQty[pr.id] = 0; });
     }
+    // keep the most prominent branch (first occurrence)
   });
 
   // ── Map API details (per-SKU rows) → officer productQty ──
@@ -4787,9 +4783,6 @@ async function SpecialCommission_salesList(user, p) {
 
   // Add DB users not already in officerMap (by name match)
   dbUsers.forEach(function (u) {
-    var uBranch = String(u.branch || '').toLowerCase();
-    var inBranch = allowedBranches.some(function (a) { return uBranch.indexOf(a) >= 0; });
-    if (!inBranch) return;
     var nameKey = (u.full_name || u.username || '').trim();
     var alreadyIn = Object.values(officerMap).some(function (off) {
       return off.officerName && nameKey && (
