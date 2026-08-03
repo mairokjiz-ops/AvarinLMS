@@ -5062,11 +5062,28 @@ async function api(req) {
     return new Promise(function (resolve, reject) {
       api({ action: action, token: Store.token, payload: payload || {} })
         .then(function (res) {
-          if (!res) return reject(new Error('ไม่ได้รับคำตอบจากเซิร์ฟเวอร์'));
-          if (res.ok) resolve(res.data);
-          else reject(new Error(res.error || 'เกิดข้อผิดพลาด'));
+          if (res && res.ok) return resolve(res.data);
+          if (action && String(action).indexOf('special_commission.') === 0) {
+            handleSpecialCommissionClientApi({ action: action, payload: payload || {} }).then(function(fb) {
+              if (fb && fb.ok) resolve(fb.data);
+              else resolve({ products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0, 7), items: [] });
+            }).catch(function() {
+              resolve({ products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0, 7), items: [] });
+            });
+            return;
+          }
+          reject(new Error((res && res.error) || 'เกิดข้อผิดพลาด'));
         })
         .catch(function (err) {
+          if (action && String(action).indexOf('special_commission.') === 0) {
+            handleSpecialCommissionClientApi({ action: action, payload: payload || {} }).then(function(fb) {
+              if (fb && fb.ok) resolve(fb.data);
+              else resolve({ products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0, 7), items: [] });
+            }).catch(function() {
+              resolve({ products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0, 7), items: [] });
+            });
+            return;
+          }
           reject(err);
         });
     });
