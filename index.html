@@ -5058,10 +5058,40 @@ async function api(req) {
       api({ action: action, token: Store.token, payload: payload || {} })
         .then(function (res) {
           if (!res) return reject(new Error('ไม่ได้รับคำตอบจากเซิร์ฟเวอร์'));
-          if (res.ok) resolve(res.data);
-          else reject(new Error(res.error || 'เกิดข้อผิดพลาด'));
+          if (res.ok) return resolve(res.data);
+          var errMsg = String(res.error || '');
+          // special_commission fallback
+          if (action && String(action).indexOf('special_commission.') === 0) {
+            return handleSpecialCommissionClientApi({ action: action, payload: payload || {} })
+              .then(function(fb) { resolve(fb && fb.ok ? fb.data : { products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0,7), items: [] }); })
+              .catch(function() { resolve({ products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0,7), items: [] }); });
+          }
+          reject(new Error(res.error || 'เกิดข้อผิดพลาด'));
         })
         .catch(function (err) {
+          var errMsg = String((err && err.message) || err || '');
+          var isNetworkErr = errMsg.indexOf('Failed to fetch') >= 0 || errMsg.indexOf('NetworkError') >= 0 || errMsg.indexOf('Load failed') >= 0;
+
+          // special_commission fallback
+          if (action && String(action).indexOf('special_commission.') === 0) {
+            return handleSpecialCommissionClientApi({ action: action, payload: payload || {} })
+              .then(function(fb) { resolve(fb && fb.ok ? fb.data : { products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0,7), items: [] }); })
+              .catch(function() { resolve({ products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0,7), items: [] }); });
+          }
+
+          if (isNetworkErr) {
+            // auth.login MUST always fail so random passwords can't login
+            if (action === 'auth.login') return reject(new Error('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาเปิดผ่าน URL ของระบบ'));
+            // auth.me: reuse already-authenticated Store.user if available
+            if (action === 'auth.me') {
+              if (Store.user) return resolve({ user: Store.user, caps: Store.caps || [] });
+              return reject(new Error('ไม่สามารถตรวจสอบสิทธิ์ได้'));
+            }
+            // dashboard / leave / expense and other views: return safe empty structure
+            if (action && action.indexOf('dashboard') >= 0) return resolve({ me: { stats: { items: {} }, recent: [], recent_expenses: [] }, by_status: {}, recent_all: [], fiscal_year_be: '', warn_threshold: 80, pending_for_me: 0 });
+            return resolve({ items: [], total: 0, data: {} });
+          }
+
           reject(err);
         });
     });
