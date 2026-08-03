@@ -4854,24 +4854,64 @@ async function api(req) {
     },
     body: JSON.stringify(req || {})
   };
-  try {
-    var r = await fetch(url, opts);
-    var res = await r.json().catch(function(){ return {}; });
-    if (!r.ok || (res && res.error) || (res && res.ok === false)) {
-      if (req && req.action && String(req.action).indexOf('special_commission.') === 0) {
-        var fallback = await handleSpecialCommissionClientApi(req).catch(function(){ return null; });
-        if (fallback) return fallback;
+
+  async function doFetch() {
+    var controller = new AbortController();
+    var tid = setTimeout(function() { controller.abort(); }, 20000);
+    try {
+      var r = await fetch(url, Object.assign({}, opts, { signal: controller.signal }));
+      clearTimeout(tid);
+      var res = await r.json().catch(function(){ return {}; });
+      if (!r.ok) {
+        return { ok: false, error: (res && res.error) || ('HTTP ' + r.status) };
       }
-      return { ok: false, error: (res && res.error) || ('HTTP ' + r.status) };
+      if (res && res.ok === false) {
+        return { ok: false, error: res.error || 'เกิดข้อผิดพลาด' };
+      }
+      return res;
+    } catch (e) {
+      clearTimeout(tid);
+      throw e;
     }
-    return res;
-  } catch (e) {
-    if (req && req.action && String(req.action).indexOf('special_commission.') === 0) {
+  }
+
+  try {
+    var result = await doFetch();
+    if (result && result.ok === false && req && req.action && String(req.action).indexOf('special_commission.') === 0) {
       var fallback = await handleSpecialCommissionClientApi(req).catch(function(){ return null; });
       if (fallback) return fallback;
-      var prods = getStoredSpecialCommissionProducts();
-      var month = (req && req.payload && req.payload.month) || new Date().toISOString().substring(0, 7);
-      return { ok: true, data: { products: prods, month: month, items: [] } };
+    }
+    return result;
+  } catch (e) {
+    // Retry once on network error (handles Supabase cold start)
+    var errMsg = String((e && e.message) || e || '');
+    var isNet = errMsg.indexOf('Failed to fetch') >= 0 || errMsg.indexOf('NetworkError') >= 0 || errMsg.indexOf('Load failed') >= 0 || errMsg.indexOf('aborted') >= 0;
+    if (isNet) {
+      try {
+        var result2 = await doFetch();
+        if (result2 && result2.ok === false && req && req.action && String(req.action).indexOf('special_commission.') === 0) {
+          var fallback2 = await handleSpecialCommissionClientApi(req).catch(function(){ return null; });
+          if (fallback2) return fallback2;
+        }
+        return result2;
+      } catch (e2) {
+        var errMsg2 = String((e2 && e2.message) || e2 || '');
+        if (req && req.action && String(req.action).indexOf('special_commission.') === 0) {
+          var fallback3 = await handleSpecialCommissionClientApi(req).catch(function(){ return null; });
+          if (fallback3) return fallback3;
+          var prods = getStoredSpecialCommissionProducts();
+          var month = (req && req.payload && req.payload.month) || new Date().toISOString().substring(0, 7);
+          return { ok: true, data: { products: prods, month: month, items: [] } };
+        }
+        return { ok: false, error: errMsg2 || 'Failed to fetch' };
+      }
+    }
+    if (req && req.action && String(req.action).indexOf('special_commission.') === 0) {
+      var fallback4 = await handleSpecialCommissionClientApi(req).catch(function(){ return null; });
+      if (fallback4) return fallback4;
+      var prods2 = getStoredSpecialCommissionProducts();
+      var month2 = (req && req.payload && req.payload.month) || new Date().toISOString().substring(0, 7);
+      return { ok: true, data: { products: prods2, month: month2, items: [] } };
     }
     return { ok: false, error: e.message || String(e) };
   }
@@ -5058,8 +5098,8 @@ async function api(req) {
       return s.indexOf('Failed to fetch') >= 0 || s.indexOf('NetworkError') >= 0 || s.indexOf('Load failed') >= 0;
     }
     function resolveNetworkFallback(resolve, reject) {
-      // auth.login must always reject — no bypass
-      if (action === 'auth.login') return reject(new Error('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาเปิดผ่าน URL ของระบบ'));
+      // auth.login: network down — reject with connection error (don't bypass auth)
+      if (action === 'auth.login') return reject(new Error('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ชั่วคราว กรุณาลองใหม่อีกครั้ง'));
       // auth.me: reuse cached user if already authenticated
       if (action === 'auth.me') {
         if (Store.user) return resolve({ user: Store.user, caps: Store.caps || [] });
