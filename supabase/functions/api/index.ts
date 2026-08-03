@@ -3480,7 +3480,7 @@ async function api(req) {
       case 'special_commission.products.list':   return _ok(SpecialCommission_productsList(user, p));
       case 'special_commission.products.upsert': return _ok(await SpecialCommission_productsUpsert(user, p));
       case 'special_commission.products.delete': return _ok(await SpecialCommission_productsDelete(user, p));
-      case 'special_commission.sales.list':      return _ok(SpecialCommission_salesList(user, p));
+      case 'special_commission.sales.list':      return _ok(await SpecialCommission_salesList(user, p));
       case 'special_commission.sales.record':    return _ok(await SpecialCommission_salesRecord(user, p));
 
       case 'audit.list':              return _ok(Audit_list(user, p));
@@ -4699,7 +4699,7 @@ async function SpecialCommission_productsDelete(user, p) {
   return { success: true };
 }
 
-function SpecialCommission_salesList(user, p) {
+async function SpecialCommission_salesList(user, p) {
   var data = p || {};
   var month = data.month || cfg_dateOnly_(new Date()).substring(0, 7);
   var branchFilter = data.branch ? String(data.branch).trim() : '';
