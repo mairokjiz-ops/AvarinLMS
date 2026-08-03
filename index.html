@@ -5057,75 +5057,11 @@ async function api(req) {
     return new Promise(function (resolve, reject) {
       api({ action: action, token: Store.token, payload: payload || {} })
         .then(function (res) {
-          if (res && res.ok) return resolve(res.data);
-
-          if (action && String(action).indexOf('special_commission.') === 0) {
-            handleSpecialCommissionClientApi({ action: action, payload: payload || {} }).then(function(fb) {
-              if (fb && fb.ok) resolve(fb.data);
-              else resolve({ products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0, 7), items: [] });
-            }).catch(function() {
-              resolve({ products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0, 7), items: [] });
-            });
-            return;
-          }
-
-          var errStr = String((res && res.error) || '');
-          if (errStr.indexOf('Failed to fetch') >= 0 || errStr.indexOf('NetworkError') >= 0 || window.location.protocol === 'file:') {
-            console.warn('Handling offline/file:// fetch fallback for:', action);
-            var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
-
-            if (action === 'auth.me') {
-              var uObj = storeUser || { id: 1, username: 'admin', full_name: 'ผู้ดูแลระบบ', role: 'admin', branch: 'ราชพฤกษ์' };
-              return resolve({ user: uObj, caps: ['*'] });
-            }
-            if (action === 'auth.login') {
-              var uObj = storeUser || { id: 1, username: (payload && payload.username) || 'admin', full_name: (payload && payload.username) || 'ผู้ดูแลระบบ', role: 'admin', branch: 'ราชพฤกษ์' };
-              return resolve({ token: 'mock-token-' + Date.now(), user: uObj, caps: ['*'] });
-            }
-            if (action === 'user.list') {
-              return resolve({ items: storeUser ? [storeUser] : [], total: storeUser ? 1 : 0 });
-            }
-            if (action && action.indexOf('dashboard') >= 0) {
-              return resolve({ stats: { items: {} }, me: { stats: { items: {} } }, items: [], total: 0 });
-            }
-            return resolve({ items: [], stats: { items: {} }, me: { stats: { items: {} } }, success: true });
-          }
-
-          reject(new Error((res && res.error) || 'เกิดข้อผิดพลาด'));
+          if (!res) return reject(new Error('ไม่ได้รับคำตอบจากเซิร์ฟเวอร์'));
+          if (res.ok) resolve(res.data);
+          else reject(new Error(res.error || 'เกิดข้อผิดพลาด'));
         })
         .catch(function (err) {
-          if (action && String(action).indexOf('special_commission.') === 0) {
-            handleSpecialCommissionClientApi({ action: action, payload: payload || {} }).then(function(fb) {
-              if (fb && fb.ok) resolve(fb.data);
-              else resolve({ products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0, 7), items: [] });
-            }).catch(function() {
-              resolve({ products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0, 7), items: [] });
-            });
-            return;
-          }
-
-          var errStr = String((err && err.message) || err || '');
-          if (errStr.indexOf('Failed to fetch') >= 0 || errStr.indexOf('NetworkError') >= 0 || window.location.protocol === 'file:') {
-            console.warn('Handling offline/file:// fetch catch fallback for:', action);
-            var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
-
-            if (action === 'auth.me') {
-              var uObj = storeUser || { id: 1, username: 'admin', full_name: 'ผู้ดูแลระบบ', role: 'admin', branch: 'ราชพฤกษ์' };
-              return resolve({ user: uObj, caps: ['*'] });
-            }
-            if (action === 'auth.login') {
-              var uObj = storeUser || { id: 1, username: (payload && payload.username) || 'admin', full_name: (payload && payload.username) || 'ผู้ดูแลระบบ', role: 'admin', branch: 'ราชพฤกษ์' };
-              return resolve({ token: 'mock-token-' + Date.now(), user: uObj, caps: ['*'] });
-            }
-            if (action === 'user.list') {
-              return resolve({ items: storeUser ? [storeUser] : [], total: storeUser ? 1 : 0 });
-            }
-            if (action && action.indexOf('dashboard') >= 0) {
-              return resolve({ stats: { items: {} }, me: { stats: { items: {} } }, items: [], total: 0 });
-            }
-            return resolve({ items: [], stats: { items: {} }, me: { stats: { items: {} } }, success: true });
-          }
-
           reject(err);
         });
     });
@@ -6590,7 +6526,10 @@ async function api(req) {
   function renderDashboardDesktop(d, sched) {
     var u = LMS.Store.user || {};
     var hr = greetingFor(new Date());
-    var stats = d.me.stats.items || {};
+    d = d || {};
+    var dMe = (d.me) || { stats: { items: {} }, recent: [] };
+    var dMeStats = (dMe.stats) || { items: {} };
+    var stats = dMeStats.items || {};
     var warn = Number(d.warn_threshold || 80);
     var statHtml = '';
     Object.keys(stats).forEach(function (k) {
@@ -6691,7 +6630,7 @@ async function api(req) {
 
     html += '<div class="card" style="margin-bottom:18px">'
       + '<div class="card-head"><i class="bi bi-clock-history" style="color:#024ad8"></i> <span class="card-title">ใบลาล่าสุดของฉัน</span> <a href="#/leaves/mine" style="margin-left:auto;font-size:12px">ดูทั้งหมด →</a></div>'
-      + '<div class="card-body">' + (d.me.recent.length === 0 ? emptyState('inbox', 'ยังไม่มีใบลา') : leaveCardList(d.me.recent)) + '</div>'
+      + '<div class="card-body">' + (!dMe.recent || dMe.recent.length === 0 ? emptyState('inbox', 'ยังไม่มีใบลา') : leaveCardList(dMe.recent)) + '</div>'
       + '</div>';
     if (hasCap('leave.view_all') && d.recent_all && d.recent_all.length) {
       html += '<div class="card">'
@@ -6703,7 +6642,10 @@ async function api(req) {
   // ── Mobile App-Style Layout ───────────────────────
   function renderDashboardMobile(d, sched) {
     var u = LMS.Store.user || {};
-    var stats = d.me.stats.items || {};
+    d = d || {};
+    var dMe = (d.me) || { stats: { items: {} }, recent: [] };
+    var dMeStats = (dMe.stats) || { items: {} };
+    var stats = dMeStats.items || {};
     var warn = Number(d.warn_threshold || 80);
     var hr = greetingFor(new Date());
     var initial = (u.full_name || '?').substring(0, 1).toUpperCase();
@@ -6984,7 +6926,8 @@ async function api(req) {
   }
   function quickStripHtml(d, stats) {
     var totalApproved = 0, totalPending = 0;
-    (d.me.recent || []).forEach(function (lv) {
+    var dMeR = (d && d.me && d.me.recent) || [];
+    dMeR.forEach(function (lv) {
       if (lv.status === 'approved') totalApproved++;
       else if (lv.status === 'pending' || lv.status === 'checked' || lv.status === 'reviewed') totalPending++;
     });
@@ -7035,7 +6978,8 @@ async function api(req) {
   }
   function activityFeedHtml(d) {
     var statusToneMap = { pending: 'amber', checked: 'sky', reviewed: 'indigo', approved: 'emerald', rejected: 'rose', cancelled: 'slate', draft: 'slate' };
-    var leaveItems = (d.me.recent || []).map(function (lv) {
+    var dMe = (d && d.me) || {};
+    var leaveItems = (dMe.recent || []).map(function (lv) {
       return {
         kind: 'leave',
         created_at: lv.created_at,
@@ -7048,7 +6992,7 @@ async function api(req) {
         meta: '<span class="badge b-' + (statusToneMap[lv.status] || 'slate') + '" style="font-size:9.5px;padding:1px 7px">' + esc(lv.status_label) + '</span> <span>' + TH.date(lv.start_date) + '</span>'
       };
     });
-    var expenseItems = (d.me.recent_expenses || []).map(function (ex) {
+    var expenseItems = (dMe.recent_expenses || []).map(function (ex) {
       var amount = Number(ex.amount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       return {
         kind: 'expense',
