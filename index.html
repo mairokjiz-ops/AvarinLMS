@@ -4658,34 +4658,16 @@ async function handleSpecialCommissionClientApi(req) {
 
     try {
       var url = 'https://avrstockapi-production.up.railway.app/api/web/reports/commission-by-officer?startDate=' + startDate + '&endDate=' + endDate;
-      var rRes = await fetch(url).catch(function () { return null; });
-      if (rRes && rRes.ok) {
-        var rJson = await rRes.json().catch(function () { return null; });
+      var rRes = await fetch(url);
+      if (rRes.ok) {
+        var rJson = await rRes.json();
         if (rJson && rJson.success) {
           officerSummary = rJson.officerSummary || [];
           apiDetails = rJson.details || [];
         }
       }
     } catch (e) {
-      console.warn('Commission API fetch warning:', e);
-    }
-
-    if (!officerSummary || officerSummary.length === 0) {
-      // Fallback if browser fetch fails or CORS blocks
-      var fallbackUsers = [];
-      if (typeof Store !== 'undefined' && Store.user) fallbackUsers.push(Store.user);
-      else if (window.LMS && window.LMS.Store && window.LMS.Store.user) fallbackUsers.push(window.LMS.Store.user);
-
-      fallbackUsers.forEach(function (u) {
-        officerSummary.push({
-          officerId: u.id,
-          officerName: u.full_name || u.username,
-          nickName: '',
-          branchName: u.branch || 'ราชพฤกษ์',
-          totalCommissionSales: 0,
-          totalCommissionQty: 0
-        });
-      });
+      console.warn('Commission API fetch error:', e);
     }
 
     var allowedBranches = ['ปอโต', 'ปอร์โต', 'porto', 'ราชพฤกษ์', 'ratchapreuk', 'วิรันด้า', 'veranda'];
@@ -4858,25 +4840,18 @@ async function api(req) {
   try {
     var r = await fetch(url, opts);
     var res = await r.json().catch(function(){ return {}; });
-    if (!r.ok || (res && res.error) || res.ok === false) {
-      if (req && req.action && String(req.action).indexOf('special_commission.') === 0) {
-        var fallback = await handleSpecialCommissionClientApi(req).catch(function(){ return null; });
+    if (!r.ok || (res && res.error && res.error.indexOf('ไม่พบ action') >= 0)) {
+      if (req && req.action && req.action.indexOf('special_commission.') === 0) {
+        var fallback = await handleSpecialCommissionClientApi(req);
         if (fallback) return fallback;
       }
-      return { ok: false, error: (res && res.error) || ('HTTP ' + r.status) };
+      return { ok: false, error: res.error || ('HTTP ' + r.status) };
     }
     return res;
   } catch (e) {
-    if (req && req.action && String(req.action).indexOf('special_commission.') === 0) {
-      var fallback = await handleSpecialCommissionClientApi(req).catch(function(){ return null; });
+    if (req && req.action && req.action.indexOf('special_commission.') === 0) {
+      var fallback = await handleSpecialCommissionClientApi(req);
       if (fallback) return fallback;
-      var prods = getStoredSpecialCommissionProducts();
-      var month = (req && req.payload && req.payload.month) || new Date().toISOString().substring(0, 7);
-      return { ok: true, data: { products: prods, month: month, items: [] } };
-    }
-    if (req && req.action === 'user.list') {
-      var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
-      return { ok: true, data: { items: storeUser ? [storeUser] : [], total: storeUser ? 1 : 0 } };
     }
     return { ok: false, error: e.message || String(e) };
   }
@@ -5062,71 +5037,11 @@ async function api(req) {
     return new Promise(function (resolve, reject) {
       api({ action: action, token: Store.token, payload: payload || {} })
         .then(function (res) {
-          if (res && res.ok) return resolve(res.data);
-          
-          if (action && String(action).indexOf('special_commission.') === 0) {
-            handleSpecialCommissionClientApi({ action: action, payload: payload || {} }).then(function(fb) {
-              if (fb && fb.ok) resolve(fb.data);
-              else resolve({ products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0, 7), items: [] });
-            }).catch(function() {
-              resolve({ products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0, 7), items: [] });
-            });
-            return;
-          }
-
-          var errStr = String((res && res.error) || '');
-          if (errStr.indexOf('Failed to fetch') >= 0 || errStr.indexOf('NetworkError') >= 0 || window.location.protocol === 'file:') {
-            console.warn('Network/file:// fetch fallback for action:', action);
-            if (action === 'user.list') {
-              var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
-              return resolve({ items: storeUser ? [storeUser] : [], total: storeUser ? 1 : 0 });
-            }
-            if (action === 'auth.login') {
-              var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
-              var uObj = storeUser || { id: 1, username: (payload && payload.username) || 'admin', full_name: (payload && payload.username) || 'ผู้ดูแลระบบ', role: 'admin', branch: 'ราชพฤกษ์' };
-              return resolve({ token: 'mock-token-' + Date.now(), user: uObj, caps: ['*'] });
-            }
-            if (action === 'auth.me') {
-              var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
-              var uObj = storeUser || { id: 1, username: 'admin', full_name: 'ผู้ดูแลระบบ', role: 'admin', branch: 'ราชพฤกษ์' };
-              return resolve({ user: uObj, caps: ['*'] });
-            }
-            return resolve({ items: [], success: true });
-          }
-
-          reject(new Error((res && res.error) || 'เกิดข้อผิดพลาด'));
+          if (!res) return reject(new Error('ไม่ได้รับคำตอบจากเซิร์ฟเวอร์'));
+          if (res.ok) resolve(res.data);
+          else reject(new Error(res.error || 'เกิดข้อผิดพลาด'));
         })
         .catch(function (err) {
-          if (action && String(action).indexOf('special_commission.') === 0) {
-            handleSpecialCommissionClientApi({ action: action, payload: payload || {} }).then(function(fb) {
-              if (fb && fb.ok) resolve(fb.data);
-              else resolve({ products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0, 7), items: [] });
-            }).catch(function() {
-              resolve({ products: getStoredSpecialCommissionProducts(), month: (payload && payload.month) || new Date().toISOString().substring(0, 7), items: [] });
-            });
-            return;
-          }
-
-          var errStr = String((err && err.message) || err || '');
-          if (errStr.indexOf('Failed to fetch') >= 0 || errStr.indexOf('NetworkError') >= 0 || window.location.protocol === 'file:') {
-            console.warn('Network/file:// fetch fallback catch for action:', action);
-            if (action === 'user.list') {
-              var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
-              return resolve({ items: storeUser ? [storeUser] : [], total: storeUser ? 1 : 0 });
-            }
-            if (action === 'auth.login') {
-              var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
-              var uObj = storeUser || { id: 1, username: (payload && payload.username) || 'admin', full_name: (payload && payload.username) || 'ผู้ดูแลระบบ', role: 'admin', branch: 'ราชพฤกษ์' };
-              return resolve({ token: 'mock-token-' + Date.now(), user: uObj, caps: ['*'] });
-            }
-            if (action === 'auth.me') {
-              var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
-              var uObj = storeUser || { id: 1, username: 'admin', full_name: 'ผู้ดูแลระบบ', role: 'admin', branch: 'ราชพฤกษ์' };
-              return resolve({ user: uObj, caps: ['*'] });
-            }
-            return resolve({ items: [], success: true });
-          }
-
           reject(err);
         });
     });
