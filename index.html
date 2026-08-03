@@ -4871,6 +4871,10 @@ async function api(req) {
       var fallback = await handleSpecialCommissionClientApi(req);
       if (fallback) return fallback;
     }
+    if (req && req.action === 'user.list') {
+      var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
+      return { ok: true, data: { items: storeUser ? [storeUser] : [], total: storeUser ? 1 : 0 } };
+    }
     return { ok: false, error: e.message || String(e) };
   }
 }
