@@ -2938,6 +2938,151 @@ function _LINE_verifySignature_(e, channelSecret) {
   }
 }
 
+async function LINE_buildSpecialCommissionFlex_(user: any, monthStr: string) {
+  var products = [
+    { id: 'prod-heart-shirt', sku: 'AVR004002XL, AVR00400L, AVR00400M, AVR00400S, AVR00400XL, AVR003002XL, AVR00300L, AVR00300M, AVR00300S, AVR00300XL', name: 'เสื้อ AVR รูปหัวใจ', unit: 'ตัว', commission_rate: 30, bonus_min_qty: 5, bonus_amount: 200 },
+    { id: 'prod-velo-core', sku: 'AVRMS005, AVRMS003, AVRMS002, AVRMS001, AVRMS004', name: 'เสื้อ AVR Velo Core', unit: 'ตัว', commission_rate: 50, bonus_min_qty: 0, bonus_amount: 0 },
+    { id: 'prod-crop-luma', sku: 'AVRWC003, AVRWC002, AVRWC001', name: 'เสื้อ AVR Crop Luma Swift', unit: 'ตัว', commission_rate: 50, bonus_min_qty: 0, bonus_amount: 0 },
+    { id: 'prod-shorts', sku: 'AVRMS008, AVRMS007, AVRMS006, AVRMS009, AVRWS003, AVRWS002, AVRWS001, AVRWS004', name: 'กางเกง AVR', unit: 'ตัว', commission_rate: 50, bonus_min_qty: 0, bonus_amount: 0 },
+    { id: 'prod-socks', sku: '8852906202601, 8852906202600', name: 'ถุงเท้า AVR', unit: 'คู่', commission_rate: 20, bonus_min_qty: 10, bonus_amount: 200 }
+  ];
+
+  var month = monthStr || new Date().toISOString().substring(0, 7);
+  var startDate = month + '-01';
+  var endDate = month + '-31';
+
+  var apiDetails: any[] = [];
+  try {
+    var url = 'https://avrstockapi-production.up.railway.app/api/web/reports/commission-by-officer?startDate=' + startDate + '&endDate=' + endDate;
+    var res = await fetch(url);
+    if (res.ok) {
+      var json = await res.json();
+      if (json && json.success && Array.isArray(json.details)) {
+        apiDetails = json.details;
+      }
+    }
+  } catch (e) {}
+
+  var fullName = user.full_name || user.username || '';
+  var productQty: any = {};
+  products.forEach(p => { productQty[p.id] = 0; });
+
+  apiDetails.forEach((d: any) => {
+    if (d.officerName && (fullName.indexOf(d.officerName) >= 0 || (user.nickname && user.nickname.indexOf(d.nickName) >= 0))) {
+      var dSku = String(d.sku || '').trim().toUpperCase();
+      var found = products.find(pr => {
+        var skus = String(pr.sku).split(',').map(k => k.trim().toUpperCase());
+        return skus.indexOf(dSku) >= 0;
+      });
+      if (found) {
+        productQty[found.id] += Number(d.totalQty || 0);
+      }
+    }
+  });
+
+  var productContents: any[] = [];
+  var grandTotalComm = 0;
+
+  products.forEach(p => {
+    var qty = productQty[p.id] || 0;
+    var comm = qty * p.commission_rate;
+    var bonus = (p.bonus_min_qty > 0 && qty >= p.bonus_min_qty) ? p.bonus_amount : 0;
+    grandTotalComm += (comm + bonus);
+
+    var bonusText = '';
+    var bonusColor = '#64748b';
+    if (p.bonus_min_qty > 0) {
+      if (qty >= p.bonus_min_qty) {
+        bonusText = '🎉 ครบ ' + p.bonus_min_qty + ' ' + p.unit + ' แล้ว! รับโบนัส On Top +' + p.bonus_amount + ' บ.';
+        bonusColor = '#059669';
+      } else {
+        var diff = p.bonus_min_qty - qty;
+        bonusText = '🎯 ขาดอีก ' + diff + ' ' + p.unit + ' จะได้รับโบนัส On Top +' + p.bonus_amount + ' บ.';
+        bonusColor = '#ea580c';
+      }
+    }
+
+    var itemBox: any = {
+      "type": "box",
+      "layout": "vertical",
+      "margin": "sm",
+      "contents": [
+        {
+          "type": "box",
+          "layout": "horizontal",
+          "contents": [
+            { "type": "text", "text": p.name, "weight": "bold", "size": "xs", "color": "#1e293b", "flex": 3 },
+            { "type": "text", "text": qty + ' ' + p.unit + ' (' + comm.toLocaleString() + ' บ.)', "size": "xs", "color": "#0f172a", "align": "end", "flex": 2, "weight": "bold" }
+          ]
+        }
+      ]
+    };
+
+    if (bonusText) {
+      itemBox.contents.push({
+        "type": "text",
+        "text": bonusText,
+        "size": "xxs",
+        "color": bonusColor,
+        "margin": "xs"
+      });
+    }
+
+    productContents.push(itemBox);
+  });
+
+  return {
+    "type": "flex",
+    "altText": "🏆 สรุปค่าคอมพิเศษ AVR - " + fullName,
+    "contents": {
+      "type": "bubble",
+      "size": "mega",
+      "header": {
+        "type": "box",
+        "layout": "vertical",
+        "backgroundColor": "#0f172a",
+        "paddingAll": "15px",
+        "contents": [
+          { "type": "text", "text": "🏆 สรุปค่าคอมพิเศษ AVR", "weight": "bold", "color": "#fbbf24", "size": "md" },
+          { "type": "text", "text": "ประจำเดือน " + month, "color": "#94a3b8", "size": "xs", "margin": "xs" }
+        ]
+      },
+      "body": {
+        "type": "box",
+        "layout": "vertical",
+        "paddingAll": "15px",
+        "contents": [
+          {
+            "type": "box",
+            "layout": "horizontal",
+            "contents": [
+              { "type": "text", "text": "👤 พนักงาน:", "size": "xs", "color": "#64748b" },
+              { "type": "text", "text": fullName + (user.branch ? ' [' + user.branch + ']' : ''), "weight": "bold", "size": "xs", "color": "#0f172a", "align": "end" }
+            ]
+          },
+          { "type": "separator", "margin": "md" },
+          {
+            "type": "box",
+            "layout": "vertical",
+            "margin": "md",
+            "contents": productContents
+          },
+          { "type": "separator", "margin": "md" },
+          {
+            "type": "box",
+            "layout": "horizontal",
+            "margin": "md",
+            "contents": [
+              { "type": "text", "text": "💰 ค่าคอมรวมสุทธิ", "weight": "bold", "size": "sm", "color": "#059669" },
+              { "type": "text", "text": "฿" + grandTotalComm.toLocaleString(), "weight": "bold", "size": "md", "color": "#059669", "align": "end" }
+            ]
+          }
+        ]
+      }
+    }
+  };
+}
+
 /**
  * จัดการข้อความตัวอักษรที่ผู้ใช้ส่งมา
  */
@@ -2980,6 +3125,14 @@ async function _LINE_handleTextMessage_(event, replyToken, lineUserId) {
     var notConnectedFlex = LINE_buildNotConnectedFlex_();
     await LINE_replyMessage_(replyToken, [notConnectedFlex]);
   } else {
+    var lowerTxt = txt.toLowerCase();
+    if (lowerTxt.indexOf('ค่าคอม') >= 0 || lowerTxt.indexOf('โบนัส') >= 0 || lowerTxt.indexOf('commission') >= 0) {
+      var monthStr = new Date().toISOString().substring(0, 7);
+      var commFlex = await LINE_buildSpecialCommissionFlex_(user, monthStr);
+      await LINE_replyMessage_(replyToken, [commFlex]);
+      return;
+    }
+
     // เช็กสถานะการยื่นใบลา/เบิกค่าใช้จ่ายแบบพิมพ์โต้ตอบ
     var state = await _LINE_getState_(lineUserId);
 
