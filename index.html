@@ -4858,18 +4858,21 @@ async function api(req) {
   try {
     var r = await fetch(url, opts);
     var res = await r.json().catch(function(){ return {}; });
-    if (!r.ok || (res && res.error && res.error.indexOf('ไม่พบ action') >= 0)) {
-      if (req && req.action && req.action.indexOf('special_commission.') === 0) {
-        var fallback = await handleSpecialCommissionClientApi(req);
+    if (!r.ok || (res && res.error) || res.ok === false) {
+      if (req && req.action && String(req.action).indexOf('special_commission.') === 0) {
+        var fallback = await handleSpecialCommissionClientApi(req).catch(function(){ return null; });
         if (fallback) return fallback;
       }
-      return { ok: false, error: res.error || ('HTTP ' + r.status) };
+      return { ok: false, error: (res && res.error) || ('HTTP ' + r.status) };
     }
     return res;
   } catch (e) {
-    if (req && req.action && req.action.indexOf('special_commission.') === 0) {
-      var fallback = await handleSpecialCommissionClientApi(req);
+    if (req && req.action && String(req.action).indexOf('special_commission.') === 0) {
+      var fallback = await handleSpecialCommissionClientApi(req).catch(function(){ return null; });
       if (fallback) return fallback;
+      var prods = getStoredSpecialCommissionProducts();
+      var month = (req && req.payload && req.payload.month) || new Date().toISOString().substring(0, 7);
+      return { ok: true, data: { products: prods, month: month, items: [] } };
     }
     if (req && req.action === 'user.list') {
       var storeUser = (typeof Store !== 'undefined' && Store.user) || (window.LMS && window.LMS.Store && window.LMS.Store.user);
