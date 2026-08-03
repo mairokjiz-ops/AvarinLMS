@@ -81,7 +81,9 @@ const SHEETS = Object.freeze({
   COURSES:   'Courses',
   QUIZZES:   'Quizzes',
   PROGRESS:  'UserProgress',
-  COURSE_CHUNKS: 'CourseChunks'
+  COURSE_CHUNKS: 'CourseChunks',
+  SPECIAL_COMMISSION_PRODUCTS: 'SpecialCommissionProducts',
+  SPECIAL_COMMISSION_SALES: 'SpecialCommissionSales'
 });
 
 // ── Schemas ─────────────────────────────────────────────────
@@ -98,7 +100,9 @@ const SCHEMAS = Object.freeze({
   Courses: ['id','title','description','thumbnail_url','content','video_url','status','category','duration_hours','pass_score','instructor','ai_summary','ai_modules','ai_quiz','ai_flashcards','ai_key_points','ai_checklist','created_at','updated_at'],
   Quizzes: ['id','course_id','question','options','correct_option','created_at','updated_at'],
   UserProgress: ['id','user_id','course_id','quiz_score','quiz_total','is_passed','created_at','updated_at'],
-  CourseChunks: ['id','course_id','chunk_index','content','metadata','embedding','created_at','updated_at']
+  CourseChunks: ['id','course_id','chunk_index','content','metadata','embedding','created_at','updated_at'],
+  SpecialCommissionProducts: ['id','sku','name','unit','commission_rate','bonus_min_qty','bonus_amount','bonus_description','image_url','is_active','created_at','updated_at'],
+  SpecialCommissionSales: ['id','employee_id','product_id','quantity','sale_date','branch','order_no','created_by','created_at','updated_at']
 });
 
 // ── TEXT_COLUMNS — บังคับ Sheet เก็บเป็น text กัน auto-coercion ─
@@ -472,7 +476,7 @@ function _dbIdCol_(table) {
 }
 
 async function DB_warmCache() {
-  var tables = ['Users', 'Leaves', 'Sessions', 'Settings', 'AuditLog', 'Missions', 'Expenses', 'Holidays', 'Checkins', 'Courses', 'Quizzes', 'UserProgress'];
+  var tables = ['Users', 'Leaves', 'Sessions', 'Settings', 'AuditLog', 'Missions', 'Expenses', 'Holidays', 'Checkins', 'Courses', 'Quizzes', 'UserProgress', 'SpecialCommissionProducts', 'SpecialCommissionSales'];
   for (var i = 0; i < tables.length; i++) {
     var t = tables[i];
     var rows = await sbFetch('GET', t, 'select=*&limit=10000');
@@ -3356,6 +3360,7 @@ async function api(req) {
     }
     
     await Seed_ensureHolidays_();
+    await Seed_ensureSpecialCommissionProducts_();
 
     var holidaysRows = DB_readAll('Holidays');
     GLOBAL_HOLIDAYS = {};
@@ -3471,6 +3476,12 @@ async function api(req) {
       case 'ai.course_generate':      return _ok(await AI_courseGenerate(user, p));
       case 'ai.course_index':         return _ok(await AI_courseIndex(user, p));
       case 'ai.tutor_ask':            return _ok(await AI_tutorAsk(user, p));
+
+      case 'special_commission.products.list':   return _ok(SpecialCommission_productsList(user, p));
+      case 'special_commission.products.upsert': return _ok(await SpecialCommission_productsUpsert(user, p));
+      case 'special_commission.products.delete': return _ok(await SpecialCommission_productsDelete(user, p));
+      case 'special_commission.sales.list':      return _ok(SpecialCommission_salesList(user, p));
+      case 'special_commission.sales.record':    return _ok(await SpecialCommission_salesRecord(user, p));
 
       case 'audit.list':              return _ok(Audit_list(user, p));
       case 'r2.get_upload_url':       return _ok(await R2_getUploadUrl(user, p));
@@ -4564,6 +4575,320 @@ async function R2_migrateLegacyData(user) {
   }
 
   return summary;
+}
+
+// ── Special Commission Backend Module ──────────────────────
+async function Seed_ensureSpecialCommissionProducts_() {
+  var existing = DB_readAll(SHEETS.SPECIAL_COMMISSION_PRODUCTS || 'SpecialCommissionProducts');
+  if (existing && existing.length > 0) return 0;
+
+  var defaults = [
+    {
+      id: 'prod-heart-shirt',
+      sku: 'AVR004002XL, AVR00400L, AVR00400M, AVR00400S, AVR00400XL, AVR003002XL, AVR00300L, AVR00300M, AVR00300S, AVR00300XL',
+      name: 'เสื้อ AVR รูปหัวใจ (ทั้ง 2 ลาย)',
+      unit: 'ตัว',
+      commission_rate: 30,
+      bonus_min_qty: 5,
+      bonus_amount: 200,
+      bonus_description: 'ขายครบ 5 ตัว รับเพิ่ม 200 บาท (จ่าย 1 ครั้งต่อรอบการคำนวณ)',
+      image_url: '',
+      is_active: 'yes'
+    },
+    {
+      id: 'prod-velo-core',
+      sku: 'AVRMS005, AVRMS003, AVRMS002, AVRMS001, AVRMS004',
+      name: 'เสื้อ AVR Velo Core',
+      unit: 'ตัว',
+      commission_rate: 50,
+      bonus_min_qty: 0,
+      bonus_amount: 0,
+      bonus_description: 'ไม่มีโบนัสเพิ่มเติม (ไม่มี On Top)',
+      image_url: '',
+      is_active: 'yes'
+    },
+    {
+      id: 'prod-crop-luma',
+      sku: 'AVRWC003, AVRWC002, AVRWC001',
+      name: 'เสื้อ AVR Crop Luma Swift',
+      unit: 'ตัว',
+      commission_rate: 50,
+      bonus_min_qty: 0,
+      bonus_amount: 0,
+      bonus_description: 'ไม่มีโบนัสเพิ่มเติม (ไม่มี On Top)',
+      image_url: '',
+      is_active: 'yes'
+    },
+    {
+      id: 'prod-shorts',
+      sku: 'AVRMS008, AVRMS007, AVRMS006, AVRMS009, AVRWS003, AVRWS002, AVRWS001, AVRWS004',
+      name: 'กางเกง AVR',
+      unit: 'ตัว',
+      commission_rate: 50,
+      bonus_min_qty: 0,
+      bonus_amount: 0,
+      bonus_description: 'ไม่มีโบนัสเพิ่มเติม (ไม่มี On Top)',
+      image_url: '',
+      is_active: 'yes'
+    },
+    {
+      id: 'prod-socks',
+      sku: '8852906202601, 8852906202600',
+      name: 'ถุงเท้า AVR',
+      unit: 'คู่',
+      commission_rate: 20,
+      bonus_min_qty: 10,
+      bonus_amount: 200,
+      bonus_description: 'ขายครบ 10 คู่ รับเพิ่ม 200 บาท (จ่าย 1 ครั้งต่อรอบการคำนวณ)',
+      image_url: '',
+      is_active: 'yes'
+    }
+  ];
+
+  var count = 0;
+  for (var i = 0; i < defaults.length; i++) {
+    await DB_insert(SHEETS.SPECIAL_COMMISSION_PRODUCTS || 'SpecialCommissionProducts', defaults[i]);
+    count++;
+  }
+  return count;
+}
+
+function SpecialCommission_productsList(user, p) {
+  var list = DB_readAll(SHEETS.SPECIAL_COMMISSION_PRODUCTS || 'SpecialCommissionProducts');
+  return { items: list || [] };
+}
+
+async function SpecialCommission_productsUpsert(user, p) {
+  if (user.role !== 'admin' && user.role !== 'approver' && !hasCap_(user.role, 'setting.manage')) {
+    throw new Error('เฉพาะ Admin และ HR ที่มีสิทธิ์จัดการสินค้า');
+  }
+  var data = p || {};
+  if (!data.name || !String(data.name).trim()) throw new Error('กรุณาระบุชื่อสินค้า');
+  if (!data.sku || !String(data.sku).trim()) throw new Error('กรุณาระบุ SKU สินค้า');
+
+  var id = data.id ? String(data.id).trim() : '';
+  var payload = {
+    sku: String(data.sku).trim().toUpperCase(),
+    name: String(data.name).trim(),
+    unit: String(data.unit || 'ตัว').trim(),
+    commission_rate: Number(data.commission_rate || 0),
+    bonus_min_qty: Number(data.bonus_min_qty || 0),
+    bonus_amount: Number(data.bonus_amount || 0),
+    bonus_description: String(data.bonus_description || '').trim(),
+    image_url: String(data.image_url || '').trim(),
+    is_active: data.is_active === 'no' ? 'no' : 'yes'
+  };
+
+  if (id) {
+    var updated = await DB_update(SHEETS.SPECIAL_COMMISSION_PRODUCTS || 'SpecialCommissionProducts', id, payload);
+    return { success: true, item: updated };
+  } else {
+    payload.id = 'prod-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+    var inserted = await DB_insert(SHEETS.SPECIAL_COMMISSION_PRODUCTS || 'SpecialCommissionProducts', payload);
+    return { success: true, item: inserted };
+  }
+}
+
+async function SpecialCommission_productsDelete(user, p) {
+  if (user.role !== 'admin' && user.role !== 'approver') {
+    throw new Error('เฉพาะ Admin และ HR ที่มีสิทธิ์ลบสินค้า');
+  }
+  var id = String((p && p.id) || '').trim();
+  if (!id) throw new Error('ระบุ id สินค้า');
+  await DB_delete(SHEETS.SPECIAL_COMMISSION_PRODUCTS || 'SpecialCommissionProducts', id);
+  return { success: true };
+}
+
+function SpecialCommission_salesList(user, p) {
+  var data = p || {};
+  var month = data.month || cfg_dateOnly_(new Date()).substring(0, 7);
+  var branchFilter = data.branch ? String(data.branch).trim() : '';
+  var posFilter = data.position_filter || 'all';
+  var q = data.q ? String(data.q).trim().toLowerCase() : '';
+
+  var products = DB_readAll(SHEETS.SPECIAL_COMMISSION_PRODUCTS || 'SpecialCommissionProducts')
+    .filter(function (x) { return x.is_active !== 'no'; });
+
+  var allowedBranches = ['ปอโต', 'ปอร์โต', 'porto', 'ราชพฤกษ์', 'ratchapreuk', 'วิรันด้า', 'veranda'];
+
+  var officerSummary = [];
+  var apiDetails = [];
+
+  try {
+    var startDate = (month || new Date().toISOString().substring(0, 7)) + '-01';
+    var endDate = (month || new Date().toISOString().substring(0, 7)) + '-31';
+    var rRes = await fetch('https://avrstockapi-production.up.railway.app/api/web/reports/commission-by-officer?startDate=' + startDate + '&endDate=' + endDate);
+    if (rRes.ok) {
+      var rJson = await rRes.json();
+      if (rJson && rJson.success) {
+        officerSummary = rJson.officerSummary || [];
+        apiDetails = rJson.details || [];
+      }
+    }
+  } catch (e) {}
+
+  var branchFiltered = officerSummary.filter(function (off) {
+    var bName = String(off.branchName || '').toLowerCase();
+    return allowedBranches.some(function (allowed) {
+      return bName.indexOf(allowed) >= 0;
+    });
+  });
+
+  var officerMap = {};
+  branchFiltered.forEach(function (off) {
+    var key = off.officerId || (off.officerName + '_' + (off.nickName || ''));
+    if (!officerMap[key]) {
+      officerMap[key] = {
+        officerId: off.officerId,
+        id: 'rw-' + (off.officerId || key),
+        username: 'officer_' + (off.officerId || key),
+        full_name: (off.officerName || '') + (off.nickName ? ' (' + off.nickName + ')' : ''),
+        position: 'พนักงานหน้าร้าน',
+        department: 'ฝ่ายขาย',
+        branch: off.branchName || 'หน้าร้าน',
+        avatar: '',
+        role: 'employee',
+        total_sales_api: off.totalCommissionSales || 0,
+        total_qty_api: off.totalCommissionQty || 0
+      };
+    } else {
+      officerMap[key].total_sales_api += (off.totalCommissionSales || 0);
+      officerMap[key].total_qty_api += (off.totalCommissionQty || 0);
+    }
+  });
+
+  var allUsers = Object.values(officerMap);
+
+  var filteredUsers = allUsers.filter(function (u) {
+    if (branchFilter && String(u.branch || '').toLowerCase().indexOf(String(branchFilter).toLowerCase()) < 0) return false;
+    if (q) {
+      var matchName = String(u.full_name || '').toLowerCase().indexOf(q) >= 0;
+      var matchUser = String(u.username || '').toLowerCase().indexOf(q) >= 0;
+      if (!matchName && !matchUser) return false;
+    }
+    return true;
+  });
+
+  var salesRecords = DB_readAll(SHEETS.SPECIAL_COMMISSION_SALES || 'SpecialCommissionSales');
+  if (month) {
+    salesRecords = salesRecords.filter(function (s) {
+      return String(s.sale_date || '').indexOf(month) === 0;
+    });
+  }
+
+  var employeeStats = filteredUsers.map(function (u) {
+    var uSales = salesRecords.filter(function (s) { return String(s.employee_id) === String(u.id); });
+    
+    var productQty = {};
+    products.forEach(function (p) { productQty[p.id] = 0; });
+
+    uSales.forEach(function (s) {
+      var targetPid = s.product_id;
+      if (!targetPid || productQty[targetPid] === undefined) {
+        var sSku = String(s.sku || s.product_sku || '').trim().toUpperCase();
+        if (sSku) {
+          var found = products.find(function (pr) {
+            var skus = String(pr.sku || '').split(',').map(function (k) { return k.trim().toUpperCase(); });
+            return skus.indexOf(sSku) >= 0;
+          });
+          if (found) targetPid = found.id;
+        }
+      }
+      if (productQty[targetPid] !== undefined) {
+        productQty[targetPid] += Number(s.quantity || 0);
+      }
+    });
+
+    apiDetails.forEach(function (d) {
+      if (String(d.officerId) === String(u.officerId) || (u.full_name && u.full_name.indexOf(d.officerName) >= 0)) {
+        var dSku = String(d.sku || '').trim().toUpperCase();
+        if (dSku) {
+          var foundProd = products.find(function (pr) {
+            var skus = String(pr.sku || '').split(',').map(function (k) { return k.trim().toUpperCase(); });
+            return skus.indexOf(dSku) >= 0;
+          });
+          if (foundProd && productQty[foundProd.id] !== undefined) {
+            productQty[foundProd.id] += Number(d.totalQty || 0);
+          }
+        }
+      }
+    });
+
+    var totalCommission = 0;
+    var totalBonus = 0;
+    var productBreakdown = {};
+    var bonusBreakdown = [];
+
+    products.forEach(function (prod) {
+      var qty = productQty[prod.id] || 0;
+      var baseComm = qty * Number(prod.commission_rate || 0);
+      var bonus = 0;
+      if (Number(prod.bonus_min_qty) > 0 && qty >= Number(prod.bonus_min_qty)) {
+        bonus = Number(prod.bonus_amount || 0);
+        bonusBreakdown.push({
+          product_name: prod.name,
+          bonus_amount: bonus,
+          reason: 'ขายครบ ' + prod.bonus_min_qty + ' ' + (prod.unit || 'ชิ้น')
+        });
+      }
+      productBreakdown[prod.id] = {
+        qty: qty,
+        rate: Number(prod.commission_rate || 0),
+        base_comm: baseComm,
+        bonus: bonus,
+        total: baseComm + bonus
+      };
+      totalCommission += baseComm;
+      totalBonus += bonus;
+    });
+
+    var posLabel = u.position || (String(u.role) === 'employee' ? 'พนักงานหน้าร้าน' : u.role);
+
+    return {
+      user: {
+        id: u.id,
+        username: u.username,
+        full_name: u.full_name,
+        position: posLabel,
+        department: u.department,
+        branch: u.branch,
+        avatar: u.avatar
+      },
+      product_qty: productQty,
+      product_breakdown: productBreakdown,
+      base_commission: totalCommission,
+      total_bonus: totalBonus,
+      grand_total_commission: totalCommission + totalBonus,
+      bonus_breakdown: bonusBreakdown
+    };
+  });
+
+  return {
+    products: products,
+    month: month,
+    items: employeeStats
+  };
+}
+
+async function SpecialCommission_salesRecord(user, p) {
+  var data = p || {};
+  if (!data.employee_id) throw new Error('ระบุพนักงาน');
+  if (!data.product_id) throw new Error('ระบุสินค้า');
+  var qty = Number(data.quantity || 0);
+  if (isNaN(qty) || qty <= 0) throw new Error('ระบุจำนวนสินค้าที่ถูกต้อง');
+
+  var record = {
+    employee_id: String(data.employee_id).trim(),
+    product_id: String(data.product_id).trim(),
+    quantity: qty,
+    sale_date: data.sale_date || cfg_dateOnly_(new Date()),
+    branch: String(data.branch || '').trim(),
+    order_no: String(data.order_no || '').trim(),
+    created_by: user.id
+  };
+
+  var inserted = await DB_insert(SHEETS.SPECIAL_COMMISSION_SALES || 'SpecialCommissionSales', record);
+  return { success: true, item: inserted };
 }
 
 // === SERVE HANDLER ===

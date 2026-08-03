@@ -4558,6 +4558,274 @@ const DEPARTMENTS = ['ฝ่ายขาย', 'การตลาด', 'คล�
 const COMPANIES = ['บริษัท เอวริณทร์ อินเตอร์กรุ๊ป จำกัด', 'บริษัท สปอร์ต ไตรตัน จำกัด'];
 const BRANCHES = ['ออฟฟิต', 'ราชพฤกษ์', 'วิรันด้า', 'ปอโต', 'พนักงานแทน'];
 
+function getDefaultSpecialCommissionProducts() {
+  return [
+    { id: 'prod-heart-shirt', sku: 'AVR004002XL, AVR00400L, AVR00400M, AVR00400S, AVR00400XL, AVR003002XL, AVR00300L, AVR00300M, AVR00300S, AVR00300XL', name: 'เสื้อ AVR รูปหัวใจ (ทั้ง 2 ลาย)', unit: 'ตัว', commission_rate: 30, bonus_min_qty: 5, bonus_amount: 200, bonus_description: 'ขายครบ 5 ตัว รับเพิ่ม 200 บาท (จ่าย 1 ครั้งต่อรอบการคำนวณ)', is_active: 'yes' },
+    { id: 'prod-velo-core', sku: 'AVRMS005, AVRMS003, AVRMS002, AVRMS001, AVRMS004', name: 'เสื้อ AVR Velo Core', unit: 'ตัว', commission_rate: 50, bonus_min_qty: 0, bonus_amount: 0, bonus_description: 'ไม่มีโบนัสเพิ่มเติม (ไม่มี On Top)', is_active: 'yes' },
+    { id: 'prod-crop-luma', sku: 'AVRWC003, AVRWC002, AVRWC001', name: 'เสื้อ AVR Crop Luma Swift', unit: 'ตัว', commission_rate: 50, bonus_min_qty: 0, bonus_amount: 0, bonus_description: 'ไม่มีโบนัสเพิ่มเติม (ไม่มี On Top)', is_active: 'yes' },
+    { id: 'prod-shorts', sku: 'AVRMS008, AVRMS007, AVRMS006, AVRMS009, AVRWS003, AVRWS002, AVRWS001, AVRWS004', name: 'กางเกง AVR', unit: 'ตัว', commission_rate: 50, bonus_min_qty: 0, bonus_amount: 0, bonus_description: 'ไม่มีโบนัสเพิ่มเติม (ไม่มี On Top)', is_active: 'yes' },
+    { id: 'prod-socks', sku: '8852906202601, 8852906202600', name: 'ถุงเท้า AVR', unit: 'คู่', commission_rate: 20, bonus_min_qty: 10, bonus_amount: 200, bonus_description: 'ขายครบ 10 คู่ รับเพิ่ม 200 บาท (จ่าย 1 ครั้งต่อรอบการคำนวณ)', is_active: 'yes' }
+  ];
+}
+
+function getStoredSpecialCommissionProducts() {
+  try {
+    var raw = localStorage.getItem('lms_special_comm_products');
+    if (raw) {
+      var parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Upgrade legacy default SKUs if present
+        var defs = getDefaultSpecialCommissionProducts();
+        parsed.forEach(function (p) {
+          var matchDef = defs.find(function (d) { return d.id === p.id; });
+          if (matchDef && (!p.sku || p.sku.indexOf('AVR-TSHIRT') >= 0 || p.sku.indexOf('AVR-SHORTS') >= 0 || p.sku.indexOf('AVR-SOCKS') >= 0)) {
+            p.sku = matchDef.sku;
+          }
+        });
+        localStorage.setItem('lms_special_comm_products', JSON.stringify(parsed));
+        return parsed;
+      }
+    }
+  } catch (e) {}
+  var defs = getDefaultSpecialCommissionProducts();
+  try { localStorage.setItem('lms_special_comm_products', JSON.stringify(defs)); } catch (e) {}
+  return defs;
+}
+
+function getStoredSpecialCommissionSales() {
+  try {
+    var raw = localStorage.getItem('lms_special_comm_sales');
+    if (raw) {
+      var parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {}
+  return [];
+}
+
+async function handleSpecialCommissionClientApi(req) {
+  var action = req.action;
+  var p = req.payload || {};
+
+  if (action === 'special_commission.products.list') {
+    var prods = getStoredSpecialCommissionProducts();
+    return { ok: true, data: { items: prods } };
+  }
+
+  if (action === 'special_commission.products.upsert') {
+    var prods = getStoredSpecialCommissionProducts();
+    var id = p.id ? String(p.id).trim() : '';
+    var payload = {
+      id: id || ('prod-' + Date.now()),
+      sku: String(p.sku || '').trim().toUpperCase(),
+      name: String(p.name || '').trim(),
+      unit: String(p.unit || 'ตัว').trim(),
+      commission_rate: Number(p.commission_rate || 0),
+      bonus_min_qty: Number(p.bonus_min_qty || 0),
+      bonus_amount: Number(p.bonus_amount || 0),
+      bonus_description: String(p.bonus_description || '').trim(),
+      is_active: p.is_active === 'no' ? 'no' : 'yes'
+    };
+    if (id) {
+      var idx = prods.findIndex(function (x) { return String(x.id) === String(id); });
+      if (idx >= 0) prods[idx] = Object.assign(prods[idx], payload);
+      else prods.push(payload);
+    } else {
+      prods.push(payload);
+    }
+    localStorage.setItem('lms_special_comm_products', JSON.stringify(prods));
+    return { ok: true, data: { success: true, item: payload } };
+  }
+
+  if (action === 'special_commission.products.delete') {
+    var prods = getStoredSpecialCommissionProducts();
+    var id = String(p.id || '').trim();
+    prods = prods.filter(function (x) { return String(x.id) !== id; });
+    localStorage.setItem('lms_special_comm_products', JSON.stringify(prods));
+    return { ok: true, data: { success: true } };
+  }
+
+  if (action === 'special_commission.sales.list') {
+    var prods = getStoredSpecialCommissionProducts().filter(function (x) { return x.is_active !== 'no'; });
+    var sales = getStoredSpecialCommissionSales();
+
+    var month = p.month || new Date().toISOString().substring(0, 7);
+    var startDate = month + '-01';
+    var endDate = month + '-31';
+
+    var officerSummary = [];
+    var apiDetails = [];
+
+    try {
+      var url = 'https://avrstockapi-production.up.railway.app/api/web/reports/commission-by-officer?startDate=' + startDate + '&endDate=' + endDate;
+      var rRes = await fetch(url);
+      if (rRes.ok) {
+        var rJson = await rRes.json();
+        if (rJson && rJson.success) {
+          officerSummary = rJson.officerSummary || [];
+          apiDetails = rJson.details || [];
+        }
+      }
+    } catch (e) {
+      console.warn('Commission API fetch error:', e);
+    }
+
+    var allowedBranches = ['ปอโต', 'ปอร์โต', 'porto', 'ราชพฤกษ์', 'ratchapreuk', 'วิรันด้า', 'veranda'];
+
+    // Filter officers strictly by allowed branches
+    var branchFiltered = officerSummary.filter(function (off) {
+      var bName = String(off.branchName || '').toLowerCase();
+      return allowedBranches.some(function (allowed) {
+        return bName.indexOf(allowed) >= 0;
+      });
+    });
+
+    // Deduplicate by officerId or officerName
+    var officerMap = {};
+    branchFiltered.forEach(function (off) {
+      var key = off.officerId || (off.officerName + '_' + (off.nickName || ''));
+      if (!officerMap[key]) {
+        officerMap[key] = {
+          officerId: off.officerId,
+          id: 'rw-' + (off.officerId || key),
+          username: 'officer_' + (off.officerId || key),
+          full_name: (off.officerName || '') + (off.nickName ? ' (' + off.nickName + ')' : ''),
+          position: 'พนักงานหน้าร้าน',
+          department: 'ฝ่ายขาย',
+          branch: off.branchName || 'หน้าร้าน',
+          avatar: '',
+          role: 'employee',
+          total_sales_api: off.totalCommissionSales || 0,
+          total_qty_api: off.totalCommissionQty || 0
+        };
+      } else {
+        officerMap[key].total_sales_api += (off.totalCommissionSales || 0);
+        officerMap[key].total_qty_api += (off.totalCommissionQty || 0);
+      }
+    });
+
+    var allUsers = Object.values(officerMap);
+
+    var q = p.q ? String(p.q).trim().toLowerCase() : '';
+    var branchFilter = p.branch ? String(p.branch).trim().toLowerCase() : '';
+
+    var filteredUsers = allUsers.filter(function (u) {
+      if (branchFilter && String(u.branch || '').toLowerCase().indexOf(branchFilter) < 0) return false;
+      if (q) {
+        var matchName = String(u.full_name || '').toLowerCase().indexOf(q) >= 0;
+        var matchUser = String(u.username || '').toLowerCase().indexOf(q) >= 0;
+        if (!matchName && !matchUser) return false;
+      }
+      return true;
+    });
+
+    var monthSales = sales.filter(function (s) {
+      return String(s.sale_date || '').indexOf(month) === 0;
+    });
+
+    var items = filteredUsers.map(function (u) {
+      var uSales = monthSales.filter(function (s) { return String(s.employee_id) === String(u.id); });
+      var productQty = {};
+      prods.forEach(function (pr) { productQty[pr.id] = 0; });
+
+      // Add quantities from manual entries
+      uSales.forEach(function (s) {
+        var targetPid = s.product_id;
+        if (!targetPid || productQty[targetPid] === undefined) {
+          var sSku = String(s.sku || s.product_sku || '').trim().toUpperCase();
+          if (sSku) {
+            var found = prods.find(function (pr) {
+              var skus = String(pr.sku || '').split(',').map(function (k) { return k.trim().toUpperCase(); });
+              return skus.indexOf(sSku) >= 0;
+            });
+            if (found) targetPid = found.id;
+          }
+        }
+        if (productQty[targetPid] !== undefined) {
+          productQty[targetPid] += Number(s.quantity || 0);
+        }
+      });
+
+      // Add quantities from Railway API details per SKU
+      apiDetails.forEach(function (d) {
+        if (String(d.officerId) === String(u.officerId) || (u.full_name && u.full_name.indexOf(d.officerName) >= 0)) {
+          var dSku = String(d.sku || '').trim().toUpperCase();
+          if (dSku) {
+            var foundProd = prods.find(function (pr) {
+              var skus = String(pr.sku || '').split(',').map(function (k) { return k.trim().toUpperCase(); });
+              return skus.indexOf(dSku) >= 0;
+            });
+            if (foundProd && productQty[foundProd.id] !== undefined) {
+              productQty[foundProd.id] += Number(d.totalQty || 0);
+            }
+          }
+        }
+      });
+
+      var totalComm = 0;
+      var totalBonus = 0;
+      var bonusBreakdown = [];
+      var productBreakdown = {};
+
+      prods.forEach(function (pr) {
+        var qty = productQty[pr.id] || 0;
+        var baseComm = qty * Number(pr.commission_rate || 0);
+        var bonus = 0;
+        if (Number(pr.bonus_min_qty) > 0 && qty >= Number(pr.bonus_min_qty)) {
+          bonus = Number(pr.bonus_amount || 0);
+          bonusBreakdown.push({
+            product_name: pr.name,
+            bonus_amount: bonus,
+            reason: 'ขายครบ ' + pr.bonus_min_qty + ' ' + (pr.unit || 'ชิ้น')
+          });
+        }
+        productBreakdown[pr.id] = { qty: qty, rate: pr.commission_rate, base_comm: baseComm, bonus: bonus, total: baseComm + bonus };
+        totalComm += baseComm;
+        totalBonus += bonus;
+      });
+
+      return {
+        user: {
+          id: u.id,
+          username: u.username,
+          full_name: u.full_name,
+          position: u.position || (String(u.role) === 'employee' ? 'พนักงานหน้าร้าน' : u.role),
+          department: u.department,
+          branch: u.branch,
+          avatar: u.avatar,
+          total_sales_api: u.total_sales_api || 0,
+          total_bills_api: u.total_bills_api || 0
+        },
+        product_qty: productQty,
+        product_breakdown: productBreakdown,
+        base_commission: totalComm,
+        total_bonus: totalBonus,
+        grand_total_commission: totalComm + totalBonus,
+        bonus_breakdown: bonusBreakdown
+      };
+    });
+
+    return { ok: true, data: { products: prods, month: month, items: items } };
+  }
+
+  if (action === 'special_commission.sales.record') {
+    var sales = getStoredSpecialCommissionSales();
+    var record = {
+      id: 'sale-' + Date.now(),
+      employee_id: String(p.employee_id).trim(),
+      product_id: String(p.product_id).trim(),
+      quantity: Number(p.quantity || 1),
+      sale_date: p.sale_date || new Date().toISOString().substring(0, 10),
+      order_no: String(p.order_no || '').trim()
+    };
+    sales.push(record);
+    localStorage.setItem('lms_special_comm_sales', JSON.stringify(sales));
+    return { ok: true, data: { success: true, item: record } };
+  }
+
+  return null;
+}
+
 async function api(req) {
   var url = SUPABASE_URL + '/functions/v1/api';
   var opts = {
@@ -4572,11 +4840,19 @@ async function api(req) {
   try {
     var r = await fetch(url, opts);
     var res = await r.json().catch(function(){ return {}; });
-    if (!r.ok) {
+    if (!r.ok || (res && res.error && res.error.indexOf('ไม่พบ action') >= 0)) {
+      if (req && req.action && req.action.indexOf('special_commission.') === 0) {
+        var fallback = await handleSpecialCommissionClientApi(req);
+        if (fallback) return fallback;
+      }
       return { ok: false, error: res.error || ('HTTP ' + r.status) };
     }
     return res;
   } catch (e) {
+    if (req && req.action && req.action.indexOf('special_commission.') === 0) {
+      var fallback = await handleSpecialCommissionClientApi(req);
+      if (fallback) return fallback;
+    }
     return { ok: false, error: e.message || String(e) };
   }
 }
@@ -5230,7 +5506,8 @@ async function api(req) {
     '#/courses/view': { title: 'รายละเอียดคอร์ส',     sub: 'ประเมินผลการเรียนรู้ของพนักงาน', icon: 'journal-text' },
     '#/audit':        { title: 'บันทึกระบบ',         sub: 'ประวัติการใช้งาน',                    icon: 'shield-check' },
     '#/attendance':   { title: 'ประวัติการเข้างาน',  sub: 'ตรวจสอบการลงเวลาเข้า-ออกงานและภาพถ่ายเซลฟี่', icon: 'clock-history' },
-    '#/rentals':      { title: 'การเช่า-หมดอายุ',    sub: 'ติดตามรายการเช่าและสัญญาหมดอายุของพนักงานและระบบสำนักงาน', icon: 'calendar-range' }
+    '#/rentals':      { title: 'การเช่า-หมดอายุ',    sub: 'ติดตามรายการเช่าและสัญญาหมดอายุของพนักงานและระบบสำนักงาน', icon: 'calendar-range' },
+    '#/commission-special': { title: 'คอมมิชชั่นสินค้าพิเศษ', sub: 'คำนวณและสรุปยอดขายพนักงานหน้าร้าน & พนักงานแทน', icon: 'trophy-fill' }
   };
 
   // ── Menu groups ────────────────────────────────────
@@ -5257,7 +5534,8 @@ async function api(req) {
           { hash: '#/calendar',  icon: 'calendar3',         label: 'ปฏิทินลา',          cap: 'calendar.view_own|calendar.view_department|calendar.view_all' },
           { hash: '#/missions',  icon: 'signpost-2-fill',   label: 'งานออกนอกพื้นที่',   cap: 'mission.create_own|mission.view_own|mission.view_department|mission.view_all' },
           { hash: '#/branches',  icon: 'diagram-3',          label: 'ผังองค์กร',   cap: 'user.manage' },
-          { hash: '#/schedule',  icon: 'calendar-week',     label: 'ตารางทำงานสาขา',     cap: 'schedule.view_all' }
+          { hash: '#/schedule',  icon: 'calendar-week',     label: 'ตารางทำงานสาขา',     cap: 'schedule.view_all' },
+          { hash: '#/commission-special', icon: 'trophy-fill', label: 'คอมมิชชั่นสินค้าพิเศษ', cap: '*' }
         ]
       },
       {
@@ -13899,6 +14177,509 @@ async function api(req) {
         renderPage();
       }
     }).catch(function () {});
+  };
+
+  // ── Special Product Commission ──────────────────────────────────
+  Routes['#/commission-special'] = function () {
+    var state = {
+      month: new Date().toISOString().substring(0, 7),
+      branch: '',
+      positionFilter: 'all',
+      q: ''
+    };
+
+    function renderPage() {
+      var u = (window.LMS && window.LMS.Store && window.LMS.Store.user) || {};
+      var isAdminOrHR = u.role === 'admin' || u.role === 'approver' || (window.LMS && window.LMS.hasCap && window.LMS.hasCap('setting.manage'));
+
+      var html = '<div style="display:flex;flex-direction:column;gap:20px;">'
+        // Top Banner Header
+        + '<div style="background:linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311b92 100%);border-radius:18px;padding:24px;color:#fff;box-shadow:0 10px 25px -5px rgba(15,23,42,0.3);position:relative;overflow:hidden">'
+        + '<div style="position:absolute;right:-20px;top:-20px;width:150px;height:150px;background:rgba(255,255,255,0.05);border-radius:50%;pointer-events:none"></div>'
+        + '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;position:relative;z-index:1">'
+        + '  <div>'
+        + '    <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.2);color:#fca5a5;border:1px solid rgba(239,68,68,0.4);font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;margin-bottom:8px">'
+        + '      <i class="bi bi-fire"></i> ยิ่งขายเยอะ ยิ่งได้เยอะ! ขายครบตามเงื่อนไข รับโบนัสเพิ่มทันที'
+        + '    </div>'
+        + '    <h1 style="font-size:24px;font-weight:800;margin:0 0 6px;letter-spacing:-0.5px;color:#fff"><i class="bi bi-trophy-fill" style="color:#fbbf24;margin-right:8px"></i>ตารางค่าคอมพิเศษสินค้า AVR</h1>'
+        + '    <p style="font-size:13px;color:#cbd5e1;margin:0">ระบบคำนวณและสรุปยอดขายพนักงาน <strong style="color:#60a5fa">เฉพาะหน้าร้าน (ปอโต, ราชพฤกษ์, วิรันด้า)</strong> <span style="font-size:11px;color:#34d399;margin-left:8px"><i class="bi bi-cloud-check-fill"></i> Sync ล่าสุดจาก Stock API</span></p>'
+        + '  </div>'
+        + '  <div style="display:flex;gap:10px;flex-wrap:wrap">'
+        + '    <button class="btn" id="btn-sync-api" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8);color:#fff;border:0;font-weight:600;box-shadow:0 4px 12px rgba(59,130,246,0.3)"><i class="bi bi-arrow-repeat"></i> ดึงข้อมูลล่าสุดจาก API</button>'
+        + (isAdminOrHR ? '<button class="btn" id="btn-manage-prods" style="background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.2);backdrop-filter:blur(5px);font-weight:600"><i class="bi bi-gear-fill"></i> จัดการสินค้า & ค่าคอม (Admin/HR)</button>' : '')
+        + '  </div>'
+        + '</div>'
+        + '</div>'
+
+        // Cards Section (5 products + Rules panel)
+        + '<div id="sec-product-cards">' + skBlocks(1, 140) + '</div>'
+
+        // Filter Bar & Employee Table
+        + '<div class="card" style="padding:20px;border-radius:16px;box-shadow:0 4px 15px rgba(0,0,0,0.03)">'
+        + '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border-color, #e2e8f0)">'
+        + '  <div style="display:flex;align-items:center;gap:8px">'
+        + '    <i class="bi bi-people-fill" style="font-size:18px;color:#6366f1"></i>'
+        + '    <h3 style="font-size:16px;font-weight:700;margin:0">รายงานสรุปยอดขายพนักงาน (จาก Stock API)</h3>'
+        + '  </div>'
+        + '  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">'
+        + '    <input type="month" id="comm-filter-month" class="input" value="' + state.month + '" style="max-width:160px">'
+        + '    <div class="search-box" style="max-width:200px"><i class="bi bi-search"></i><input type="text" id="comm-filter-q" placeholder="ค้นหาชื่อพนักงาน..." value="' + esc(state.q) + '"></div>'
+        + '  </div>'
+        + '</div>'
+
+        + '<div id="sec-employee-table">' + skBlocks(4, 70) + '</div>'
+        + '</div>'
+        + '</div>';
+
+      setPage(html);
+
+      // Wire top buttons
+      if ($('#btn-sync-api')) {
+        $('#btn-sync-api').addEventListener('click', function () { loadData(); });
+      }
+      if ($('#btn-manage-prods')) {
+        $('#btn-manage-prods').addEventListener('click', function () { openManageProductsModal(); });
+      }
+
+      // Wire filters
+      $('#comm-filter-month').addEventListener('change', function () { state.month = this.value; loadData(); });
+      var qt;
+      $('#comm-filter-q').addEventListener('input', function () {
+        clearTimeout(qt);
+        qt = setTimeout(function () { state.q = $('#comm-filter-q').value; loadData(); }, 300);
+      });
+
+      loadData();
+    }
+
+    function loadData() {
+      Spinner.show('กำลังดึงข้อมูลล่าสุดจาก Stock API...');
+      state._t = Date.now();
+      call('special_commission.sales.list', state).then(function (res) {
+        Spinner.hide();
+        renderProductCards(res.products || []);
+        renderEmployeeTable(res.products || [], res.items || []);
+      }).catch(function (e) {
+        Spinner.hide();
+        toast('โหลดข้อมูลไม่สำเร็จ: ' + e.message, 'error');
+      });
+    }
+
+    function renderProductCards(products) {
+      if (!products || products.length === 0) {
+        $('#sec-product-cards').innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8">ไม่พบรายการสินค้า</div>';
+        return;
+      }
+
+      var colorSchemes = [
+        { bg: '#ef4444', text: '#fff', border: '#fca5a5', gradient: 'linear-gradient(135deg, #ef4444, #dc2626)', title: '1. เสื้อ AVR รูปหัวใจ (ทั้ง 2 ลาย)' },
+        { bg: '#2563eb', text: '#fff', border: '#93c5fd', gradient: 'linear-gradient(135deg, #2563eb, #1d4ed8)', title: '2. เสื้อ AVR Velo Core' },
+        { bg: '#059669', text: '#fff', border: '#6ee7b7', gradient: 'linear-gradient(135deg, #059669, #047857)', title: '3. เสื้อ AVR Crop Luma Swift' },
+        { bg: '#7c3aed', text: '#fff', border: '#c4b5fd', gradient: 'linear-gradient(135deg, #7c3aed, #6d28d9)', title: '4. กางเกง AVR' },
+        { bg: '#ea580c', text: '#fff', border: '#fdba74', gradient: 'linear-gradient(135deg, #ea580c, #c2410c)', title: '5. ถุงเท้า AVR' }
+      ];
+
+      var cardsHtml = products.map(function (p, idx) {
+        var cs = colorSchemes[idx % colorSchemes.length];
+        var title = p.name;
+        var hasBonus = Number(p.bonus_min_qty) > 0;
+        
+        var bonusBadge = hasBonus
+          ? '<div style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;padding:6px 10px;border-radius:8px;font-size:11px;font-weight:700;text-align:center;margin-bottom:8px">'
+            + '<i class="bi bi-gift-fill"></i> โบนัสพิเศษ (On Top)<br>' + esc(p.bonus_description || ('ขายครบ ' + p.bonus_min_qty + ' ' + p.unit + ' รับเพิ่ม ' + p.bonus_amount + ' บาท'))
+            + '</div>'
+          : '<div style="background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;padding:6px 10px;border-radius:8px;font-size:11px;text-align:center;margin-bottom:8px">'
+            + 'ไม่มีโบนัสเพิ่มเติม (ไม่มี On Top)'
+            + '</div>';
+
+        var exampleText = '';
+        if (hasBonus) {
+          var totalEx = (p.commission_rate * p.bonus_min_qty) + p.bonus_amount;
+          exampleText = 'ขาย ' + p.bonus_min_qty + ' ' + p.unit + ' = ' + totalEx + ' บาท<br><span style="font-size:10px;opacity:0.9">(' + p.commission_rate + ' x ' + p.bonus_min_qty + ') + ' + p.bonus_amount + '</span>';
+        } else {
+          var totalEx = p.commission_rate * 5;
+          exampleText = 'ขาย 5 ' + p.unit + ' = ' + totalEx + ' บาท<br><span style="font-size:10px;opacity:0.9">(' + p.commission_rate + ' x 5)</span>';
+        }
+
+        return '<div style="flex:1;min-width:180px;background:#fff;border-radius:14px;border:1px solid #e2e8f0;box-shadow:0 4px 12px rgba(0,0,0,0.04);overflow:hidden;display:flex;flex-direction:column">'
+          + '<div style="background:' + cs.gradient + ';color:#fff;padding:8px 12px;font-size:12px;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(title) + '">'
+          + esc(title)
+          + '</div>'
+          + '<div style="padding:12px;display:flex;flex-direction:column;flex:1;justify-content:space-between">'
+          + '  <div style="text-align:center;margin-bottom:8px">'
+          + '    <div style="font-size:10px;color:#64748b;font-weight:600">ค่าคอมพิเศษ</div>'
+          + '    <div style="font-size:18px;font-weight:800;color:#1e293b">' + p.commission_rate + ' <span style="font-size:12px;font-weight:500;color:#64748b">บาท/' + esc(p.unit) + '</span></div>'
+          + '  </div>'
+          +   bonusBadge
+          + '  <div style="background:' + cs.gradient + ';color:#fff;padding:6px 10px;border-radius:8px;font-size:11px;font-weight:700;text-align:center;margin-top:auto">'
+          + '    <i class="bi bi-calculator-fill"></i> ' + exampleText
+          + '  </div>'
+          + '</div>'
+          + '</div>';
+      }).join('');
+
+      var rulesPanel = '<div style="width:260px;min-width:240px;background:#fff;border-radius:14px;border:1px solid #cbd5e1;box-shadow:0 4px 12px rgba(0,0,0,0.04);overflow:hidden;display:flex;flex-direction:column">'
+        + '<div style="background:#0f172a;color:#fff;padding:8px 12px;font-size:12px;font-weight:700;text-align:center">'
+        + '<i class="bi bi-info-circle-fill" style="color:#60a5fa"></i> เงื่อนไขการจ่ายค่าคอม'
+        + '</div>'
+        + '<div style="padding:10px;font-size:11px;color:#334155;line-height:1.5;flex:1;display:flex;flex-direction:column;justify-content:space-between">'
+        + '  <ul style="padding-left:14px;margin:0 0 10px">'
+        + '    <li style="margin-bottom:4px"><strong style="color:#ef4444">เสื้อ AVR หัวใจ</strong>: 30 บาท/ตัว (ครบ 5 ตัว +200)</li>'
+        + '    <li style="margin-bottom:4px"><strong style="color:#2563eb">เสื้อ Velo Core</strong>: 50 บาท/ตัว</li>'
+        + '    <li style="margin-bottom:4px"><strong style="color:#059669">เสื้อ Crop Luma</strong>: 50 บาท/ตัว</li>'
+        + '    <li style="margin-bottom:4px"><strong style="color:#7c3aed">กางเกง AVR</strong>: 50 บาท/ตัว</li>'
+        + '    <li style="margin-bottom:4px"><strong style="color:#ea580c">ถุงเท้า AVR</strong>: 20 บาท/คู่ (ครบ 10 คู่ +200)</li>'
+        + '  </ul>'
+        + '  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px;font-size:10px;color:#475569">'
+        + '    <strong style="color:#0f172a"><i class="bi bi-exclamation-triangle-fill" style="color:#f59e0b"></i> หมายเหตุ:</strong><br>'
+        + '    • ข้อมูลจะ Sync ตรงจาก Stock API เสมอ<br>'
+        + '    • ไม่รวมรายการยกเลิก/คืนสินค้า'
+        + '  </div>'
+        + '</div>'
+        + '</div>';
+
+      $('#sec-product-cards').innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:stretch">' + cardsHtml + rulesPanel + '</div>';
+    }
+
+    function renderEmployeeTable(products, items) {
+      if (!items || items.length === 0) {
+        $('#sec-employee-table').innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8">'
+          + '<i class="bi bi-inbox" style="font-size:36px;display:block;margin-bottom:8px"></i>'
+          + 'ไม่พบข้อมูลยอดขายของพนักงานตามเงื่อนไขที่เลือก'
+          + '</div>';
+        return;
+      }
+
+      var thProducts = products.map(function (p) {
+        return '<th style="text-align:center;min-width:90px">'
+          + esc(p.name) + '<br>'
+          + '<span style="font-size:10px;font-weight:400;color:#64748b">(' + p.commission_rate + ' บ./' + esc(p.unit) + ')</span>'
+          + '</th>';
+      }).join('');
+
+      var totalProductQty = {};
+      products.forEach(function (p) { totalProductQty[p.id] = 0; });
+      var grandTotalBonus = 0;
+      var grandTotalComm = 0;
+
+      var trs = items.map(function (item, idx) {
+        var u = item.user;
+        var initial = (u.full_name || u.username || '?').substring(0, 1).toUpperCase();
+        var avatar = u.avatar ? '<img src="' + esc(u.avatar) + '" alt="" style="width:100%;height:100%;object-fit:cover">' : initial;
+        
+        var isRelief = String(u.position).indexOf('แทน') >= 0;
+        var posBadge = isRelief
+          ? '<span class="badge b-amber" style="font-size:10px;padding:2px 6px"><i class="bi bi-person-badge"></i> ' + esc(u.position) + '</span>'
+          : '<span class="badge b-emerald" style="font-size:10px;padding:2px 6px"><i class="bi bi-shop"></i> ' + esc(u.position) + '</span>';
+
+        var tdProducts = products.map(function (p) {
+          var qty = item.product_qty[p.id] || 0;
+          totalProductQty[p.id] += qty;
+          return '<td style="text-align:center;font-weight:' + (qty > 0 ? '700' : '400') + ';color:' + (qty > 0 ? '#0f172a' : '#cbd5e1') + '">'
+            + (qty > 0 ? (qty + ' ' + esc(p.unit)) : '-')
+            + '</td>';
+        }).join('');
+
+        grandTotalBonus += item.total_bonus;
+        grandTotalComm += item.grand_total_commission;
+
+        var bonusHtml = '-';
+        if (item.bonus_breakdown && item.bonus_breakdown.length > 0) {
+          bonusHtml = item.bonus_breakdown.map(function (b) {
+            return '<span class="badge b-rose" style="font-size:10px;padding:2px 6px;margin:2px;display:inline-block"><i class="bi bi-gift-fill"></i> +' + b.bonus_amount + ' บ. (' + esc(b.product_name) + ')</span>';
+          }).join(' ');
+        }
+
+        return '<tr>'
+          + '<td style="font-weight:600;color:#64748b">' + (idx + 1) + '</td>'
+          + '<td>'
+          + '  <div style="display:flex;align-items:center;gap:10px">'
+          + '    <div class="lv-avatar" style="width:36px;height:36px;font-size:14px;border-radius:50%;overflow:hidden;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-weight:700">' + avatar + '</div>'
+          + '    <div>'
+          + '      <div style="font-weight:700;color:#0f172a;font-size:13px">' + esc(u.full_name || u.username) + '</div>'
+          + '      <div style="display:flex;gap:4px;align-items:center;margin-top:2px">' + posBadge + (u.branch ? '<span style="font-size:10px;color:#64748b">[' + esc(u.branch) + ']</span>' : '') + '</div>'
+          + '    </div>'
+          + '  </div>'
+          + '</td>'
+          +   tdProducts
+          + '<td style="text-align:center">' + bonusHtml + '</td>'
+          + '<td style="text-align:right"><span style="font-size:15px;font-weight:800;color:#059669;background:#ecfdf5;padding:4px 10px;border-radius:8px;border:1px solid #a7f3d0">' + item.grand_total_commission.toLocaleString() + ' บาท</span></td>'
+          + '</tr>';
+      }).join('');
+
+      var totalTdProducts = products.map(function (p) {
+        return '<td style="text-align:center;font-weight:800;color:#1e293b">' + (totalProductQty[p.id] || 0) + ' ' + esc(p.unit) + '</td>';
+      }).join('');
+
+      var html = '<div style="overflow-x:auto">'
+        + '<table class="data-table" style="width:100%;border-collapse:collapse">'
+        + '<thead>'
+        + '  <tr style="background:#f8fafc">'
+        + '    <th style="width:40px">#</th>'
+        + '    <th style="min-width:180px">พนักงาน</th>'
+        +      thProducts
+        + '    <th style="text-align:center;min-width:140px">โบนัสพิเศษ (On Top)</th>'
+        + '    <th style="text-align:right;min-width:120px">ค่าคอมรวมสุทธิ</th>'
+        + '  </tr>'
+        + '</thead>'
+        + '<tbody>' + trs + '</tbody>'
+        + '<tfoot>'
+        + '  <tr style="background:#f1f5f9;font-weight:800">'
+        + '    <td colspan="2" style="text-align:right;padding:12px;font-weight:800">รวมทั้งหมด (' + items.length + ' คน):</td>'
+        +      totalTdProducts
+        + '    <td style="text-align:center;color:#dc2626">+' + grandTotalBonus.toLocaleString() + ' บาท</td>'
+        + '    <td style="text-align:right;font-size:16px;color:#059669;font-weight:800">' + grandTotalComm.toLocaleString() + ' บาท</td>'
+        + '  </tr>'
+        + '</tfoot>'
+        + '</table>'
+        + '</div>';
+
+      $('#sec-employee-table').innerHTML = html;
+    }
+
+    function openRecordSaleModal(selectedUserId) {
+      call('user.list', { limit: 1000 }).then(function (resUsers) {
+        call('special_commission.products.list', {}).then(function (resProds) {
+          var users = resUsers.items || [];
+          var products = resProds.items || [];
+
+          var userOptions = users.map(function (u) {
+            var sel = String(u.id) === String(selectedUserId) ? ' selected' : '';
+            return '<option value="' + esc(u.id) + '"' + sel + '>' + esc(u.full_name) + ' (' + esc(u.position || u.role) + ' - ' + esc(u.branch || 'ทุกสาขา') + ')</option>';
+          }).join('');
+
+          var prodOptions = products.map(function (p) {
+            return '<option value="' + esc(p.id) + '" data-rate="' + p.commission_rate + '" data-unit="' + esc(p.unit) + '">'
+              + esc(p.name) + ' [' + esc(p.sku) + '] - ค่าคอม ' + p.commission_rate + ' บาท/' + esc(p.unit)
+              + '</option>';
+          }).join('');
+
+          var today = new Date().toISOString().split('T')[0];
+
+          var formHtml = '<form id="form-record-sale" style="display:flex;flex-direction:column;gap:14px">'
+            + '<div>'
+            + '  <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">เลือกพนักงาน <span style="color:#ef4444">*</span></label>'
+            + '  <select id="rec-user-id" class="select" required style="width:100%">' + userOptions + '</select>'
+            + '</div>'
+            + '<div>'
+            + '  <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">เลือกสินค้าค่าคอมพิเศษ <span style="color:#ef4444">*</span></label>'
+            + '  <select id="rec-prod-id" class="select" required style="width:100%">' + prodOptions + '</select>'
+            + '</div>'
+            + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
+            + '  <div>'
+            + '    <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">จำนวนที่ขายได้ <span style="color:#ef4444">*</span></label>'
+            + '    <input type="number" id="rec-qty" class="input" value="1" min="1" required style="width:100%">'
+            + '  </div>'
+            + '  <div>'
+            + '    <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">วันที่ขาย <span style="color:#ef4444">*</span></label>'
+            + '    <input type="date" id="rec-date" class="input" value="' + today + '" required style="width:100%">'
+            + '  </div>'
+            + '</div>'
+            + '<div>'
+            + '  <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">เลขที่คำสั่งซื้อ / ออเดอร์ (ระบุถ้ามี)</label>'
+            + '  <input type="text" id="rec-order-no" class="input" placeholder="e.g. ORD-20260803-001" style="width:100%">'
+            + '</div>'
+            + '<div id="rec-preview" style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:12px;font-size:12px">'
+            + '</div>'
+            + '</form>';
+
+          Modal.open({
+            title: 'บันทึกยอดขายสินค้าพิเศษ',
+            html: formHtml,
+            footer: '<button class="btn" data-modal-close>ยกเลิก</button><button class="btn btn-primary" id="btn-save-sale"><i class="bi bi-check-lg"></i> บันทึกยอดขาย</button>',
+            onOpen: function (host) {
+              function updatePreview() {
+                var selProd = $('#rec-prod-id');
+                var opt = selProd.options[selProd.selectedIndex];
+                var rate = Number(opt ? opt.getAttribute('data-rate') : 0);
+                var unit = opt ? opt.getAttribute('data-unit') : 'ชิ้น';
+                var qty = Number($('#rec-qty').value || 0);
+                var comm = qty * rate;
+                $('#rec-preview').innerHTML = '<div style="font-weight:700;color:#0f172a;margin-bottom:4px">คำนวณเบื้องต้น:</div>'
+                  + '<div>จำนวน: <strong>' + qty + ' ' + esc(unit) + '</strong> x ' + rate + ' บาท = <strong style="color:#059669;font-size:14px">' + comm + ' บาท</strong></div>';
+              }
+
+              $('#rec-prod-id').addEventListener('change', updatePreview);
+              $('#rec-qty').addEventListener('input', updatePreview);
+              updatePreview();
+
+              $('#btn-save-sale').addEventListener('click', function () {
+                var payload = {
+                  employee_id: $('#rec-user-id').value,
+                  product_id: $('#rec-prod-id').value,
+                  quantity: Number($('#rec-qty').value),
+                  sale_date: $('#rec-date').value,
+                  order_no: $('#rec-order-no').value
+                };
+                if (!payload.employee_id || !payload.product_id || payload.quantity <= 0) {
+                  toast('กรุณากรอกข้อมูลให้ครบถ้วน', 'warning');
+                  return;
+                }
+                Spinner.show('กำลังบันทึกยอดขาย...');
+                call('special_commission.sales.record', payload).then(function () {
+                  Spinner.hide();
+                  Modal.close();
+                  toast('บันทึกยอดขายสำเร็จ!', 'success');
+                  loadData();
+                }).catch(function (e) {
+                  Spinner.hide();
+                  toast('บันทึกไม่สำเร็จ: ' + e.message, 'error');
+                });
+              });
+            }
+          });
+        });
+      });
+    }
+
+    function openManageProductsModal() {
+      Spinner.show('กำลังดึงรายการสินค้า...');
+      call('special_commission.products.list', {}).then(function (res) {
+        Spinner.hide();
+        var products = res.items || [];
+
+        var rowsHtml = products.map(function (p, idx) {
+          return '<tr>'
+            + '<td>' + (idx + 1) + '</td>'
+            + '<td><strong style="color:#4f46e5">' + esc(p.sku) + '</strong></td>'
+            + '<td><strong style="color:#0f172a">' + esc(p.name) + '</strong></td>'
+            + '<td style="text-align:center">' + esc(p.unit) + '</td>'
+            + '<td style="text-align:right;font-weight:700;color:#059669">' + p.commission_rate + ' บาท</td>'
+            + '<td style="font-size:11px;color:#64748b">' + (Number(p.bonus_min_qty) > 0 ? ('ขายครบ ' + p.bonus_min_qty + ' ' + p.unit + ' +' + p.bonus_amount + ' บ.') : 'ไม่มี') + '</td>'
+            + '<td style="text-align:center"><button class="btn btn-sm btn-edit-prod" data-id="' + esc(p.id) + '"><i class="bi bi-pencil-square"></i> แก้ไข</button></td>'
+            + '</tr>';
+        }).join('');
+
+        var modalHtml = '<div style="display:flex;flex-direction:column;gap:14px">'
+          + '<div style="display:flex;justify-content:space-between;align-items:center">'
+          + '  <div style="font-size:13px;color:#64748b">จัดการสินค้ากำหนดอัตราค่าคอมพิเศษและโบนัส On Top สำหรับ Admin / HR</div>'
+          + '  <button class="btn btn-sm btn-primary" id="btn-add-new-prod"><i class="bi bi-plus-lg"></i> เพิ่มสินค้าใหม่</button>'
+          + '</div>'
+          + '<div style="overflow-x:auto">'
+          + '<table class="data-table" style="width:100%">'
+          + '<thead><tr><th>#</th><th>SKU</th><th>ชื่อสินค้า</th><th style="text-align:center">หน่วย</th><th style="text-align:right">ค่าคอม/หน่วย</th><th>โบนัสพิเศษ</th><th style="text-align:center">จัดการ</th></tr></thead>'
+          + '<tbody>' + (rowsHtml || '<tr><td colspan="7" style="text-align:center;padding:20px;color:#94a3b8">ไม่มีสินค้า</td></tr>') + '</tbody>'
+          + '</table>'
+          + '</div>'
+          + '</div>';
+
+        Modal.open({
+          title: 'จัดการสินค้าค่าคอมพิเศษ (Admin + HR)',
+          html: modalHtml,
+          large: true,
+          footer: '<button class="btn" data-modal-close>ปิด</button>',
+          onOpen: function (host) {
+            $('#btn-add-new-prod').addEventListener('click', function () { openProductFormModal(null, products); });
+            $$('.btn-edit-prod').forEach(function (btn) {
+              btn.addEventListener('click', function () {
+                var pid = this.getAttribute('data-id');
+                var target = products.find(function (x) { return String(x.id) === String(pid); });
+                openProductFormModal(target, products);
+              });
+            });
+          }
+        });
+      }).catch(function (e) {
+        Spinner.hide();
+        toast('เกิดข้อผิดพลาด: ' + e.message, 'error');
+      });
+    }
+
+    function openProductFormModal(prod, allProds) {
+      prod = prod || { id: '', sku: '', name: '', unit: 'ตัว', commission_rate: 50, bonus_min_qty: 0, bonus_amount: 0, bonus_description: '', is_active: 'yes' };
+
+      var formHtml = '<form id="form-product-edit" style="display:flex;flex-direction:column;gap:12px">'
+        + '<div>'
+        + '  <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">ชื่อสินค้า <span style="color:#ef4444">*</span></label>'
+        + '  <input type="text" id="pform-name" class="input" value="' + esc(prod.name) + '" placeholder="e.g. เสื้อ AVR รูปหัวใจ (รวมทุกไซส์)" required style="width:100%">'
+        + '</div>'
+        + '<div>'
+        + '  <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">SKU สินค้าทั้งหมด <span style="font-size:11px;font-weight:400;color:#64748b">(ระบุหลาย SKU / หลายไซส์ได้ โดยแยกด้วยเครื่องหมายจุลภาค ,)</span> <span style="color:#ef4444">*</span></label>'
+        + '  <textarea id="pform-sku" class="input" rows="2" placeholder="e.g. AVR-TSHIRT-HEART-S, AVR-TSHIRT-HEART-M, AVR-TSHIRT-HEART-L, AVR-TSHIRT-HEART-XL" required style="width:100%;font-family:monospace;font-size:12px">' + esc(prod.sku) + '</textarea>'
+        + '</div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
+        + '  <div>'
+        + '    <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">หน่วยนับ <span style="color:#ef4444">*</span></label>'
+        + '    <input type="text" id="pform-unit" class="input" value="' + esc(prod.unit || 'ตัว') + '" placeholder="e.g. ตัว, คู่, ชิ้น" required style="width:100%">'
+        + '  </div>'
+        + '  <div>'
+        + '    <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">ค่าคอมพิเศษต่อหน่วย (บาท) <span style="color:#ef4444">*</span></label>'
+        + '    <input type="number" id="pform-rate" class="input" value="' + prod.commission_rate + '" min="0" required style="width:100%">'
+        + '  </div>'
+        + '</div>'
+        + '<div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px">'
+        + '  <div style="font-weight:700;font-size:12px;color:#0f172a"><i class="bi bi-gift-fill" style="color:#ef4444"></i> ตั้งค่าโบนัสพิเศษ (On Top)</div>'
+        + '  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
+        + '    <div>'
+        + '      <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">จำนวนขั้นต่ำ (เช่น ครบ 5 ชิ้น)</label>'
+        + '      <input type="number" id="pform-bonus-qty" class="input" value="' + (prod.bonus_min_qty || 0) + '" min="0" style="width:100%">'
+        + '    </div>'
+        + '    <div>'
+        + '      <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">จำนวนเงินโบนัส (บาท)</label>'
+        + '      <input type="number" id="pform-bonus-amt" class="input" value="' + (prod.bonus_amount || 0) + '" min="0" style="width:100%">'
+        + '    </div>'
+        + '  </div>'
+        + '  <div>'
+        + '    <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">คำอธิบายโบนัส</label>'
+        + '    <input type="text" id="pform-bonus-desc" class="input" value="' + esc(prod.bonus_description || '') + '" placeholder="e.g. ขายครบ 5 ตัว รับเพิ่ม 200 บาท" style="width:100%">'
+        + '  </div>'
+        + '</div>'
+        + '</form>';
+
+      Modal.open({
+        title: prod.id ? 'แก้ไขสินค้าค่าคอมพิเศษ' : 'เพิ่มสินค้าค่าคอมพิเศษใหม่',
+        html: formHtml,
+        footer: (prod.id ? '<button class="btn btn-danger" id="btn-del-prod" style="margin-right:auto"><i class="bi bi-trash"></i> ลบสินค้า</button>' : '')
+          + '<button class="btn" data-modal-close>ยกเลิก</button><button class="btn btn-primary" id="btn-save-prod"><i class="bi bi-check-lg"></i> บันทึกสินค้า</button>',
+        onOpen: function (host) {
+          if ($('#btn-del-prod')) {
+            $('#btn-del-prod').addEventListener('click', function () {
+              if (!confirm('ยืนยันลบสินค้านี้?')) return;
+              Spinner.show('กำลังลบ...');
+              call('special_commission.products.delete', { id: prod.id }).then(function () {
+                Spinner.hide();
+                Modal.close();
+                toast('ลบสินค้าเรียบร้อย', 'success');
+                openManageProductsModal();
+              }).catch(function (e) {
+                Spinner.hide();
+                toast('ลบไม่สำเร็จ: ' + e.message, 'error');
+              });
+            });
+          }
+
+          $('#btn-save-prod').addEventListener('click', function () {
+            var payload = {
+              id: prod.id || undefined,
+              sku: $('#pform-sku').value,
+              name: $('#pform-name').value,
+              unit: $('#pform-unit').value,
+              commission_rate: Number($('#pform-rate').value),
+              bonus_min_qty: Number($('#pform-bonus-qty').value),
+              bonus_amount: Number($('#pform-bonus-amt').value),
+              bonus_description: $('#pform-bonus-desc').value
+            };
+            if (!payload.sku || !payload.name) {
+              toast('กรุณากรอก SKU และชื่อสินค้า', 'warning');
+              return;
+            }
+            Spinner.show('กำลังบันทึก...');
+            call('special_commission.products.upsert', payload).then(function () {
+              Spinner.hide();
+              Modal.close();
+              toast('บันทึกสินค้าสำเร็จ!', 'success');
+              openManageProductsModal();
+              loadData();
+            }).catch(function (e) {
+              Spinner.hide();
+              toast('บันทึกไม่สำเร็จ: ' + e.message, 'error');
+            });
+          });
+        }
+      });
+    }
+
+    renderPage();
   };
 
   // ── Standalone Expenses End ──
