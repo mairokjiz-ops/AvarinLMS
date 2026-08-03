@@ -4717,15 +4717,33 @@ function SpecialCommission_salesList(user, p) {
   try {
     var startDate = (month || new Date().toISOString().substring(0, 7)) + '-01';
     var endDate = (month || new Date().toISOString().substring(0, 7)) + '-31';
-    var rRes = await fetch('https://avrstockapi-production.up.railway.app/api/web/reports/commission-by-officer?startDate=' + startDate + '&endDate=' + endDate);
-    if (rRes.ok) {
-      var rJson = await rRes.json();
+    var rRes = await fetch('https://avrstockapi-production.up.railway.app/api/web/reports/commission-by-officer?startDate=' + startDate + '&endDate=' + endDate).catch(function () { return null; });
+    if (rRes && rRes.ok) {
+      var rJson = await rRes.json().catch(function () { return null; });
       if (rJson && rJson.success) {
         officerSummary = rJson.officerSummary || [];
         apiDetails = rJson.details || [];
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Backend Stock API fetch error:', e);
+  }
+
+  if (!officerSummary || officerSummary.length === 0) {
+    var dbUsers = DB_readAll(SHEETS.USERS).filter(function (u) {
+      return String(u.is_active).toLowerCase() === 'yes';
+    });
+    dbUsers.forEach(function (u) {
+      officerSummary.push({
+        officerId: u.id,
+        officerName: u.full_name || u.username,
+        nickName: '',
+        branchName: u.branch || 'ราชพฤกษ์',
+        totalCommissionSales: 0,
+        totalCommissionQty: 0
+      });
+    });
+  }
 
   var branchFiltered = officerSummary.filter(function (off) {
     var bName = String(off.branchName || '').toLowerCase();
