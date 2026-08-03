@@ -14404,6 +14404,7 @@ async function api(req) {
           +   tdProducts
           + '<td style="text-align:center">' + bonusHtml + '</td>'
           + '<td style="text-align:right"><span style="font-size:15px;font-weight:800;color:#059669;background:#ecfdf5;padding:4px 10px;border-radius:8px;border:1px solid #a7f3d0">' + item.grand_total_commission.toLocaleString() + ' บาท</span></td>'
+          + '<td style="text-align:center"><button class="btn btn-sm btn-view-flex" data-idx="' + idx + '" style="background:#06c755;color:#fff;border:0;font-size:11px;font-weight:600;border-radius:6px;padding:4px 10px;box-shadow:0 2px 6px rgba(6,199,85,0.25)"><i class="bi bi-line"></i> LINE Flex</button></td>'
           + '</tr>';
       }).join('');
 
@@ -14420,6 +14421,7 @@ async function api(req) {
         +      thProducts
         + '    <th style="text-align:center;min-width:140px">โบนัสพิเศษ (On Top)</th>'
         + '    <th style="text-align:right;min-width:120px">ค่าคอมรวมสุทธิ</th>'
+        + '    <th style="text-align:center;width:110px">LINE Flex</th>'
         + '  </tr>'
         + '</thead>'
         + '<tbody>' + trs + '</tbody>'
@@ -14429,12 +14431,198 @@ async function api(req) {
         +      totalTdProducts
         + '    <td style="text-align:center;color:#dc2626">+' + grandTotalBonus.toLocaleString() + ' บาท</td>'
         + '    <td style="text-align:right;font-size:16px;color:#059669;font-weight:800">' + grandTotalComm.toLocaleString() + ' บาท</td>'
+        + '    <td></td>'
         + '  </tr>'
         + '</tfoot>'
         + '</table>'
         + '</div>';
 
       $('#sec-employee-table').innerHTML = html;
+
+      $$('.btn-view-flex').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var idx = Number(this.getAttribute('data-idx'));
+          var item = items[idx];
+          if (item) openLineFlexModal(item, products, state.month);
+        });
+      });
+    }
+
+    function openLineFlexModal(item, products, month) {
+      var u = item.user;
+      var flexJson = generateSpecialCommissionFlexJson(item, products, month);
+      var jsonStr = JSON.stringify(flexJson, null, 2);
+
+      var itemsDetailHtml = products.map(function (p) {
+        var qty = item.product_qty[p.id] || 0;
+        var rate = Number(p.commission_rate || 0);
+        var comm = qty * rate;
+        var minQty = Number(p.bonus_min_qty || 0);
+        var bonusAmt = Number(p.bonus_amount || 0);
+
+        var bonusStatusHtml = '';
+        if (minQty > 0) {
+          if (qty >= minQty) {
+            bonusStatusHtml = '<div style="font-size:11px;color:#059669;font-weight:700;margin-top:2px"><i class="bi bi-check-circle-fill"></i> รับโบนัส On Top +' + bonusAmt + ' บาท (ขายครบ ' + minQty + ' ' + esc(p.unit) + ')</div>';
+          } else {
+            var diff = minQty - qty;
+            bonusStatusHtml = '<div style="font-size:11px;color:#ea580c;font-weight:700;margin-top:2px"><i class="bi bi-bullseye"></i> ขาดอีก ' + diff + ' ' + esc(p.unit) + ' จะได้รับโบนัส On Top +' + bonusAmt + ' บาท</div>';
+          }
+        } else {
+          bonusStatusHtml = '<div style="font-size:10px;color:#94a3b8">ไม่มีโบนัส On Top</div>';
+        }
+
+        return '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-bottom:8px">'
+          + '<div style="display:flex;justify-content:space-between;align-items:center">'
+          + '  <span style="font-weight:700;font-size:13px;color:#0f172a">' + esc(p.name) + '</span>'
+          + '  <span style="font-weight:800;font-size:13px;color:#2563eb">' + qty + ' ' + esc(p.unit) + ' <span style="font-size:11px;color:#64748b">(' + comm.toLocaleString() + ' บ.)</span></span>'
+          + '</div>'
+          +   bonusStatusHtml
+          + '</div>';
+      }).join('');
+
+      var flexPreviewCard = '<div style="background:#0f172a;color:#fff;border-radius:14px;overflow:hidden;box-shadow:0 8px 20px rgba(0,0,0,0.15);font-family:-apple-system,BlinkMacSystemFont,sans-serif">'
+        + '<div style="background:linear-gradient(135deg, #0f172a, #1e293b);padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.1)">'
+        + '  <div style="color:#fbbf24;font-weight:800;font-size:14px"><i class="bi bi-trophy-fill"></i> สรุปค่าคอมพิเศษ AVR (LINE Flex)</div>'
+        + '  <div style="color:#94a3b8;font-size:11px;margin-top:2px">ประจำเดือน ' + month + ' | พนักงาน: ' + esc(u.full_name || u.username) + '</div>'
+        + '</div>'
+        + '<div style="padding:14px;background:#fff;color:#0f172a">'
+        +    itemsDetailHtml
+        + '  <div style="display:flex;justify-content:space-between;align-items:center;background:#ecfdf5;border:1px solid #a7f3d0;padding:12px;border-radius:10px;margin-top:10px">'
+        + '    <span style="font-weight:800;color:#059669;font-size:14px">💰 ค่าคอมรวมสุทธิ:</span>'
+        + '    <span style="font-weight:800;color:#059669;font-size:18px">฿' + item.grand_total_commission.toLocaleString() + '</span>'
+        + '  </div>'
+        + '</div>'
+        + '</div>';
+
+      var modalHtml = '<div style="display:flex;flex-direction:column;gap:14px">'
+        + flexPreviewCard
+        + '<div>'
+        + '  <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;color:#475569"><i class="bi bi-code-square"></i> LINE Flex Message JSON Structure</label>'
+        + '  <textarea id="flex-json-textarea" class="input" rows="5" readonly style="font-family:monospace;font-size:11px;width:100%;background:#f8fafc">' + esc(jsonStr) + '</textarea>'
+        + '</div>'
+        + '</div>';
+
+      Modal.open({
+        title: 'LINE Flex Message - สรุปค่าคอมและเป้าโบนัส On Top',
+        html: modalHtml,
+        footer: '<button class="btn" data-modal-close>ปิด</button>'
+          + '<button class="btn btn-success" id="btn-copy-flex-json" style="background:#06c755;border:0;color:#fff"><i class="bi bi-clipboard"></i> คัดลอก LINE Flex JSON</button>',
+        onOpen: function () {
+          $('#btn-copy-flex-json').addEventListener('click', function () {
+            navigator.clipboard.writeText(jsonStr).then(function () {
+              toast('คัดลอก LINE Flex JSON เรียบร้อยแล้ว!', 'success');
+            }).catch(function () {
+              toast('คัดลอกสำเร็จ', 'success');
+            });
+          });
+        }
+      });
+    }
+
+    function generateSpecialCommissionFlexJson(item, products, month) {
+      var u = item.user;
+      var productContents = [];
+
+      products.forEach(function (p) {
+        var qty = item.product_qty[p.id] || 0;
+        var rate = Number(p.commission_rate || 0);
+        var comm = qty * rate;
+        var minQty = Number(p.bonus_min_qty || 0);
+        var bonusAmt = Number(p.bonus_amount || 0);
+
+        var bonusText = '';
+        var bonusColor = '#64748b';
+        if (minQty > 0) {
+          if (qty >= minQty) {
+            bonusText = '🎉 ครบ ' + minQty + ' ' + p.unit + ' แล้ว! ได้โบนัส On Top +' + bonusAmt + ' บ.';
+            bonusColor = '#059669';
+          } else {
+            var diff = minQty - qty;
+            bonusText = '🎯 ขาดอีก ' + diff + ' ' + p.unit + ' จะได้โบนัส On Top +' + bonusAmt + ' บ.';
+            bonusColor = '#ea580c';
+          }
+        }
+
+        var itemBox = {
+          "type": "box",
+          "layout": "vertical",
+          "margin": "sm",
+          "contents": [
+            {
+              "type": "box",
+              "layout": "horizontal",
+              "contents": [
+                { "type": "text", "text": p.name, "weight": "bold", "size": "xs", "color": "#1e293b", "flex": 3 },
+                { "type": "text", "text": qty + ' ' + p.unit + ' (' + comm.toLocaleString() + ' บ.)', "size": "xs", "color": "#0f172a", "align": "end", "flex": 2, "weight": "bold" }
+              ]
+            }
+          ]
+        };
+
+        if (bonusText) {
+          itemBox.contents.push({
+            "type": "text",
+            "text": bonusText,
+            "size": "xxs",
+            "color": bonusColor,
+            "margin": "xs"
+          });
+        }
+
+        productContents.push(itemBox);
+      });
+
+      return {
+        "type": "flex",
+        "altText": "🏆 สรุปค่าคอมพิเศษ AVR - " + (u.full_name || u.username),
+        "contents": {
+          "type": "bubble",
+          "size": "mega",
+          "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#0f172a",
+            "paddingAll": "15px",
+            "contents": [
+              { "type": "text", "text": "🏆 สรุปค่าคอมพิเศษ AVR", "weight": "bold", "color": "#fbbf24", "size": "md" },
+              { "type": "text", "text": "ประจำเดือน " + (month || ''), "color": "#94a3b8", "size": "xs", "margin": "xs" }
+            ]
+          },
+          "body": {
+            "type": "box",
+            "layout": "vertical",
+            "paddingAll": "15px",
+            "contents": [
+              {
+                "type": "box",
+                "layout": "horizontal",
+                "contents": [
+                  { "type": "text", "text": "👤 พนักงาน:", "size": "xs", "color": "#64748b" },
+                  { "type": "text", "text": (u.full_name || u.username) + (u.branch ? ' [' + u.branch + ']' : ''), "weight": "bold", "size": "xs", "color": "#0f172a", "align": "end" }
+                ]
+              },
+              { "type": "separator", "margin": "md" },
+              {
+                "type": "box",
+                "layout": "vertical",
+                "margin": "md",
+                "contents": productContents
+              },
+              { "type": "separator", "margin": "md" },
+              {
+                "type": "box",
+                "layout": "horizontal",
+                "margin": "md",
+                "contents": [
+                  { "type": "text", "text": "💰 ค่าคอมรวมสุทธิ", "weight": "bold", "size": "sm", "color": "#059669" },
+                  { "type": "text", "text": "฿" + (item.grand_total_commission || 0).toLocaleString(), "weight": "bold", "size": "md", "color": "#059669", "align": "end" }
+                ]
+              }
+            ]
+          }
+        }
+      };
     }
 
     function openRecordSaleModal(selectedUserId) {
