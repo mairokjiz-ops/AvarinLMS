@@ -14480,8 +14480,8 @@ async function api(req) {
             + '</td>';
         }).join('');
 
-        grandTotalBonus += item.total_bonus;
-        grandTotalComm += item.grand_total_commission;
+        grandTotalBonus += Number(item.total_bonus || 0);
+        grandTotalComm += Number(item.grand_total || item.grand_total_commission || 0);
 
         var bonusHtml = '-';
         if (item.bonus_breakdown && item.bonus_breakdown.length > 0) {
@@ -14503,7 +14503,7 @@ async function api(req) {
           + '</td>'
           +   tdProducts
           + '<td style="text-align:center">' + bonusHtml + '</td>'
-          + '<td style="text-align:right"><span style="font-size:15px;font-weight:800;color:#059669;background:#ecfdf5;padding:4px 10px;border-radius:8px;border:1px solid #a7f3d0">' + item.grand_total_commission.toLocaleString() + ' บาท</span></td>'
+          + '<td style="text-align:right"><span style="font-size:15px;font-weight:800;color:#059669;background:#ecfdf5;padding:4px 10px;border-radius:8px;border:1px solid #a7f3d0">' + Number(item.grand_total || item.grand_total_commission || 0).toLocaleString() + ' บาท</span></td>'
           + '<td style="text-align:center"><button class="btn btn-sm btn-view-flex" data-idx="' + idx + '" style="background:#06c755;color:#fff;border:0;font-size:11px;font-weight:600;border-radius:6px;padding:4px 10px;box-shadow:0 2px 6px rgba(6,199,85,0.25)"><i class="bi bi-line"></i> LINE Flex</button></td>'
           + '</tr>';
       }).join('');
@@ -14590,7 +14590,7 @@ async function api(req) {
         +    itemsDetailHtml
         + '  <div style="display:flex;justify-content:space-between;align-items:center;background:#ecfdf5;border:1px solid #a7f3d0;padding:12px;border-radius:10px;margin-top:10px">'
         + '    <span style="font-weight:800;color:#059669;font-size:14px">💰 ค่าคอมรวมสุทธิ:</span>'
-        + '    <span style="font-weight:800;color:#059669;font-size:18px">฿' + item.grand_total_commission.toLocaleString() + '</span>'
+        + '    <span style="font-weight:800;color:#059669;font-size:18px">฿' + Number(item.grand_total || item.grand_total_commission || 0).toLocaleString() + '</span>'
         + '  </div>'
         + '</div>'
         + '</div>';
@@ -14716,7 +14716,7 @@ async function api(req) {
                 "margin": "md",
                 "contents": [
                   { "type": "text", "text": "💰 ค่าคอมรวมสุทธิ", "weight": "bold", "size": "sm", "color": "#059669" },
-                  { "type": "text", "text": "฿" + (item.grand_total_commission || 0).toLocaleString(), "weight": "bold", "size": "md", "color": "#059669", "align": "end" }
+                  { "type": "text", "text": "฿" + Number(item.grand_total || item.grand_total_commission || 0).toLocaleString(), "weight": "bold", "size": "md", "color": "#059669", "align": "end" }
                 ]
               }
             ]
