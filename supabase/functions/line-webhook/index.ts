@@ -2938,6 +2938,146 @@ function _LINE_verifySignature_(e, channelSecret) {
   }
 }
 
+async function LINE_buildAllCommissionSummaryFlex_(monthStr: string) {
+  var month = monthStr || new Date().toISOString().substring(0, 7);
+  var parts = month.split('-');
+  var year = Number(parts[0]);
+  var mon = Number(parts[1]);
+
+  var apiData: any[] = [];
+  try {
+    var url = 'https://avrstockapi-production.up.railway.app/api/web/reports/commission-by-officer-monthly?year=' + year + '&month=' + mon;
+    var res = await fetch(url);
+    if (res.ok) {
+      var json = await res.json();
+      if (json && json.success && Array.isArray(json.monthlyDetails)) {
+        apiData = json.monthlyDetails;
+      }
+    }
+  } catch (e) {}
+
+  // Load OfficerMappings and Users from DB
+  var mappings: any[] = await sbFetch('GET', 'OfficerMappings', 'select=*&limit=10000').catch(() => []) || [];
+  var allUsers: any[] = DB_readAll('Users').filter((u: any) => String(u.is_active || '').toLowerCase() === 'yes');
+
+  // Products definition (hardcoded same as commission flex)
+  var products = [
+    { id: 'prod-heart-shirt', skus: ['AVR004002XL','AVR00400L','AVR00400M','AVR00400S','AVR00400XL','AVR003002XL','AVR00300L','AVR00300M','AVR00300S','AVR00300XL'], name: 'เสื้อ AVR', unit: 'ตัว', rate: 30, bonusMin: 5, bonusAmt: 200 },
+    { id: 'prod-velo-core', skus: ['AVRMS005','AVRMS003','AVRMS002','AVRMS001','AVRMS004'], name: 'Velo Core', unit: 'ตัว', rate: 50, bonusMin: 0, bonusAmt: 0 },
+    { id: 'prod-crop-luma', skus: ['AVRWC003','AVRWC002','AVRWC001'], name: 'Crop Luma', unit: 'ตัว', rate: 50, bonusMin: 0, bonusAmt: 0 },
+    { id: 'prod-shorts', skus: ['AVRMS008','AVRMS007','AVRMS006','AVRMS009','AVRWS003','AVRWS002','AVRWS001','AVRWS004'], name: 'กางเกง', unit: 'ตัว', rate: 50, bonusMin: 0, bonusAmt: 0 },
+    { id: 'prod-socks', skus: ['8852906202601','8852906202600'], name: 'ถุงเท้า', unit: 'คู่', rate: 20, bonusMin: 10, bonusAmt: 200 }
+  ];
+
+  // Group by officer
+  var officerMap: any = {};
+  apiData.forEach((d: any) => {
+    var offName = String(d.officerName || '').trim();
+    var offId = String(d.officerId || '').trim();
+    var key = offId || offName;
+    if (!key) return;
+
+    // Check OfficerMappings first
+    var mapping = mappings.find((m: any) =>
+      String(m.api_officer_name || '').toLowerCase() === offName.toLowerCase() ||
+      (offId && String(m.api_officer_id || '') === offId)
+    );
+    var matchedUser: any = null;
+    if (mapping) {
+      matchedUser = allUsers.find((u: any) => String(u.id) === String(mapping.lms_user_id));
+    }
+    if (!matchedUser) {
+      matchedUser = allUsers.find((u: any) => {
+        var fn = String(u.full_name || '').toLowerCase();
+        var un = String(u.username || '').toLowerCase();
+        var on = offName.toLowerCase();
+        return fn.indexOf(on) >= 0 || on.indexOf(fn.split(' ')[0]) >= 0 || un.indexOf(on) >= 0;
+      });
+    }
+    if (matchedUser) key = String(matchedUser.id);
+
+    if (!officerMap[key]) {
+      officerMap[key] = { name: matchedUser ? (matchedUser.full_name || matchedUser.username) : offName, qty: {}, totalComm: 0 };
+      products.forEach((p: any) => { officerMap[key].qty[p.id] = 0; });
+    }
+
+    var dSku = String(d.sku || '').trim().toUpperCase();
+    var found = products.find((pr: any) => pr.skus.map((s: string) => s.toUpperCase()).indexOf(dSku) >= 0);
+    if (found) {
+      officerMap[key].qty[found.id] += Number(d.totalQty || 0);
+    }
+  });
+
+  // Compute commissions
+  var results: any[] = [];
+  Object.keys(officerMap).forEach(k => {
+    var o = officerMap[k];
+    var comm = 0;
+    products.forEach((p: any) => {
+      var qty = o.qty[p.id] || 0;
+      comm += qty * p.rate;
+      if (p.bonusMin > 0 && qty >= p.bonusMin) comm += p.bonusAmt;
+    });
+    o.totalComm = comm;
+    if (comm > 0) results.push(o);
+  });
+  results.sort((a: any, b: any) => b.totalComm - a.totalComm);
+
+  var grandTotal = results.reduce((s: number, r: any) => s + r.totalComm, 0);
+
+  var empBoxes: any[] = results.length === 0
+    ? [{ "type": "text", "text": "ยังไม่มีพนักงานที่มียอดขายในเดือนนี้", "size": "xs", "color": "#64748b", "align": "center" }]
+    : results.map((r: any, idx: number) => ({
+        "type": "box",
+        "layout": "horizontal",
+        "margin": "sm",
+        "contents": [
+          { "type": "text", "text": (idx+1) + ". " + r.name, "size": "xs", "color": "#0f172a", "flex": 3, "weight": "bold", "wrap": true },
+          { "type": "text", "text": "฿" + r.totalComm.toLocaleString(), "size": "xs", "color": "#059669", "align": "end", "flex": 2, "weight": "bold" }
+        ]
+      }));
+
+  return {
+    "type": "flex",
+    "altText": "🏆 คอมรวมพนักงาน AVR " + month + " (" + results.length + " คน)",
+    "contents": {
+      "type": "bubble",
+      "header": {
+        "type": "box",
+        "layout": "vertical",
+        "backgroundColor": "#0f172a",
+        "paddingAll": "lg",
+        "contents": [
+          { "type": "text", "text": "🏆 สรุปค่าคอมพิเศษ AVR", "weight": "bold", "color": "#fbbf24", "size": "md" },
+          { "type": "text", "text": "คอมรวมพนักงานทุกคน | " + month + " | " + results.length + " คน", "size": "xxs", "color": "#94a3b8", "margin": "xs" }
+        ]
+      },
+      "body": {
+        "type": "box",
+        "layout": "vertical",
+        "paddingAll": "lg",
+        "contents": [
+          { "type": "text", "text": "📊 รายการคอมรวมของพนักงาน", "weight": "bold", "size": "xs", "color": "#475569" },
+          { "type": "separator", "margin": "md" },
+          { "type": "box", "layout": "horizontal", "margin": "xs", "contents": [
+            { "type": "text", "text": "ชื่อพนักงาน", "size": "xxs", "color": "#94a3b8", "flex": 3, "weight": "bold" },
+            { "type": "text", "text": "คอมรวม", "size": "xxs", "color": "#94a3b8", "align": "end", "flex": 2, "weight": "bold" }
+          ]},
+          { "type": "box", "layout": "vertical", "margin": "sm", "contents": empBoxes },
+          { "type": "separator", "margin": "lg" },
+          {
+            "type": "box", "layout": "horizontal", "margin": "md",
+            "contents": [
+              { "type": "text", "text": "💰 คอมรวมสุทธิทั้งหมด", "weight": "bold", "size": "sm", "color": "#1e293b", "flex": 3 },
+              { "type": "text", "text": "฿" + grandTotal.toLocaleString(), "weight": "bold", "size": "md", "color": "#059669", "align": "end", "flex": 2 }
+            ]
+          }
+        ]
+      }
+    }
+  };
+}
+
 async function LINE_buildSpecialCommissionFlex_(user: any, monthStr: string) {
   var products = [
     { id: 'prod-heart-shirt', sku: 'AVR004002XL, AVR00400L, AVR00400M, AVR00400S, AVR00400XL, AVR003002XL, AVR00300L, AVR00300M, AVR00300S, AVR00300XL', name: 'เสื้อ AVR รูปหัวใจ', unit: 'ตัว', commission_rate: 30, bonus_min_qty: 5, bonus_amount: 200 },
@@ -3126,6 +3266,17 @@ async function _LINE_handleTextMessage_(event, replyToken, lineUserId) {
     await LINE_replyMessage_(replyToken, [notConnectedFlex]);
   } else {
     var lowerTxt = txt.toLowerCase();
+    if (lowerTxt === 'คอมรวม' || lowerTxt === 'commrwm' || lowerTxt === 'comm รวม') {
+      if (user.role === 'admin' || user.role === 'approver') {
+        var monthStr2 = new Date().toISOString().substring(0, 7);
+        var summaryFlex = await LINE_buildAllCommissionSummaryFlex_(monthStr2);
+        await LINE_replyMessage_(replyToken, [summaryFlex]);
+      } else {
+        await LINE_replyTextMessage_(replyToken, '⚠️ สิทธิ์นี้สำหรับ Admin/HR เท่านั้นครับ');
+      }
+      return;
+    }
+
     if (lowerTxt.indexOf('ค่าคอม') >= 0 || lowerTxt.indexOf('โบนัส') >= 0 || lowerTxt.indexOf('commission') >= 0) {
       var monthStr = new Date().toISOString().substring(0, 7);
       var commFlex = await LINE_buildSpecialCommissionFlex_(user, monthStr);
