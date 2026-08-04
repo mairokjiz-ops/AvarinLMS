@@ -4731,29 +4731,30 @@ async function SpecialCommission_salesList(user, p) {
     products.forEach(function (pr) { officerMap[u.id].productQty[pr.id] = 0; });
   });
 
-  // ── 3. Fetch Railway API ──────────────────────────────────
+  // ── 3. Fetch Railway API (Monthly Endpoint) ───────────────
   var apiDetails = [];
   try {
-    var startDate = month + '-01';
-    var endDate = month + '-31';
-    var rRes = await fetch(
-      'https://avrstockapi-production.up.railway.app/api/web/reports/commission-by-officer?startDate=' + startDate + '&endDate=' + endDate
-    ).catch(function () { return null; });
+    var parts = String(month || '').split('-');
+    var yr = parts[0] || new Date().getFullYear();
+    var mo = parseInt(parts[1] || (new Date().getMonth() + 1), 10);
+
+    var apiUrl = 'https://avrstockapi-production.up.railway.app/api/web/reports/commission-by-officer-monthly?year=' + yr + '&month=' + mo;
+    var rRes = await fetch(apiUrl).catch(function () { return null; });
     if (rRes && rRes.ok) {
       var rJson = await rRes.json().catch(function () { return null; });
       if (rJson && rJson.success) {
-        apiDetails = rJson.details || [];
+        apiDetails = rJson.monthlyDetails || rJson.details || [];
       }
     }
-    // Fallback: if month query returns no details, fetch all available API data
+    // Fallback: if month query returns no details, fetch all monthly data
     if (!apiDetails || apiDetails.length === 0) {
       var rResFb = await fetch(
-        'https://avrstockapi-production.up.railway.app/api/web/reports/commission-by-officer'
+        'https://avrstockapi-production.up.railway.app/api/web/reports/commission-by-officer-monthly'
       ).catch(function () { return null; });
       if (rResFb && rResFb.ok) {
         var rJsonFb = await rResFb.json().catch(function () { return null; });
-        if (rJsonFb && rJsonFb.success && rJsonFb.details) {
-          apiDetails = rJsonFb.details || [];
+        if (rJsonFb && rJsonFb.success) {
+          apiDetails = rJsonFb.monthlyDetails || rJsonFb.details || [];
         }
       }
     }
