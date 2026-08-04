@@ -4769,18 +4769,26 @@ async function SpecialCommission_salesList(user, p) {
 
     var offName = String(d.officerName || '').trim();
     var nick = String(d.nickName || '').trim();
+    if (!offName && !nick) return;
 
-    // Match to active LMS user by name or nickname
+    // Match to active LMS user by exact name or non-empty nickname
     var targetUserId = null;
     dbUsers.forEach(function (u) {
       if (targetUserId) return;
       var uFull = String(u.full_name || '').trim();
       var uName = String(u.username || '').trim();
 
-      if (offName && (uFull === offName || uFull.indexOf(offName) >= 0 || offName.indexOf(uFull) >= 0)) {
-        targetUserId = u.id;
-      } else if (nick && (uFull.indexOf(nick) >= 0 || uName.indexOf(nick) >= 0)) {
-        targetUserId = u.id;
+      if (offName && offName.length > 1) {
+        if (uFull === offName || (uFull.length >= 3 && (uFull.indexOf(offName) >= 0 || offName.indexOf(uFull) >= 0))) {
+          targetUserId = u.id;
+          return;
+        }
+      }
+      if (nick && nick.length > 1) {
+        if ((uFull.length >= 2 && uFull.indexOf(nick) >= 0) || (uName.length >= 2 && uName.indexOf(nick) >= 0)) {
+          targetUserId = u.id;
+          return;
+        }
       }
     });
 
