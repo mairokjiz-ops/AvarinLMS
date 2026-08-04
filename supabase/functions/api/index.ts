@@ -4717,18 +4717,9 @@ async function SpecialCommission_salesList(user, p) {
     });
   });
 
-  // ── 2. Get active LMS users ONLY as base list ──────────────
+  // ── 2. Active LMS Users lookup map ────────────────────────
   var dbUsers = DB_readAll(SHEETS.USERS).filter(function (u) {
     return String(u.is_active).toLowerCase() === 'yes';
-  });
-
-  var officerMap = {};
-  dbUsers.forEach(function (u) {
-    officerMap[u.id] = {
-      user: u,
-      productQty: {}
-    };
-    products.forEach(function (pr) { officerMap[u.id].productQty[pr.id] = 0; });
   });
 
   // ── 3. Fetch Railway API (Monthly Endpoint) ───────────────
@@ -4762,7 +4753,9 @@ async function SpecialCommission_salesList(user, p) {
     console.warn('Railway API fetch error:', e);
   }
 
-  // ── 4. Match API details ONLY to existing active LMS users ──
+  // ── 4. Aggregate sales per officer ───────────────────────
+  var officerMap = {}; // key: officerKey
+
   apiDetails.forEach(function (d) {
     var dSku = String(d.sku || d.productSku || '').trim().toUpperCase();
     var pid = skuToProduct[dSku];
@@ -4770,35 +4763,51 @@ async function SpecialCommission_salesList(user, p) {
 
     var offName = String(d.officerName || '').trim();
     var nick = String(d.nickName || '').trim();
-    if (!offName && !nick) return;
+    var offId = String(d.officerId || '').trim();
+    if (!offName && !offId) return;
 
-    // Match to active LMS user by exact name or non-empty nickname
-    var targetUserId = null;
-    dbUsers.forEach(function (u) {
-      if (targetUserId) return;
-      var uFull = String(u.full_name || '').trim();
-      var uName = String(u.username || '').trim();
+    var key = offId || offName;
 
-      if (offName && offName.length > 1) {
-        if (uFull === offName || (uFull.length >= 3 && (uFull.indexOf(offName) >= 0 || offName.indexOf(uFull) >= 0))) {
-          targetUserId = u.id;
-          return;
+    if (!officerMap[key]) {
+      // Find matching LMS user if available
+      var matchedUser = null;
+      dbUsers.forEach(function (u) {
+        if (matchedUser) return;
+        var uFull = String(u.full_name || '').trim();
+        var uName = String(u.username || '').trim();
+        if (offName && offName.length > 1) {
+          if (uFull === offName || (uFull.length >= 3 && (uFull.indexOf(offName) >= 0 || offName.indexOf(uFull) >= 0))) {
+            matchedUser = u;
+            return;
+          }
         }
-      }
-      if (nick && nick.length > 1) {
-        if ((uFull.length >= 2 && uFull.indexOf(nick) >= 0) || (uName.length >= 2 && uName.indexOf(nick) >= 0)) {
-          targetUserId = u.id;
-          return;
+        if (nick && nick.length > 1) {
+          if ((uFull.length >= 2 && uFull.indexOf(nick) >= 0) || (uName.length >= 2 && uName.indexOf(nick) >= 0)) {
+            matchedUser = u;
+            return;
+          }
         }
-      }
-    });
+      });
 
-    if (targetUserId && officerMap[targetUserId]) {
-      officerMap[targetUserId].productQty[pid] = (officerMap[targetUserId].productQty[pid] || 0) + Number(d.totalQty || d.qty || 0);
+      var displayName = offName + (nick ? ' (' + nick + ')' : '');
+      officerMap[key] = {
+        id: matchedUser ? matchedUser.id : ('off-' + key),
+        username: matchedUser ? matchedUser.username : ('officer_' + key),
+        full_name: matchedUser ? matchedUser.full_name : displayName,
+        position: matchedUser ? matchedUser.position : 'พนักงานขาย',
+        department: matchedUser ? matchedUser.department : 'ฝ่ายขาย',
+        branch: d.branchName || (matchedUser ? matchedUser.branch : ''),
+        avatar: matchedUser ? matchedUser.avatar : '',
+        role: matchedUser ? matchedUser.role : 'employee',
+        productQty: {}
+      };
+      products.forEach(function (pr) { officerMap[key].productQty[pr.id] = 0; });
     }
+
+    officerMap[key].productQty[pid] = (officerMap[key].productQty[pid] || 0) + Number(d.totalQty || d.qty || 0);
   });
 
-  // ── 5. Add internal sales records from SpecialCommissionSales table ──
+  // ── 5. Add internal sales records from SpecialCommissionSales ──
   var salesRecords = DB_readAll(SHEETS.SPECIAL_COMMISSION_SALES || 'SpecialCommissionSales');
   if (month) {
     salesRecords = salesRecords.filter(function (s) {
@@ -4813,37 +4822,41 @@ async function SpecialCommission_salesList(user, p) {
     }
     if (!pid) return;
     var uid = String(s.employee_id || s.user_id);
+    if (!officerMap[uid]) {
+      var u = dbUsers.find(function (x) { return String(x.id) === uid; });
+      if (u) {
+        officerMap[uid] = {
+          id: u.id,
+          username: u.username,
+          full_name: u.full_name,
+          position: u.position || 'พนักงานขาย',
+          department: u.department || 'ฝ่ายขาย',
+          branch: u.branch || '',
+          avatar: u.avatar || '',
+          role: u.role || 'employee',
+          productQty: {}
+        };
+        products.forEach(function (pr) { officerMap[uid].productQty[pr.id] = 0; });
+      }
+    }
     if (officerMap[uid]) {
       officerMap[uid].productQty[pid] = (officerMap[uid].productQty[pid] || 0) + Number(s.quantity || 0);
     }
   });
 
-  // ── 6. Build final result list for active LMS users ────────
+  // ── 6. Build final result list ───────────────────────────
   var allEntries = Object.values(officerMap);
 
-  // Apply filters (branch / search)
-  var filteredEntries = allEntries.filter(function (entry) {
-    var u = entry.user;
-    if (branchFilter) {
-      var bLow = String(u.branch || '').toLowerCase();
-      if (bLow.indexOf(String(branchFilter).toLowerCase()) < 0) return false;
-    }
-    if (q) {
-      var nm = String(u.full_name || u.username || '').toLowerCase();
-      if (nm.indexOf(q) < 0) return false;
-    }
-    return true;
-  });
-
-  var employeeStats = filteredEntries.map(function (entry) {
-    var u = entry.user;
+  var employeeStats = allEntries.map(function (off) {
     var totalCommission = 0;
     var totalBonus = 0;
     var productBreakdown = {};
     var bonusBreakdown = [];
+    var totalQtySum = 0;
 
     products.forEach(function (prod) {
-      var qty = Number(entry.productQty[prod.id] || 0);
+      var qty = Number(off.productQty[prod.id] || 0);
+      totalQtySum += qty;
       var baseComm = qty * Number(prod.commission_rate || 0);
       var bonus = 0;
       if (Number(prod.bonus_min_qty) > 0 && qty >= Number(prod.bonus_min_qty)) {
@@ -4867,16 +4880,17 @@ async function SpecialCommission_salesList(user, p) {
 
     return {
       user: {
-        id: u.id,
-        username: u.username,
-        full_name: u.full_name,
-        position: u.position || 'พนักงาน',
-        department: u.department || 'ฝ่ายขาย',
-        branch: u.branch || '',
-        avatar: u.avatar || '',
-        role: u.role || 'employee'
+        id: off.id,
+        username: off.username,
+        full_name: off.full_name,
+        position: off.position,
+        department: off.department,
+        branch: off.branch,
+        avatar: off.avatar,
+        role: off.role
       },
-      product_qty: entry.productQty,
+      total_qty_sum: totalQtySum,
+      product_qty: off.productQty,
       product_breakdown: productBreakdown,
       total_commission: totalCommission,
       total_bonus: totalBonus,
@@ -4886,17 +4900,31 @@ async function SpecialCommission_salesList(user, p) {
     };
   });
 
-  // Sort: most grand_total first, then alphabetically
-  employeeStats.sort(function (a, b) {
+  // ── 7. Filter: Show ONLY officers with actual sales (total_qty_sum > 0 || grand_total > 0) ──
+  var filteredStats = employeeStats.filter(function (item) {
+    if (item.total_qty_sum <= 0 && item.grand_total <= 0) return false;
+    if (branchFilter) {
+      var bLow = String(item.user.branch || '').toLowerCase();
+      if (bLow.indexOf(String(branchFilter).toLowerCase()) < 0) return false;
+    }
+    if (q) {
+      var nm = String(item.user.full_name || item.user.username || '').toLowerCase();
+      if (nm.indexOf(q) < 0) return false;
+    }
+    return true;
+  });
+
+  // Sort: most grand_total first, then by name
+  filteredStats.sort(function (a, b) {
     if (b.grand_total !== a.grand_total) return b.grand_total - a.grand_total;
     return String(a.user.full_name).localeCompare(String(b.user.full_name), 'th');
   });
 
   return {
-    items: employeeStats,
+    items: filteredStats,
     products: products,
     month: month,
-    total: employeeStats.length
+    total: filteredStats.length
   };
 }
 
