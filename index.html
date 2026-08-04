@@ -14806,6 +14806,7 @@ async function api(req) {
                 Spinner.hide();
                 toast('บันทึกการจับคู่เรียบร้อย!', 'success');
                 Modal.close();
+                openManageOfficerMappingsModal();
                 loadData();
               }).catch(function (e) {
                 Spinner.hide();

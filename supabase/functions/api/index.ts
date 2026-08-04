@@ -103,7 +103,8 @@ const SCHEMAS = Object.freeze({
   UserProgress: ['id','user_id','course_id','quiz_score','quiz_total','is_passed','created_at','updated_at'],
   CourseChunks: ['id','course_id','chunk_index','content','metadata','embedding','created_at','updated_at'],
   SpecialCommissionProducts: ['id','sku','name','unit','commission_rate','bonus_min_qty','bonus_amount','bonus_description','image_url','is_active','created_at','updated_at'],
-  SpecialCommissionSales: ['id','employee_id','product_id','quantity','sale_date','branch','order_no','created_by','created_at','updated_at']
+  SpecialCommissionSales: ['id','employee_id','product_id','quantity','sale_date','branch','order_no','created_by','created_at','updated_at'],
+  OfficerMappings: ['id','api_officer_name','api_officer_id','lms_user_id','created_at','updated_at']
 });
 
 // ── TEXT_COLUMNS — บังคับ Sheet เก็บเป็น text กัน auto-coercion ─
@@ -5014,11 +5015,13 @@ async function OfficerMapping_upsert(user, p) {
 
   if (found) {
     var updated = await DB_update(SHEETS.OFFICER_MAPPINGS || 'OfficerMappings', found.id, record);
+    DB_invalidate(SHEETS.OFFICER_MAPPINGS || 'OfficerMappings');
     return { success: true, item: updated };
   } else {
     record.id = 'map-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
     record.created_at = new Date().toISOString();
     var inserted = await DB_insert(SHEETS.OFFICER_MAPPINGS || 'OfficerMappings', record);
+    DB_invalidate(SHEETS.OFFICER_MAPPINGS || 'OfficerMappings');
     return { success: true, item: inserted };
   }
 }
@@ -5028,6 +5031,7 @@ async function OfficerMapping_delete(user, p) {
   var id = data.id;
   if (!id) throw new Error('ระบุ ID ที่ต้องการลบ');
   await DB_delete(SHEETS.OFFICER_MAPPINGS || 'OfficerMappings', id);
+  DB_invalidate(SHEETS.OFFICER_MAPPINGS || 'OfficerMappings');
   return { success: true };
 }
 
