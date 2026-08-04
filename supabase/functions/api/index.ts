@@ -83,7 +83,8 @@ const SHEETS = Object.freeze({
   PROGRESS:  'UserProgress',
   COURSE_CHUNKS: 'CourseChunks',
   SPECIAL_COMMISSION_PRODUCTS: 'SpecialCommissionProducts',
-  SPECIAL_COMMISSION_SALES: 'SpecialCommissionSales'
+  SPECIAL_COMMISSION_SALES: 'SpecialCommissionSales',
+  OFFICER_MAPPINGS: 'OfficerMappings'
 });
 
 // ── Schemas ─────────────────────────────────────────────────
@@ -3483,6 +3484,10 @@ async function api(req) {
       case 'special_commission.sales.list':      return _ok(await SpecialCommission_salesList(user, p));
       case 'special_commission.sales.record':    return _ok(await SpecialCommission_salesRecord(user, p));
 
+      case 'officer_mapping.list':    return _ok(OfficerMapping_list(user, p));
+      case 'officer_mapping.upsert':  return _ok(await OfficerMapping_upsert(user, p));
+      case 'officer_mapping.delete':  return _ok(await OfficerMapping_delete(user, p));
+
       case 'audit.list':              return _ok(Audit_list(user, p));
       case 'r2.get_upload_url':       return _ok(await R2_getUploadUrl(user, p));
       case 'r2.upload':               return _ok(await R2_upload(user, p));
@@ -4756,6 +4761,15 @@ async function SpecialCommission_salesList(user, p) {
   // ── 4. Aggregate sales per officer ───────────────────────
   var officerMap = {}; // key: officerKey
 
+  // ── Read manual Officer Mappings ─────────────────────────
+  var officerMappings = DB_readAll(SHEETS.OFFICER_MAPPINGS || 'OfficerMappings');
+  var mappingByApiName = {};
+  var mappingByApiId = {};
+  (officerMappings || []).forEach(function (m) {
+    if (m.api_officer_name) mappingByApiName[String(m.api_officer_name).trim().toLowerCase()] = m.lms_user_id;
+    if (m.api_officer_id) mappingByApiId[String(m.api_officer_id).trim()] = m.lms_user_id;
+  });
+
   apiDetails.forEach(function (d) {
     var dSku = String(d.sku || d.productSku || '').trim().toUpperCase();
     var pid = skuToProduct[dSku];
@@ -4769,25 +4783,33 @@ async function SpecialCommission_salesList(user, p) {
     var key = offId || offName;
 
     if (!officerMap[key]) {
-      // Find matching LMS user if available
+      // 1) Priority #1: Check manual Admin OfficerMappings
+      var mappedUserId = (offId && mappingByApiId[offId]) || (offName && mappingByApiName[offName.toLowerCase()]);
       var matchedUser = null;
-      dbUsers.forEach(function (u) {
-        if (matchedUser) return;
-        var uFull = String(u.full_name || '').trim();
-        var uName = String(u.username || '').trim();
-        if (offName && offName.length > 1) {
-          if (uFull === offName || (uFull.length >= 3 && (uFull.indexOf(offName) >= 0 || offName.indexOf(uFull) >= 0))) {
-            matchedUser = u;
-            return;
+      if (mappedUserId) {
+        matchedUser = dbUsers.find(function (u) { return String(u.id) === String(mappedUserId); });
+      }
+
+      // 2) Priority #2: Auto match by name / nickname if no manual mapping
+      if (!matchedUser) {
+        dbUsers.forEach(function (u) {
+          if (matchedUser) return;
+          var uFull = String(u.full_name || '').trim();
+          var uName = String(u.username || '').trim();
+          if (offName && offName.length > 1) {
+            if (uFull === offName || (uFull.length >= 3 && (uFull.indexOf(offName) >= 0 || offName.indexOf(uFull) >= 0))) {
+              matchedUser = u;
+              return;
+            }
           }
-        }
-        if (nick && nick.length > 1) {
-          if ((uFull.length >= 2 && uFull.indexOf(nick) >= 0) || (uName.length >= 2 && uName.indexOf(nick) >= 0)) {
-            matchedUser = u;
-            return;
+          if (nick && nick.length > 1) {
+            if ((uFull.length >= 2 && uFull.indexOf(nick) >= 0) || (uName.length >= 2 && uName.indexOf(nick) >= 0)) {
+              matchedUser = u;
+              return;
+            }
           }
-        }
-      });
+        });
+      }
 
       var displayName = offName + (nick ? ' (' + nick + ')' : '');
       officerMap[key] = {
@@ -4948,6 +4970,51 @@ async function SpecialCommission_salesRecord(user, p) {
 
   var inserted = await DB_insert(SHEETS.SPECIAL_COMMISSION_SALES || 'SpecialCommissionSales', record);
   return { success: true, item: inserted };
+}
+
+function OfficerMapping_list(user, p) {
+  var list = DB_readAll(SHEETS.OFFICER_MAPPINGS || 'OfficerMappings');
+  var dbUsers = DB_readAll(SHEETS.USERS).filter(function (u) {
+    return String(u.is_active).toLowerCase() === 'yes';
+  });
+  return { items: list || [], users: dbUsers || [] };
+}
+
+async function OfficerMapping_upsert(user, p) {
+  var data = p || {};
+  if (!data.api_officer_name) throw new Error('ระบุชื่อพนักงานใน Stock API');
+  if (!data.lms_user_id) throw new Error('เลือกระบุพนักงานในระบบ LMS');
+
+  var existing = DB_readAll(SHEETS.OFFICER_MAPPINGS || 'OfficerMappings');
+  var found = existing.find(function (m) {
+    return (data.api_officer_name && String(m.api_officer_name).trim().toLowerCase() === String(data.api_officer_name).trim().toLowerCase()) ||
+           (data.api_officer_id && String(m.api_officer_id).trim() === String(data.api_officer_id).trim());
+  });
+
+  var record = {
+    api_officer_name: String(data.api_officer_name).trim(),
+    api_officer_id: String(data.api_officer_id || '').trim(),
+    lms_user_id: String(data.lms_user_id).trim(),
+    updated_at: new Date().toISOString()
+  };
+
+  if (found) {
+    var updated = await DB_update(SHEETS.OFFICER_MAPPINGS || 'OfficerMappings', found.id, record);
+    return { success: true, item: updated };
+  } else {
+    record.id = 'map-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+    record.created_at = new Date().toISOString();
+    var inserted = await DB_insert(SHEETS.OFFICER_MAPPINGS || 'OfficerMappings', record);
+    return { success: true, item: inserted };
+  }
+}
+
+async function OfficerMapping_delete(user, p) {
+  var data = p || {};
+  var id = data.id;
+  if (!id) throw new Error('ระบุ ID ที่ต้องการลบ');
+  await DB_delete(SHEETS.OFFICER_MAPPINGS || 'OfficerMappings', id);
+  return { success: true };
 }
 
 // === SERVE HANDLER ===
