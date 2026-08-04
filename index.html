@@ -14306,6 +14306,7 @@ async function api(req) {
         + '  </div>'
         + '  <div style="display:flex;gap:10px;flex-wrap:wrap">'
         + '    <button class="btn" id="btn-sync-api" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8);color:#fff;border:0;font-weight:600;box-shadow:0 4px 12px rgba(59,130,246,0.3)"><i class="bi bi-arrow-repeat"></i> ดึงข้อมูลล่าสุดจาก API</button>'
+        + (isAdminOrHR ? '<button class="btn" id="btn-summary-flex" style="background:#06c755;color:#fff;border:0;font-weight:600;box-shadow:0 4px 12px rgba(6,199,85,0.3)"><i class="bi bi-line"></i> LINE Flex คอมรวม</button>' : '')
         + (isAdminOrHR ? '<button class="btn" id="btn-manage-mappings" style="background:rgba(16,185,129,0.25);color:#a7f3d0;border:1px solid rgba(16,185,129,0.4);backdrop-filter:blur(5px);font-weight:600"><i class="bi bi-link-45deg"></i> จับคู่ชื่อพนักงาน API ↔ LMS</button>' : '')
         + (isAdminOrHR ? '<button class="btn" id="btn-manage-prods" style="background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.2);backdrop-filter:blur(5px);font-weight:600"><i class="bi bi-gear-fill"></i> จัดการสินค้า & ค่าคอม</button>' : '')
         + '  </div>'
@@ -14338,6 +14339,12 @@ async function api(req) {
       if ($('#btn-sync-api')) {
         $('#btn-sync-api').addEventListener('click', function () { loadData(); });
       }
+      if ($('#btn-summary-flex')) {
+        $('#btn-summary-flex').addEventListener('click', function () {
+          if (state._latestItems) openSummaryLineFlexModal(state._latestItems, state.month);
+          else toast('กำลังโหลดข้อมูล กรุณาลองอีกครั้ง', 'warning');
+        });
+      }
       if ($('#btn-manage-mappings')) {
         $('#btn-manage-mappings').addEventListener('click', function () { openManageOfficerMappingsModal(); });
       }
@@ -14361,6 +14368,8 @@ async function api(req) {
       state._t = Date.now();
       call('special_commission.sales.list', state).then(function (res) {
         Spinner.hide();
+        state._latestItems = res.items || [];
+        state._latestProducts = res.products || [];
         renderProductCards(res.products || []);
         renderEmployeeTable(res.products || [], res.items || []);
       }).catch(function (e) {
@@ -14619,6 +14628,135 @@ async function api(req) {
           });
         }
       });
+    }
+
+    function openSummaryLineFlexModal(items, month) {
+      var salesItems = (items || []).filter(function (it) {
+        return Number(it.grand_total || it.grand_total_commission || 0) > 0;
+      });
+
+      var grandTotalSum = 0;
+      salesItems.forEach(function (it) { grandTotalSum += Number(it.grand_total || it.grand_total_commission || 0); });
+
+      var flexJson = generateAllEmployeesFlexJson(salesItems, month, grandTotalSum);
+      var jsonStr = JSON.stringify(flexJson, null, 2);
+
+      var listHtml = salesItems.length === 0
+        ? '<div style="text-align:center;color:#94a3b8;padding:16px">ไม่มีพนักงานที่มียอดขายในเดือนนี้</div>'
+        : salesItems.map(function (it, idx) {
+            var u = it.user || {};
+            var name = esc(u.full_name || u.username || '?');
+            var branch = u.branch ? ' [' + esc(u.branch) + ']' : '';
+            var comm = Number(it.grand_total || it.grand_total_commission || 0);
+            return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9">'
+              + '<span style="font-size:13px;font-weight:600;color:#0f172a">' + (idx+1) + '. ' + name + '<span style="font-size:11px;color:#64748b">' + branch + '</span></span>'
+              + '<span style="font-weight:800;color:#059669;font-size:13px">คอมรวม ฿' + comm.toLocaleString() + '</span>'
+              + '</div>';
+          }).join('');
+
+      var previewCard = '<div style="background:#0f172a;border-radius:14px;overflow:hidden;box-shadow:0 8px 20px rgba(0,0,0,0.15)">'
+        + '<div style="background:linear-gradient(135deg,#0f172a,#1e293b);padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.1)">'
+        + '  <div style="color:#fbbf24;font-weight:800;font-size:14px">🏆 สรุปค่าคอมพิเศษ AVR (คอมรวมทุกคน)</div>'
+        + '  <div style="color:#94a3b8;font-size:11px;margin-top:2px">ประจำเดือน ' + esc(month || '') + ' | มียอดขาย ' + salesItems.length + ' คน</div>'
+        + '</div>'
+        + '<div style="padding:14px;background:#fff;color:#0f172a">'
+        +   listHtml
+        + '  <div style="display:flex;justify-content:space-between;align-items:center;background:#ecfdf5;border:1px solid #a7f3d0;padding:12px;border-radius:10px;margin-top:12px">'
+        + '    <span style="font-weight:800;color:#059669;font-size:13px">💰 ค่าคอมรวมสุทธิทั้งหมด:</span>'
+        + '    <span style="font-weight:800;color:#059669;font-size:17px">฿' + grandTotalSum.toLocaleString() + '</span>'
+        + '  </div>'
+        + '</div>'
+        + '</div>';
+
+      var modalHtml = '<div style="display:flex;flex-direction:column;gap:14px">'
+        + previewCard
+        + '<div>'
+        + '  <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;color:#475569"><i class="bi bi-code-square"></i> LINE Flex Message JSON</label>'
+        + '  <textarea id="flex-summary-json" class="input" rows="5" readonly style="font-family:monospace;font-size:11px;width:100%;background:#f8fafc">' + esc(jsonStr) + '</textarea>'
+        + '</div>'
+        + '</div>';
+
+      Modal.open({
+        title: '📱 LINE Flex คอมรวม - รายงานสรุปพนักงานทุกคน',
+        html: modalHtml,
+        footer: '<button class="btn" data-modal-close>ปิด</button>'
+          + '<button class="btn" id="btn-copy-summary-flex" style="background:#06c755;border:0;color:#fff;font-weight:600"><i class="bi bi-clipboard"></i> คัดลอก LINE Flex JSON</button>',
+        onOpen: function () {
+          $('#btn-copy-summary-flex').addEventListener('click', function () {
+            navigator.clipboard.writeText(jsonStr).then(function () {
+              toast('คัดลอก LINE Flex JSON เรียบร้อยแล้ว!', 'success');
+            }).catch(function () {
+              var ta = $('#flex-summary-json');
+              ta.select();
+              document.execCommand('copy');
+              toast('คัดลอก LINE Flex JSON เรียบร้อยแล้ว!', 'success');
+            });
+          });
+        }
+      });
+    }
+
+    function generateAllEmployeesFlexJson(salesItems, month, grandTotalSum) {
+      var empBoxes = salesItems.map(function (it, idx) {
+        var u = it.user || {};
+        var name = (u.full_name || u.username || '?') + (u.branch ? ' [' + u.branch + ']' : '');
+        var comm = Number(it.grand_total || it.grand_total_commission || 0);
+        return {
+          "type": "box",
+          "layout": "horizontal",
+          "margin": "sm",
+          "contents": [
+            { "type": "text", "text": (idx+1) + ". " + name, "size": "xs", "color": "#0f172a", "flex": 3, "weight": "bold", "wrap": true },
+            { "type": "text", "text": "฿" + comm.toLocaleString(), "size": "xs", "color": "#059669", "align": "end", "flex": 2, "weight": "bold" }
+          ]
+        };
+      });
+
+      if (empBoxes.length === 0) {
+        empBoxes = [{ "type": "text", "text": "ยังไม่มีพนักงานที่มียอดขายในเดือนนี้", "size": "xs", "color": "#64748b", "align": "center" }];
+      }
+
+      return {
+        "type": "flex",
+        "altText": "🏆 คอมรวมพนักงาน AVR ประจำเดือน " + (month || ''),
+        "contents": {
+          "type": "bubble",
+          "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#0f172a",
+            "paddingAll": "lg",
+            "contents": [
+              { "type": "text", "text": "🏆 สรุปค่าคอมพิเศษ AVR", "weight": "bold", "color": "#fbbf24", "size": "md" },
+              { "type": "text", "text": "คอมรวมพนักงานทุกคน | " + (month || '') + " | " + salesItems.length + " คน", "size": "xxs", "color": "#94a3b8", "margin": "xs" }
+            ]
+          },
+          "body": {
+            "type": "box",
+            "layout": "vertical",
+            "paddingAll": "lg",
+            "contents": [
+              { "type": "text", "text": "📊 รายการคอมรวมของพนักงาน", "weight": "bold", "size": "xs", "color": "#475569" },
+              { "type": "separator", "margin": "md" },
+              { "type": "box", "layout": "horizontal", "margin": "xs", "contents": [
+                { "type": "text", "text": "ชื่อพนักงาน", "size": "xxs", "color": "#94a3b8", "flex": 3, "weight": "bold" },
+                { "type": "text", "text": "คอมรวม", "size": "xxs", "color": "#94a3b8", "align": "end", "flex": 2, "weight": "bold" }
+              ]},
+              { "type": "box", "layout": "vertical", "margin": "sm", "contents": empBoxes },
+              { "type": "separator", "margin": "lg" },
+              {
+                "type": "box",
+                "layout": "horizontal",
+                "margin": "md",
+                "contents": [
+                  { "type": "text", "text": "💰 คอมรวมสุทธิทั้งหมด", "weight": "bold", "size": "sm", "color": "#1e293b", "flex": 3 },
+                  { "type": "text", "text": "฿" + (grandTotalSum || 0).toLocaleString(), "weight": "bold", "size": "md", "color": "#059669", "align": "end", "flex": 2 }
+                ]
+              }
+            ]
+          }
+        }
+      };
     }
 
     function generateSpecialCommissionFlexJson(item, products, month) {
