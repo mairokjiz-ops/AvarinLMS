@@ -14729,52 +14729,67 @@ async function api(req) {
     function openManageOfficerMappingsModal() {
       Spinner.show('กำลังโหลดข้อมูลการจับคู่...');
       call('officer_mapping.list', {}).then(function (res) {
-        Spinner.hide();
         var mappings = res.items || [];
         var users = res.users || [];
 
-        var userOptions = users.map(function (u) {
-          return '<option value="' + esc(u.id) + '">' + esc(u.full_name || u.username) + ' (' + esc(u.branch || u.position || '-') + ')</option>';
-        }).join('');
+        // Fetch live API officers for convenience
+        fetch('https://avrstockapi-production.up.railway.app/api/web/reports/commission-by-officer-monthly').then(function (r) { return r.json(); }).catch(function () { return { monthlyDetails: [] }; }).then(function (apiRes) {
+          Spinner.hide();
+          var apiDetails = (apiRes && apiRes.monthlyDetails) || [];
+          var apiOfficerSet = new Set();
+          apiDetails.forEach(function (d) {
+            var nm = String(d.officerName || '').trim();
+            if (nm) apiOfficerSet.add(nm);
+          });
+          var apiOfficers = Array.from(apiOfficerSet).sort();
 
-        var rowsHtml = mappings.map(function (m, idx) {
-          var matchedUser = users.find(function (u) { return String(u.id) === String(m.lms_user_id); });
-          var uName = matchedUser ? (matchedUser.full_name || matchedUser.username) : ('[ID: ' + m.lms_user_id + ']');
-          return '<tr>'
-            + '<td style="font-weight:600">' + (idx + 1) + '</td>'
-            + '<td style="font-weight:700;color:#2563eb">' + esc(m.api_officer_name) + '</td>'
-            + '<td><span class="badge b-emerald"><i class="bi bi-person-check-fill"></i> ' + esc(uName) + '</span></td>'
-            + '<td style="text-align:center"><button class="btn btn-sm btn-danger btn-del-mapping" data-id="' + esc(m.id) + '"><i class="bi bi-trash"></i> ลบ</button></td>'
-            + '</tr>';
-        }).join('');
+          var datalistOptions = apiOfficers.map(function (name) {
+            return '<option value="' + esc(name) + '">';
+          }).join('');
 
-        var bodyHtml = '<div style="display:flex;flex-direction:column;gap:16px">'
-          + '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px;font-size:12px;color:#166534">'
-          + '  <strong><i class="bi bi-info-circle-fill"></i> ระบบจับคู่พนักงาน Stock API ↔ LMS:</strong><br>'
-          + '  กำหนดว่าชื่อพนักงานใน Stock API (เช่น <code>ภาคิน สุภาพพันธ์</code>) ตรงกับพนักงานคนไหนในระบบ LMS ยอดขายจะถูกเชื่อมเข้าพนักงานคนนั้นทันที'
-          + '</div>'
-          + '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px">'
-          + '  <h4 style="font-size:13px;font-weight:700;margin:0 0 10px;color:#0f172a"><i class="bi bi-plus-circle-fill" style="color:#10b981"></i> เพิ่ม / แก้ไข การจับคู่พนักงาน</h4>'
-          + '  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">'
-          + '    <div style="flex:1;min-width:160px">'
-          + '      <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;color:#475569">ชื่อพนักงานใน Stock API (เช่น ภาคิน สุภาพพันธ์)</label>'
-          + '      <input type="text" id="map-api-name" class="input" placeholder="พิมพ์ชื่อใน Stock API..."></div>'
-          + '    <div style="flex:1;min-width:180px">'
-          + '      <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;color:#475569">เชื่อมเข้ากับพนักงานในระบบ LMS</label>'
-          + '      <select id="map-lms-user" class="input">' + userOptions + '</select></div>'
-          + '    <button class="btn btn-success" id="btn-save-mapping" style="background:#10b981;border:0;color:#fff;font-weight:600"><i class="bi bi-check-lg"></i> บันทึกการจับคู่</button>'
-          + '  </div>'
-          + '</div>'
-          + '<div>'
-          + '  <h4 style="font-size:13px;font-weight:700;margin:0 0 10px;color:#0f172a">รายการที่จับคู่แล้ว (' + mappings.length + ' รายการ)</h4>'
-          + '  <div style="max-height:220px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:10px">'
-          + '    <table class="data-table" style="width:100%">'
-          + '      <thead><tr style="background:#f8fafc"><th style="width:40px">#</th><th>ชื่อใน Stock API</th><th>พนักงานในระบบ LMS</th><th style="text-align:center;width:70px">จัดการ</th></tr></thead>'
-          + '      <tbody>' + (rowsHtml || '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:16px">ยังไม่มีรายการจับคู่</td></tr>') + '</tbody>'
-          + '    </table>'
-          + '  </div>'
-          + '</div>'
-          + '</div>';
+          var userOptions = users.map(function (u) {
+            return '<option value="' + esc(u.id) + '">' + esc(u.full_name || u.username) + ' (' + esc(u.branch || u.position || '-') + ')</option>';
+          }).join('');
+
+          var rowsHtml = mappings.map(function (m, idx) {
+            var matchedUser = users.find(function (u) { return String(u.id) === String(m.lms_user_id); });
+            var uName = matchedUser ? (matchedUser.full_name || matchedUser.username) : ('[ID: ' + m.lms_user_id + ']');
+            return '<tr>'
+              + '<td style="font-weight:600">' + (idx + 1) + '</td>'
+              + '<td style="font-weight:700;color:#2563eb">' + esc(m.api_officer_name) + '</td>'
+              + '<td><span class="badge b-emerald"><i class="bi bi-person-check-fill"></i> ' + esc(uName) + '</span></td>'
+              + '<td style="text-align:center"><button class="btn btn-sm btn-danger btn-del-mapping" data-id="' + esc(m.id) + '"><i class="bi bi-trash"></i> ลบ</button></td>'
+              + '</tr>';
+          }).join('');
+
+          var bodyHtml = '<div style="display:flex;flex-direction:column;gap:16px">'
+            + '<datalist id="api-officers-datalist">' + datalistOptions + '</datalist>'
+            + '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px;font-size:12px;color:#166534">'
+            + '  <strong><i class="bi bi-info-circle-fill"></i> ระบบจับคู่พนักงาน Stock API ↔ LMS:</strong><br>'
+            + '  กำหนดว่าชื่อพนักงานใน Stock API (เช่น <code>ภาคิน</code> หรือ <code>นาธาน</code>) ตรงกับพนักงานคนไหนในระบบ LMS ยอดขายจะถูกเชื่อมเข้าพนักงานคนนั้นทันที'
+            + '</div>'
+            + '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px">'
+            + '  <h4 style="font-size:13px;font-weight:700;margin:0 0 10px;color:#0f172a"><i class="bi bi-plus-circle-fill" style="color:#10b981"></i> เพิ่ม / แก้ไข การจับคู่พนักงาน</h4>'
+            + '  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">'
+            + '    <div style="flex:1;min-width:180px">'
+            + '      <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;color:#475569">ชื่อพนักงานใน Stock API (พิมพ์หรือเลือกจากรายการ)</label>'
+            + '      <input type="text" id="map-api-name" class="input" list="api-officers-datalist" placeholder="เลือกหรือพิมพ์ชื่อใน API..."></div>'
+            + '    <div style="flex:1;min-width:180px">'
+            + '      <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;color:#475569">เชื่อมเข้ากับพนักงานในระบบ LMS</label>'
+            + '      <select id="map-lms-user" class="input">' + userOptions + '</select></div>'
+            + '    <button class="btn btn-success" id="btn-save-mapping" style="background:#10b981;border:0;color:#fff;font-weight:600"><i class="bi bi-check-lg"></i> บันทึกการจับคู่</button>'
+            + '  </div>'
+            + '</div>'
+            + '<div>'
+            + '  <h4 style="font-size:13px;font-weight:700;margin:0 0 10px;color:#0f172a">รายการที่จับคู่แล้ว (' + mappings.length + ' รายการ)</h4>'
+            + '  <div style="max-height:220px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:10px">'
+            + '    <table class="data-table" style="width:100%">'
+            + '      <thead><tr style="background:#f8fafc"><th style="width:40px">#</th><th>ชื่อใน Stock API</th><th>พนักงานในระบบ LMS</th><th style="text-align:center;width:70px">จัดการ</th></tr></thead>'
+            + '      <tbody>' + (rowsHtml || '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:16px">ยังไม่มีรายการจับคู่</td></tr>') + '</tbody>'
+            + '    </table>'
+            + '  </div>'
+            + '</div>'
+            + '</div>';
 
         Modal.open({
           title: '⚙️ จัดการจับคู่พนักงาน (Stock API ↔ LMS)',
@@ -14816,6 +14831,7 @@ async function api(req) {
               });
             });
           }
+        });
         });
       }).catch(function (e) {
         Spinner.hide();

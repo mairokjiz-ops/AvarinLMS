@@ -4763,12 +4763,6 @@ async function SpecialCommission_salesList(user, p) {
 
   // ── Read manual Officer Mappings ─────────────────────────
   var officerMappings = DB_readAll(SHEETS.OFFICER_MAPPINGS || 'OfficerMappings');
-  var mappingByApiName = {};
-  var mappingByApiId = {};
-  (officerMappings || []).forEach(function (m) {
-    if (m.api_officer_name) mappingByApiName[String(m.api_officer_name).trim().toLowerCase()] = m.lms_user_id;
-    if (m.api_officer_id) mappingByApiId[String(m.api_officer_id).trim()] = m.lms_user_id;
-  });
 
   apiDetails.forEach(function (d) {
     var dSku = String(d.sku || d.productSku || '').trim().toUpperCase();
@@ -4780,42 +4774,62 @@ async function SpecialCommission_salesList(user, p) {
     var offId = String(d.officerId || '').trim();
     if (!offName && !offId) return;
 
-    var key = offId || offName;
+    // 1) Priority #1: Check manual Admin OfficerMappings (flexible partial match)
+    var matchedUser = null;
+    if (officerMappings && officerMappings.length > 0) {
+      var mapItem = officerMappings.find(function (m) {
+        var mApiName = String(m.api_officer_name || '').trim().toLowerCase();
+        var mApiId = String(m.api_officer_id || '').trim();
+        
+        if (offId && mApiId && offId === mApiId) return true;
+        if (offName && mApiName) {
+          var lowOff = offName.toLowerCase();
+          if (lowOff === mApiName || lowOff.indexOf(mApiName) >= 0 || mApiName.indexOf(lowOff) >= 0) return true;
+        }
+        if (nick && mApiName) {
+          var lowNick = nick.toLowerCase();
+          if (lowNick === mApiName || lowNick.indexOf(mApiName) >= 0 || mApiName.indexOf(lowNick) >= 0) return true;
+        }
+        return false;
+      });
+      if (mapItem) {
+        matchedUser = dbUsers.find(function (u) { return String(u.id) === String(mapItem.lms_user_id); });
+      }
+    }
+
+    // 2) Priority #2: Auto match by name / nickname if no manual mapping
+    if (!matchedUser) {
+      dbUsers.forEach(function (u) {
+        if (matchedUser) return;
+        var uFull = String(u.full_name || '').trim().toLowerCase();
+        var uName = String(u.username || '').trim().toLowerCase();
+        var lowOffName = offName.toLowerCase();
+        var lowNick = nick.toLowerCase();
+
+        if (lowOffName && lowOffName.length > 1) {
+          if (uFull === lowOffName || (uFull.length >= 2 && (uFull.indexOf(lowOffName) >= 0 || lowOffName.indexOf(uFull) >= 0))) {
+            matchedUser = u;
+            return;
+          }
+        }
+        if (lowNick && lowNick.length > 1) {
+          if ((uFull.length >= 2 && uFull.indexOf(lowNick) >= 0) || (uName.length >= 2 && uName.indexOf(lowNick) >= 0)) {
+            matchedUser = u;
+            return;
+          }
+        }
+      });
+    }
+
+    // Key must be matchedUser.id if matched, so all API rows for this user aggregate together!
+    var key = matchedUser ? String(matchedUser.id) : (offId || offName);
 
     if (!officerMap[key]) {
-      // 1) Priority #1: Check manual Admin OfficerMappings
-      var mappedUserId = (offId && mappingByApiId[offId]) || (offName && mappingByApiName[offName.toLowerCase()]);
-      var matchedUser = null;
-      if (mappedUserId) {
-        matchedUser = dbUsers.find(function (u) { return String(u.id) === String(mappedUserId); });
-      }
-
-      // 2) Priority #2: Auto match by name / nickname if no manual mapping
-      if (!matchedUser) {
-        dbUsers.forEach(function (u) {
-          if (matchedUser) return;
-          var uFull = String(u.full_name || '').trim();
-          var uName = String(u.username || '').trim();
-          if (offName && offName.length > 1) {
-            if (uFull === offName || (uFull.length >= 3 && (uFull.indexOf(offName) >= 0 || offName.indexOf(uFull) >= 0))) {
-              matchedUser = u;
-              return;
-            }
-          }
-          if (nick && nick.length > 1) {
-            if ((uFull.length >= 2 && uFull.indexOf(nick) >= 0) || (uName.length >= 2 && uName.indexOf(nick) >= 0)) {
-              matchedUser = u;
-              return;
-            }
-          }
-        });
-      }
-
-      var displayName = offName + (nick ? ' (' + nick + ')' : '');
+      var displayName = matchedUser ? matchedUser.full_name : (offName + (nick ? ' (' + nick + ')' : ''));
       officerMap[key] = {
         id: matchedUser ? matchedUser.id : ('off-' + key),
         username: matchedUser ? matchedUser.username : ('officer_' + key),
-        full_name: matchedUser ? matchedUser.full_name : displayName,
+        full_name: displayName,
         position: matchedUser ? matchedUser.position : 'พนักงานขาย',
         department: matchedUser ? matchedUser.department : 'ฝ่ายขาย',
         branch: d.branchName || (matchedUser ? matchedUser.branch : ''),
