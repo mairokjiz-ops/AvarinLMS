@@ -478,16 +478,17 @@ function _dbIdCol_(table) {
 }
 
 async function DB_warmCache() {
-  var tables = ['Users', 'Leaves', 'Sessions', 'Settings', 'AuditLog', 'Missions', 'Expenses', 'Holidays', 'Checkins', 'Courses', 'Quizzes', 'UserProgress', 'SpecialCommissionProducts', 'SpecialCommissionSales'];
+  var tables = ['Users', 'Leaves', 'Sessions', 'Settings', 'AuditLog', 'Missions', 'Expenses', 'Holidays', 'Checkins', 'Courses', 'Quizzes', 'UserProgress', 'SpecialCommissionProducts', 'SpecialCommissionSales', 'OfficerMappings'];
   for (var i = 0; i < tables.length; i++) {
     var t = tables[i];
-    var rows = await sbFetch('GET', t, 'select=*&limit=10000');
+    var rows = await sbFetch('GET', t, 'select=*&limit=10000').catch(function(){ return []; });
     DB_CACHE[t] = rows || [];
   }
 }
 
 function DB_readAll(table) {
-  return DB_CACHE[table] || [];
+  if (!DB_CACHE[table]) DB_CACHE[table] = [];
+  return DB_CACHE[table];
 }
 
 function DB_findById(table, id) {
@@ -563,7 +564,11 @@ async function DB_delete(table, id) {
   return { ok: true };
 }
 
-function DB_invalidate(name) {}
+function DB_invalidate(name) {
+  if (name && DB_CACHE[name]) {
+    delete DB_CACHE[name];
+  }
+}
 
 // === BACKEND LOGIC ===
 function Auth_publicUser_(u) {
@@ -3485,7 +3490,7 @@ async function api(req) {
       case 'special_commission.sales.list':      return _ok(await SpecialCommission_salesList(user, p));
       case 'special_commission.sales.record':    return _ok(await SpecialCommission_salesRecord(user, p));
 
-      case 'officer_mapping.list':    return _ok(OfficerMapping_list(user, p));
+      case 'officer_mapping.list':    return _ok(await OfficerMapping_list(user, p));
       case 'officer_mapping.upsert':  return _ok(await OfficerMapping_upsert(user, p));
       case 'officer_mapping.delete':  return _ok(await OfficerMapping_delete(user, p));
 
@@ -4987,8 +4992,9 @@ async function SpecialCommission_salesRecord(user, p) {
   return { success: true, item: inserted };
 }
 
-function OfficerMapping_list(user, p) {
-  var list = DB_readAll(SHEETS.OFFICER_MAPPINGS || 'OfficerMappings');
+async function OfficerMapping_list(user, p) {
+  var list = await sbFetch('GET', 'OfficerMappings', 'select=*&limit=10000').catch(function(){ return []; });
+  DB_CACHE['OfficerMappings'] = list || [];
   var dbUsers = DB_readAll(SHEETS.USERS).filter(function (u) {
     return String(u.is_active).toLowerCase() === 'yes';
   });
