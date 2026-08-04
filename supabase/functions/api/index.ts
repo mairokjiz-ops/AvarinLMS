@@ -4708,7 +4708,7 @@ async function SpecialCommission_salesList(user, p) {
   var products = DB_readAll(SHEETS.SPECIAL_COMMISSION_PRODUCTS || 'SpecialCommissionProducts')
     .filter(function (x) { return x.is_active !== 'no'; });
 
-  // ── build SKU → productId lookup ─────────────────────────
+  // ── 1. SKU → productId lookup ─────────────────────────────
   var skuToProduct = {};
   products.forEach(function (prod) {
     String(prod.sku || '').split(',').forEach(function (s) {
@@ -4717,9 +4717,21 @@ async function SpecialCommission_salesList(user, p) {
     });
   });
 
+  // ── 2. Get active LMS users ONLY as base list ──────────────
+  var dbUsers = DB_readAll(SHEETS.USERS).filter(function (u) {
+    return String(u.is_active).toLowerCase() === 'yes';
+  });
 
-  // ── fetch Railway API ─────────────────────────────────────
-  var officerSummary = [];
+  var officerMap = {};
+  dbUsers.forEach(function (u) {
+    officerMap[u.id] = {
+      user: u,
+      productQty: {}
+    };
+    products.forEach(function (pr) { officerMap[u.id].productQty[pr.id] = 0; });
+  });
+
+  // ── 3. Fetch Railway API ──────────────────────────────────
   var apiDetails = [];
   try {
     var startDate = month + '-01';
@@ -4730,20 +4742,18 @@ async function SpecialCommission_salesList(user, p) {
     if (rRes && rRes.ok) {
       var rJson = await rRes.json().catch(function () { return null; });
       if (rJson && rJson.success) {
-        officerSummary = rJson.officerSummary || [];
-        apiDetails    = rJson.details || [];
+        apiDetails = rJson.details || [];
       }
     }
-    // Fallback: if month query returns no details (e.g. month with no sample data), fetch all available API data
+    // Fallback: if month query returns no details, fetch all available API data
     if (!apiDetails || apiDetails.length === 0) {
       var rResFb = await fetch(
         'https://avrstockapi-production.up.railway.app/api/web/reports/commission-by-officer'
       ).catch(function () { return null; });
       if (rResFb && rResFb.ok) {
         var rJsonFb = await rResFb.json().catch(function () { return null; });
-        if (rJsonFb && rJsonFb.success && rJsonFb.details && rJsonFb.details.length > 0) {
-          officerSummary = rJsonFb.officerSummary || [];
-          apiDetails    = rJsonFb.details || [];
+        if (rJsonFb && rJsonFb.success && rJsonFb.details) {
+          apiDetails = rJsonFb.details || [];
         }
       }
     }
@@ -4751,74 +4761,35 @@ async function SpecialCommission_salesList(user, p) {
     console.warn('Railway API fetch error:', e);
   }
 
-  // ── Build officer map — include ALL officers from API (no branch restriction) ──
-  var officerMap = {};   // key: officerId
-
-  officerSummary.forEach(function (off) {
-    var key = String(off.officerId);
-    if (!officerMap[key]) {
-      officerMap[key] = {
-        officerId: String(off.officerId),
-        officerName: off.officerName || '',
-        nickName: off.nickName || '',
-        branch: off.branchName || '',
-        productQty: {}
-      };
-      products.forEach(function (pr) { officerMap[key].productQty[pr.id] = 0; });
-    }
-    // keep the most prominent branch (first occurrence)
-  });
-
-  // ── Map API details (per-SKU rows) → officer productQty ──
+  // ── 4. Match API details ONLY to existing active LMS users ──
   apiDetails.forEach(function (d) {
     var dSku = String(d.sku || d.productSku || '').trim().toUpperCase();
     var pid = skuToProduct[dSku];
     if (!pid) return;
 
-    var key = String(d.officerId || (d.officerName + '_' + (d.nickName || '')));
-    // also try matching by name if key not in map
-    if (!officerMap[key]) {
-      // try find by officerName
-      var found = Object.keys(officerMap).find(function (k) {
-        return officerMap[k].officerName === d.officerName;
-      });
-      if (found) key = found;
-    }
-    if (!officerMap[key]) return;
+    var offName = String(d.officerName || '').trim();
+    var nick = String(d.nickName || '').trim();
 
-    officerMap[key].productQty[pid] = (officerMap[key].productQty[pid] || 0) + Number(d.totalQty || d.qty || 0);
-  });
+    // Match to active LMS user by name or nickname
+    var targetUserId = null;
+    dbUsers.forEach(function (u) {
+      if (targetUserId) return;
+      var uFull = String(u.full_name || '').trim();
+      var uName = String(u.username || '').trim();
 
-  // ── Merge DB users (so employees with 0 sales also appear) ──
-  var dbUsers = DB_readAll(SHEETS.USERS).filter(function (u) {
-    return String(u.is_active).toLowerCase() === 'yes';
-  });
-
-  // Add DB users not already in officerMap (by name match)
-  dbUsers.forEach(function (u) {
-    var nameKey = (u.full_name || u.username || '').trim();
-    var alreadyIn = Object.values(officerMap).some(function (off) {
-      return off.officerName && nameKey && (
-        off.officerName === nameKey ||
-        nameKey.indexOf(off.officerName) >= 0 ||
-        off.officerName.indexOf(nameKey) >= 0
-      );
+      if (offName && (uFull === offName || uFull.indexOf(offName) >= 0 || offName.indexOf(uFull) >= 0)) {
+        targetUserId = u.id;
+      } else if (nick && (uFull.indexOf(nick) >= 0 || uName.indexOf(nick) >= 0)) {
+        targetUserId = u.id;
+      }
     });
-    if (!alreadyIn) {
-      var key = 'db-' + u.id;
-      officerMap[key] = {
-        officerId: String(u.id),
-        officerName: u.full_name || u.username,
-        nickName: '',
-        branch: u.branch || '',
-        dbUser: u,
-        productQty: {}
-      };
-      products.forEach(function (pr) { officerMap[key].productQty[pr.id] = 0; });
+
+    if (targetUserId && officerMap[targetUserId]) {
+      officerMap[targetUserId].productQty[pid] = (officerMap[targetUserId].productQty[pid] || 0) + Number(d.totalQty || d.qty || 0);
     }
   });
 
-  // ── Also add internal sales records from SpecialCommissionSales table ──
+  // ── 5. Add internal sales records from SpecialCommissionSales table ──
   var salesRecords = DB_readAll(SHEETS.SPECIAL_COMMISSION_SALES || 'SpecialCommissionSales');
   if (month) {
     salesRecords = salesRecords.filter(function (s) {
@@ -4832,43 +4803,38 @@ async function SpecialCommission_salesList(user, p) {
       pid = skuToProduct[sSku];
     }
     if (!pid) return;
-    // find officer by employee_id or user_id
-    var offKey = Object.keys(officerMap).find(function (k) {
-      var off = officerMap[k];
-      return String(off.officerId) === String(s.employee_id || s.user_id) ||
-             (off.dbUser && String(off.dbUser.id) === String(s.employee_id || s.user_id));
-    });
-    if (!offKey) return;
-    officerMap[offKey].productQty[pid] = (officerMap[offKey].productQty[pid] || 0) + Number(s.quantity || 0);
+    var uid = String(s.employee_id || s.user_id);
+    if (officerMap[uid]) {
+      officerMap[uid].productQty[pid] = (officerMap[uid].productQty[pid] || 0) + Number(s.quantity || 0);
+    }
   });
 
-  // ── Build final result list ──────────────────────────────
+  // ── 6. Build final result list for active LMS users ────────
   var allEntries = Object.values(officerMap);
 
-  // Apply filters
-  var filteredEntries = allEntries.filter(function (off) {
+  // Apply filters (branch / search)
+  var filteredEntries = allEntries.filter(function (entry) {
+    var u = entry.user;
     if (branchFilter) {
-      var bLow = String(off.branch || '').toLowerCase();
+      var bLow = String(u.branch || '').toLowerCase();
       if (bLow.indexOf(String(branchFilter).toLowerCase()) < 0) return false;
     }
     if (q) {
-      var nm = (off.officerName || '').toLowerCase();
+      var nm = String(u.full_name || u.username || '').toLowerCase();
       if (nm.indexOf(q) < 0) return false;
     }
     return true;
   });
 
-  var employeeStats = filteredEntries.map(function (off) {
-    var dbU = off.dbUser || null;
-    var displayName = off.officerName + (off.nickName ? ' (' + off.nickName + ')' : '');
-
+  var employeeStats = filteredEntries.map(function (entry) {
+    var u = entry.user;
     var totalCommission = 0;
     var totalBonus = 0;
     var productBreakdown = {};
     var bonusBreakdown = [];
 
     products.forEach(function (prod) {
-      var qty = Number(off.productQty[prod.id] || 0);
+      var qty = Number(entry.productQty[prod.id] || 0);
       var baseComm = qty * Number(prod.commission_rate || 0);
       var bonus = 0;
       if (Number(prod.bonus_min_qty) > 0 && qty >= Number(prod.bonus_min_qty)) {
@@ -4892,16 +4858,16 @@ async function SpecialCommission_salesList(user, p) {
 
     return {
       user: {
-        id: dbU ? dbU.id : ('rw-' + off.officerId),
-        username: dbU ? dbU.username : ('officer_' + off.officerId),
-        full_name: displayName,
-        position: dbU ? (dbU.position || 'พนักงานหน้าร้าน') : 'พนักงานหน้าร้าน',
-        department: dbU ? (dbU.department || 'ฝ่ายขาย') : 'ฝ่ายขาย',
-        branch: off.branch || (dbU ? dbU.branch : ''),
-        avatar: dbU ? (dbU.avatar || '') : '',
-        role: dbU ? dbU.role : 'employee'
+        id: u.id,
+        username: u.username,
+        full_name: u.full_name,
+        position: u.position || 'พนักงาน',
+        department: u.department || 'ฝ่ายขาย',
+        branch: u.branch || '',
+        avatar: u.avatar || '',
+        role: u.role || 'employee'
       },
-      product_qty: off.productQty,
+      product_qty: entry.productQty,
       product_breakdown: productBreakdown,
       total_commission: totalCommission,
       total_bonus: totalBonus,
@@ -4911,8 +4877,11 @@ async function SpecialCommission_salesList(user, p) {
     };
   });
 
-  // Sort: most grand_total first
-  employeeStats.sort(function (a, b) { return b.grand_total - a.grand_total; });
+  // Sort: most grand_total first, then alphabetically
+  employeeStats.sort(function (a, b) {
+    if (b.grand_total !== a.grand_total) return b.grand_total - a.grand_total;
+    return String(a.user.full_name).localeCompare(String(b.user.full_name), 'th');
+  });
 
   return {
     items: employeeStats,
