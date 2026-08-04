@@ -14504,7 +14504,6 @@ async function api(req) {
           +   tdProducts
           + '<td style="text-align:center">' + bonusHtml + '</td>'
           + '<td style="text-align:right"><span style="font-size:15px;font-weight:800;color:#059669;background:#ecfdf5;padding:4px 10px;border-radius:8px;border:1px solid #a7f3d0">' + Number(item.grand_total || item.grand_total_commission || 0).toLocaleString() + ' บาท</span></td>'
-          + '<td style="text-align:center"><button class="btn btn-sm btn-view-flex" data-idx="' + idx + '" style="background:#06c755;color:#fff;border:0;font-size:11px;font-weight:600;border-radius:6px;padding:4px 10px;box-shadow:0 2px 6px rgba(6,199,85,0.25)"><i class="bi bi-line"></i> LINE Flex</button></td>'
           + '</tr>';
       }).join('');
 
@@ -14521,7 +14520,6 @@ async function api(req) {
         +      thProducts
         + '    <th style="text-align:center;min-width:140px">โบนัสพิเศษ (On Top)</th>'
         + '    <th style="text-align:right;min-width:120px">ค่าคอมรวมสุทธิ</th>'
-        + '    <th style="text-align:center;width:110px">LINE Flex</th>'
         + '  </tr>'
         + '</thead>'
         + '<tbody>' + trs + '</tbody>'
@@ -14531,7 +14529,6 @@ async function api(req) {
         +      totalTdProducts
         + '    <td style="text-align:center;color:#dc2626">+' + grandTotalBonus.toLocaleString() + ' บาท</td>'
         + '    <td style="text-align:right;font-size:16px;color:#059669;font-weight:800">' + grandTotalComm.toLocaleString() + ' บาท</td>'
-        + '    <td></td>'
         + '  </tr>'
         + '</tfoot>'
         + '</table>'

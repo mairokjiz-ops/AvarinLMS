@@ -4734,6 +4734,19 @@ async function SpecialCommission_salesList(user, p) {
         apiDetails    = rJson.details || [];
       }
     }
+    // Fallback: if month query returns no details (e.g. month with no sample data), fetch all available API data
+    if (!apiDetails || apiDetails.length === 0) {
+      var rResFb = await fetch(
+        'https://avrstockapi-production.up.railway.app/api/web/reports/commission-by-officer'
+      ).catch(function () { return null; });
+      if (rResFb && rResFb.ok) {
+        var rJsonFb = await rResFb.json().catch(function () { return null; });
+        if (rJsonFb && rJsonFb.success && rJsonFb.details && rJsonFb.details.length > 0) {
+          officerSummary = rJsonFb.officerSummary || [];
+          apiDetails    = rJsonFb.details || [];
+        }
+      }
+    }
   } catch (e) {
     console.warn('Railway API fetch error:', e);
   }
