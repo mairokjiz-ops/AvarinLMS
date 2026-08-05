@@ -4942,11 +4942,22 @@ async function SpecialCommission_salesList(user, p) {
     };
   });
 
-  // ── 7. Filter: Show ONLY officers with actual sales (total_qty_sum > 0 || grand_total > 0) ──
+  // ── 7. Filter: Show ONLY officers with actual sales AND storefront branch (ปอโต, ราชพฤกษ์, วิรันด้า, พนักงานแทน) ──
+  var allowedStorefronts = ['ปอโต', 'ราชพฤกษ์', 'วิรันด้า', 'พนักงานแทน', 'แทน', 'porto', 'ratchapruek', 'veranda', 'relief'];
   var filteredStats = employeeStats.filter(function (item) {
     if (item.total_qty_sum <= 0 && item.grand_total <= 0) return false;
+
+    // Filter to include only storefront staff (ปอโต, ราชพฤกษ์, วิรันด้า, พนักงานแทน)
+    var bLow = String(item.user.branch || '').toLowerCase();
+    var pLow = String(item.user.position || '').toLowerCase();
+    var dLow = String(item.user.department || '').toLowerCase();
+    var isStorefront = allowedStorefronts.some(function (k) {
+      return bLow.indexOf(k) >= 0 || pLow.indexOf(k) >= 0 || dLow.indexOf(k) >= 0;
+    });
+
+    if (!isStorefront) return false;
+
     if (branchFilter) {
-      var bLow = String(item.user.branch || '').toLowerCase();
       if (bLow.indexOf(String(branchFilter).toLowerCase()) < 0) return false;
     }
     if (q) {

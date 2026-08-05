@@ -4937,6 +4937,29 @@ async function api(req) {
       .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
+  function openImgPreview(url, title) {
+    if (!url) return;
+    title = title || 'รูปภาพเอกสาร';
+    var isDataUrl = url.indexOf('data:') === 0;
+    var linkBtnHtml = isDataUrl ? '' : ('<div style="margin-top:12px;text-align:center;"><a href="' + esc(url) + '" target="_blank" class="btn btn-sm" style="background:#0284c7;color:#fff;border-radius:8px;font-size:12px;padding:6px 14px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;font-weight:600;"><i class="bi bi-box-arrow-up-right"></i> เปิดในแท็บใหม่</a></div>');
+    
+    Swal.fire({
+      title: title,
+      imageUrl: url,
+      imageAlt: title,
+      html: linkBtnHtml,
+      showConfirmButton: false,
+      showCloseButton: true,
+      width: 'auto',
+      maxWidth: '90vw',
+      customClass: {
+        image: 'img-fluid rounded shadow-sm'
+      }
+    });
+  }
+  window.openImgPreview = openImgPreview;
+
+
   function formatBankAccount(str) {
     if (!str) return '';
     var bankAccountStr = String(str || '').trim();
@@ -7213,8 +7236,8 @@ async function api(req) {
         '      <div id="wiz-app-box" style="margin-top:6px">' +
         (d.appointment_url ?
           '        <div style="display:flex;align-items:center;gap:8px;padding:8px;background:#fff;border:1px solid #e2e8f0;border-radius:8px">' +
-          '          <img src="' + esc(d.appointment_url) + '" style="width:40px;height:40px;object-fit:cover;border-radius:6px">' +
-          '          <span style="font-size:12px;color:#10b981;font-weight:600"><i class="bi bi-check-circle-fill"></i> แนบแล้ว</span>' +
+          '          <img src="' + esc(d.appointment_url) + '" onclick="openImgPreview(this.getAttribute(\'data-url\'), \'ใบหมอนัด\')" data-url="' + esc(d.appointment_url) + '" style="width:40px;height:40px;object-fit:cover;border-radius:6px;cursor:pointer">' +
+          '          <a href="javascript:void(0)" onclick="openImgPreview(this.getAttribute(\'data-url\'), \'ใบหมอนัด\')" data-url="' + esc(d.appointment_url) + '" style="font-size:12px;color:#10b981;font-weight:600;cursor:pointer"><i class="bi bi-check-circle-fill"></i> แนบแล้ว (ดูรูป)</a>' +
           '          <button type="button" class="btn btn-ghost" id="wiz-app-remove" style="margin-left:auto;padding:2px 8px;color:#ef4444"><i class="bi bi-trash"></i></button>' +
           '        </div>' :
           '        <button type="button" class="btn btn-ghost" id="wiz-app-trigger" style="width:100%;border:1px dashed #cbd5e1;background:#fff;font-size:12px;height:40px;justify-content:center"><i class="bi bi-camera-fill" style="color:#024ad8"></i> ถ่ายรูป/อัพโหลดใบหมอนัด</button>'
@@ -7227,8 +7250,8 @@ async function api(req) {
         '      <div id="wiz-att-box" style="margin-top:6px">' +
         (d.attachment_url ?
           '        <div style="display:flex;align-items:center;gap:8px;padding:8px;background:#fff;border:1px solid #e2e8f0;border-radius:8px">' +
-          '          <img src="' + esc(d.attachment_url) + '" style="width:40px;height:40px;object-fit:cover;border-radius:6px">' +
-          '          <span style="font-size:12px;color:#10b981;font-weight:600"><i class="bi bi-check-circle-fill"></i> แนบแล้ว</span>' +
+          '          <img src="' + esc(d.attachment_url) + '" onclick="openImgPreview(this.getAttribute(\'data-url\'), \'ใบรับรองแพทย์\')" data-url="' + esc(d.attachment_url) + '" style="width:40px;height:40px;object-fit:cover;border-radius:6px;cursor:pointer">' +
+          '          <a href="javascript:void(0)" onclick="openImgPreview(this.getAttribute(\'data-url\'), \'ใบรับรองแพทย์\')" data-url="' + esc(d.attachment_url) + '" style="font-size:12px;color:#10b981;font-weight:600;cursor:pointer"><i class="bi bi-check-circle-fill"></i> แนบแล้ว (ดูรูป)</a>' +
           '          <button type="button" class="btn btn-ghost" id="wiz-att-remove" style="margin-left:auto;padding:2px 8px;color:#ef4444"><i class="bi bi-trash"></i></button>' +
           '        </div>' :
           '        <button type="button" class="btn btn-ghost" id="wiz-att-trigger" style="width:100%;border:1px dashed #cbd5e1;background:#fff;font-size:12px;height:40px;justify-content:center"><i class="bi bi-camera-fill" style="color:#10b981"></i> ถ่ายรูป/อัพโหลดใบรับรองแพทย์</button>'
@@ -7313,8 +7336,8 @@ async function api(req) {
       + reviewRow('วันที่เขียน', TH.dateLong(d.written_at))
       + reviewRow('โทรศัพท์', esc(d.contact_phone || '-'))
       + (d.leave_type === 'sick' ? (
-          reviewRow('ใบหมอนัด', d.appointment_url ? '<a href="' + esc(d.appointment_url) + '" target="_blank" style="color:#024ad8;font-weight:600"><i class="bi bi-image"></i> ดูรูปใบหมอนัด</a>' : '<span style="color:#94a3b8">ไม่ได้แนบ (ไม่บังคับ)</span>')
-        + reviewRow('ใบรับรองแพทย์', d.attachment_url ? '<a href="' + esc(d.attachment_url) + '" target="_blank" style="color:#10b981;font-weight:600"><i class="bi bi-file-earmark-check"></i> ดูรูปใบรับรองแพทย์</a>' : '<span style="color:#94a3b8">ไม่ได้แนบ (ไม่บังคับ)</span>')
+          reviewRow('ใบหมอนัด', d.appointment_url ? '<a href="javascript:void(0)" onclick="openImgPreview(this.getAttribute(\'data-url\'), \'ใบหมอนัด\')" data-url="' + esc(d.appointment_url) + '" style="color:#024ad8;font-weight:600;cursor:pointer"><i class="bi bi-image"></i> ดูรูปใบหมอนัด</a>' : '<span style="color:#94a3b8">ไม่ได้แนบ (ไม่บังคับ)</span>')
+        + reviewRow('ใบรับรองแพทย์', d.attachment_url ? '<a href="javascript:void(0)" onclick="openImgPreview(this.getAttribute(\'data-url\'), \'ใบรับรองแพทย์\')" data-url="' + esc(d.attachment_url) + '" style="color:#10b981;font-weight:600;cursor:pointer"><i class="bi bi-file-earmark-check"></i> ดูรูปใบรับรองแพทย์</a>' : '<span style="color:#94a3b8">ไม่ได้แนบ (ไม่บังคับ)</span>')
         ) : '')
       + '</tbody></table>'
       + '<div id="wiz-warn"></div>'
@@ -7697,8 +7720,8 @@ async function api(req) {
         + '    <div style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">ใบหมอนัด (ถ้ามี)</div>'
         + (lv.appointment_url ?
             '    <div style="display:flex;align-items:center;gap:10px;padding:10px;background:#fff;border:1px solid #cbd5e1;border-radius:10px">'
-            + '      <a href="' + esc(lv.appointment_url) + '" target="_blank"><img src="' + esc(lv.appointment_url) + '" style="width:50px;height:50px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0"></a>'
-            + '      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#0f172a">ใบหมอนัด</div><a href="' + esc(lv.appointment_url) + '" target="_blank" style="font-size:12px;color:#024ad8"><i class="bi bi-box-arrow-up-right"></i> ดูรูปขนาดเต็ม</a></div>'
+            + '      <a href="javascript:void(0)" onclick="openImgPreview(this.getAttribute(\'data-url\'), \'ใบหมอนัด\')" data-url="' + esc(lv.appointment_url) + '"><img src="' + esc(lv.appointment_url) + '" style="width:50px;height:50px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer"></a>'
+            + '      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#0f172a">ใบหมอนัด</div><a href="javascript:void(0)" onclick="openImgPreview(this.getAttribute(\'data-url\'), \'ใบหมอนัด\')" data-url="' + esc(lv.appointment_url) + '" style="font-size:12px;color:#024ad8;cursor:pointer"><i class="bi bi-box-arrow-up-right"></i> ดูรูปขนาดเต็ม</a></div>'
             + (canAttach ? '<button type="button" class="btn btn-ghost" id="detail-app-btn" style="font-size:12px"><i class="bi bi-camera-fill"></i> เปลี่ยน</button>' : '')
             + '    </div>' :
             '    <div style="font-size:12.5px;color:#94a3b8;margin-bottom:8px">ยังไม่ได้แนบใบหมอนัด</div>'
@@ -7709,8 +7732,8 @@ async function api(req) {
         + '    <div style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">ใบรับรองแพทย์ (แนบย้อนหลังได้)</div>'
         + (lv.attachment_url ?
             '    <div style="display:flex;align-items:center;gap:10px;padding:10px;background:#fff;border:1px solid #cbd5e1;border-radius:10px">'
-            + '      <a href="' + esc(lv.attachment_url) + '" target="_blank"><img src="' + esc(lv.attachment_url) + '" style="width:50px;height:50px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0"></a>'
-            + '      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#0f172a">ใบรับรองแพทย์</div><a href="' + esc(lv.attachment_url) + '" target="_blank" style="font-size:12px;color:#10b981"><i class="bi bi-box-arrow-up-right"></i> ดูรูปขนาดเต็ม</a></div>'
+            + '      <a href="javascript:void(0)" onclick="openImgPreview(this.getAttribute(\'data-url\'), \'ใบรับรองแพทย์\')" data-url="' + esc(lv.attachment_url) + '"><img src="' + esc(lv.attachment_url) + '" style="width:50px;height:50px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer"></a>'
+            + '      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#0f172a">ใบรับรองแพทย์</div><a href="javascript:void(0)" onclick="openImgPreview(this.getAttribute(\'data-url\'), \'ใบรับรองแพทย์\')" data-url="' + esc(lv.attachment_url) + '" style="font-size:12px;color:#10b981;cursor:pointer"><i class="bi bi-box-arrow-up-right"></i> ดูรูปขนาดเต็ม</a></div>'
             + (canAttach ? '<button type="button" class="btn btn-ghost" id="detail-att-btn" style="font-size:12px"><i class="bi bi-camera-fill"></i> เปลี่ยน</button>' : '')
             + '    </div>' :
             '    <div style="font-size:12.5px;color:#94a3b8;margin-bottom:8px">ยังไม่ได้แนบใบรับรองแพทย์</div>'
@@ -14302,7 +14325,7 @@ async function api(req) {
         + '      <i class="bi bi-fire"></i> ยิ่งขายเยอะ ยิ่งได้เยอะ! ขายครบตามเงื่อนไข รับโบนัสเพิ่มทันที'
         + '    </div>'
         + '    <h1 style="font-size:24px;font-weight:800;margin:0 0 6px;letter-spacing:-0.5px;color:#fff"><i class="bi bi-trophy-fill" style="color:#fbbf24;margin-right:8px"></i>ตารางค่าคอมพิเศษสินค้า AVR</h1>'
-        + '    <p style="font-size:13px;color:#cbd5e1;margin:0">ระบบคำนวณและสรุปยอดขายพนักงาน <strong style="color:#60a5fa">เฉพาะหน้าร้าน (ปอโต, ราชพฤกษ์, วิรันด้า)</strong> <span style="font-size:11px;color:#34d399;margin-left:8px"><i class="bi bi-cloud-check-fill"></i> Sync ล่าสุดจาก Stock API</span></p>'
+        + '    <p style="font-size:13px;color:#cbd5e1;margin:0">ระบบคำนวณและสรุปยอดขายพนักงาน <strong style="color:#60a5fa">เฉพาะหน้าร้าน (ปอโต, ราชพฤกษ์, วิรันด้า, พนักงานแทน)</strong> <span style="font-size:11px;color:#34d399;margin-left:8px"><i class="bi bi-cloud-check-fill"></i> Sync ล่าสุดจาก Stock API</span></p>'
         + '  </div>'
         + '  <div style="display:flex;gap:10px;flex-wrap:wrap">'
         + '    <button class="btn" id="btn-sync-api" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8);color:#fff;border:0;font-weight:600;box-shadow:0 4px 12px rgba(59,130,246,0.3)"><i class="bi bi-arrow-repeat"></i> ดึงข้อมูลล่าสุดจาก API</button>'

@@ -2997,7 +2997,7 @@ async function LINE_buildAllCommissionSummaryFlex_(monthStr: string) {
     if (matchedUser) key = String(matchedUser.id);
 
     if (!officerMap[key]) {
-      officerMap[key] = { name: matchedUser ? (matchedUser.full_name || matchedUser.username) : offName, qty: {}, totalComm: 0 };
+      officerMap[key] = { name: matchedUser ? (matchedUser.full_name || matchedUser.username) : offName, user: matchedUser, qty: {}, totalComm: 0 };
       products.forEach((p: any) => { officerMap[key].qty[p.id] = 0; });
     }
 
@@ -3009,9 +3009,21 @@ async function LINE_buildAllCommissionSummaryFlex_(monthStr: string) {
   });
 
   // Compute commissions
+  var allowedStorefronts = ['ปอโต', 'ราชพฤกษ์', 'วิรันด้า', 'พนักงานแทน', 'แทน', 'porto', 'ratchapruek', 'veranda', 'relief'];
   var results: any[] = [];
   Object.keys(officerMap).forEach(k => {
     var o = officerMap[k];
+
+    // Filter to storefront staff only
+    var userObj = o.user;
+    if (userObj) {
+      var bLow = String(userObj.branch || '').toLowerCase();
+      var pLow = String(userObj.position || '').toLowerCase();
+      var dLow = String(userObj.department || '').toLowerCase();
+      var isStorefront = allowedStorefronts.some(key => bLow.indexOf(key) >= 0 || pLow.indexOf(key) >= 0 || dLow.indexOf(key) >= 0);
+      if (!isStorefront) return;
+    }
+
     var comm = 0;
     products.forEach((p: any) => {
       var qty = o.qty[p.id] || 0;
