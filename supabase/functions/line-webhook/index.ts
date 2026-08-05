@@ -3009,7 +3009,14 @@ async function LINE_buildAllCommissionSummaryFlex_(monthStr: string) {
   });
 
   // Compute commissions
-  var allowedStorefronts = ['ปอโต', 'ราชพฤกษ์', 'วิรันด้า', 'พนักงานแทน', 'แทน', 'porto', 'ratchapruek', 'veranda', 'relief'];
+  var storefrontKeywords = [
+    'ปอร์โต', 'ปอโต', 'porto',
+    'ราชพฤกษ์', 'ratchapruek', 'ratchapreuk',
+    'วิรันด้า', 'วิรันดา', 'veranda',
+    'แทน', 'relief', 'สาขา', 'หน้าร้าน', 'พนักงานขาย'
+  ];
+  var officeKeywords = ['สำนักงานใหญ่', 'hq', 'การตลาด', 'บัญชี', 'คลัง', 'warehouse'];
+
   var results: any[] = [];
   Object.keys(officerMap).forEach(k => {
     var o = officerMap[k];
@@ -3020,8 +3027,12 @@ async function LINE_buildAllCommissionSummaryFlex_(monthStr: string) {
       var bLow = String(userObj.branch || '').toLowerCase();
       var pLow = String(userObj.position || '').toLowerCase();
       var dLow = String(userObj.department || '').toLowerCase();
-      var isStorefront = allowedStorefronts.some(key => bLow.indexOf(key) >= 0 || pLow.indexOf(key) >= 0 || dLow.indexOf(key) >= 0);
-      if (!isStorefront) return;
+
+      var isOffice = officeKeywords.some(key => bLow.indexOf(key) >= 0 || pLow.indexOf(key) >= 0 || dLow.indexOf(key) >= 0);
+      if (isOffice) return;
+
+      var isStorefront = storefrontKeywords.some(key => bLow.indexOf(key) >= 0 || pLow.indexOf(key) >= 0 || dLow.indexOf(key) >= 0);
+      if (!isStorefront && bLow !== '' && bLow !== 'พนักงาน') return;
     }
 
     var comm = 0;

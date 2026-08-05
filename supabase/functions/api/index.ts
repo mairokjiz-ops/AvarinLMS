@@ -4942,20 +4942,37 @@ async function SpecialCommission_salesList(user, p) {
     };
   });
 
-  // ── 7. Filter: Show ONLY officers with actual sales AND storefront branch (ปอโต, ราชพฤกษ์, วิรันด้า, พนักงานแทน) ──
-  var allowedStorefronts = ['ปอโต', 'ราชพฤกษ์', 'วิรันด้า', 'พนักงานแทน', 'แทน', 'porto', 'ratchapruek', 'veranda', 'relief'];
+  // ── 7. Filter: Show ONLY officers with actual sales AND storefront branch (ปอร์โต, ราชพฤกษ์, วิรันด้า, พนักงานแทน) ──
+  var storefrontKeywords = [
+    'ปอร์โต', 'ปอโต', 'porto',
+    'ราชพฤกษ์', 'ratchapruek', 'ratchapreuk',
+    'วิรันด้า', 'วิรันดา', 'veranda',
+    'แทน', 'relief', 'สาขา', 'หน้าร้าน', 'พนักงานขาย'
+  ];
+  var officeKeywords = ['สำนักงานใหญ่', 'hq', 'การตลาด', 'บัญชี', 'คลัง', 'warehouse'];
+
   var filteredStats = employeeStats.filter(function (item) {
     if (item.total_qty_sum <= 0 && item.grand_total <= 0) return false;
 
-    // Filter to include only storefront staff (ปอโต, ราชพฤกษ์, วิรันด้า, พนักงานแทน)
     var bLow = String(item.user.branch || '').toLowerCase();
     var pLow = String(item.user.position || '').toLowerCase();
     var dLow = String(item.user.department || '').toLowerCase();
-    var isStorefront = allowedStorefronts.some(function (k) {
+
+    // Is office staff?
+    var isOffice = officeKeywords.some(function (k) {
+      return bLow.indexOf(k) >= 0 || pLow.indexOf(k) >= 0 || dLow.indexOf(k) >= 0;
+    });
+    if (isOffice) return false;
+
+    // Is storefront staff?
+    var isStorefront = storefrontKeywords.some(function (k) {
       return bLow.indexOf(k) >= 0 || pLow.indexOf(k) >= 0 || dLow.indexOf(k) >= 0;
     });
 
-    if (!isStorefront) return false;
+    // If branch is unspecified/empty or matched storefront keyword, allow
+    if (!isStorefront && bLow !== '' && bLow !== 'พนักงาน') {
+      return false;
+    }
 
     if (branchFilter) {
       if (bLow.indexOf(String(branchFilter).toLowerCase()) < 0) return false;
