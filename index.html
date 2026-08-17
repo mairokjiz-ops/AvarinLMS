@@ -6639,8 +6639,8 @@ async function api(req) {
       statHtml += '<div class="stat-card tone-' + tone + '">'
         + '  <div class="stat-label">' + esc(LMS.LEAVE_TYPE_LABEL[k]) + '</div>'
         + '  <div class="stat-calc-label">คิดจากสิทธิโควตาปีนี้</div>'
-        + '  <div class="stat-value">' + s.used + ' <span style="font-size:16px;color:#94a3b8;font-weight:500">วัน</span></div>'
-        + '  <div class="stat-sub">สิทธิทั้งหมด ' + s.limit + ' วัน · เหลือ ' + s.remaining + ' วัน</div>'
+        + '  <div class="stat-value">' + round2(s.used) + ' <span style="font-size:16px;color:#94a3b8;font-weight:500">วัน</span></div>'
+        + '  <div class="stat-sub">สิทธิทั้งหมด ' + round2(s.limit) + ' วัน · เหลือ ' + round2(s.remaining) + ' วัน</div>'
         + '  <div class="progress" style="margin-top: 10px;"><div class="progress-bar' + barCls + '" style="width:' + Math.min(100, pct) + '%"></div></div>'
         + '  <div class="card-top-bubble">'
         + '    <div class="bubble-icon"><i class="bi bi-' + icon + '"></i></div>'
@@ -8228,11 +8228,11 @@ async function api(req) {
         + statBox('ไม่อนุมัติ', d.by_status.rejected || 0, 'x-circle-fill', 'rose');
       var typeRows = Object.keys(d.by_type).map(function (k) {
         var t = d.by_type[k];
-        return '<tr><td>' + esc(LMS.LEAVE_TYPE_LABEL[k]) + '</td><td style="text-align:right">' + t.count + '</td><td style="text-align:right">' + t.days + '</td></tr>';
+        return '<tr><td>' + esc(LMS.LEAVE_TYPE_LABEL[k]) + '</td><td style="text-align:right">' + t.count + '</td><td style="text-align:right">' + round2(t.days) + '</td></tr>';
       }).join('');
       var deptRows = Object.keys(d.by_dept).sort(function (a, b) { return d.by_dept[b].days - d.by_dept[a].days; }).map(function (k) {
         var t = d.by_dept[k];
-        return '<tr><td>' + esc(k) + '</td><td style="text-align:right">' + t.count + '</td><td style="text-align:right">' + t.days + '</td></tr>';
+        return '<tr><td>' + esc(k) + '</td><td style="text-align:right">' + t.count + '</td><td style="text-align:right">' + round2(t.days) + '</td></tr>';
       }).join('');
       var topRows = d.top_users.slice(0, 10).map(function (u, i) {
         var rankCol = i < 3 ? ['#fbbf24','#9ca3af','#b45309'][i] : '#94a3b8';
@@ -8245,17 +8245,17 @@ async function api(req) {
           + '  <div>' + esc(u.full_name || '-') + '<br><small style="color:#94a3b8">' + esc(u.position||'') + '</small></div>'
           + '</div></td>'
           + '<td>' + esc(u.department || '-') + '</td>'
-          + '<td style="text-align:right">' + u.sick + '</td>'
-          + '<td style="text-align:right">' + u.personal + '</td>'
-          + '<td style="text-align:right">' + u.annual + '</td>'
-          + '<td style="text-align:right;font-weight:700;color:#024ad8">' + u.total_days + '</td>'
+          + '<td style="text-align:right">' + round2(u.sick) + '</td>'
+          + '<td style="text-align:right">' + round2(u.personal) + '</td>'
+          + '<td style="text-align:right">' + round2(u.annual) + '</td>'
+          + '<td style="text-align:right;font-weight:700;color:#024ad8">' + round2(u.total_days) + '</td>'
           + '</tr>';
       }).join('');
       var maxMonth = Math.max.apply(null, d.by_month.map(function (m) { return m.days; }).concat([1]));
       var trendBars = d.by_month.map(function (m) {
         var h = Math.round(m.days / maxMonth * 100);
         return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">'
-          + '<div style="font-size:10px;color:#94a3b8">' + (m.days || '') + '</div>'
+          + '<div style="font-size:10px;color:#94a3b8">' + (round2(m.days) || '') + '</div>'
           + '<div style="width:100%;height:120px;background:#f1f5f9;border-radius:6px 6px 0 0;display:flex;align-items:flex-end;overflow:hidden">'
           + '<div style="width:100%;height:' + h + '%;background:linear-gradient(180deg,#296ef9,#024ad8);border-radius:6px 6px 0 0;transition:height 1s"></div>'
           + '</div>'
@@ -8287,8 +8287,8 @@ async function api(req) {
       Object.keys(stats).forEach(function (k) {
         if (k !== 'sick' && k !== 'personal' && k !== 'annual') return;
         var s = stats[k];
-        statHtml += statBox(LMS.LEAVE_TYPE_LABEL[k] + ' (' + s.used + '/' + s.limit + ')',
-                            s.remaining + ' วัน', 'calendar-check', leaveTypeTone(k));
+        statHtml += statBox(LMS.LEAVE_TYPE_LABEL[k] + ' (' + round2(s.used) + '/' + round2(s.limit) + ')',
+                            round2(s.remaining) + ' วัน', 'calendar-check', leaveTypeTone(k));
       });
       var sel = '';
       if (canAll) {

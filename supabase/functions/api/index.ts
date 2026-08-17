@@ -1465,13 +1465,14 @@ function _inboxStatusesFor_(role) {
 function _leaveUsedDays_(userId, type, fiscalYear) {
   var rows = DB_readAll(SHEETS.LEAVES);
   var fy = Number(fiscalYear || cfg_fiscalYear_(cfg_now_()));
-  return rows.reduce(function (sum, r) {
+  var total = rows.reduce(function (sum, r) {
     if (String(r.requester_id) !== String(userId)) return sum;
     if (_leaveTypeForStats_(r.leave_type) !== type) return sum;
     if (r.status !== STATUS.APPROVED) return sum;
     if (Number(r.fiscal_year) !== fy) return sum;
     return sum + Number(r.days || 0);
   }, 0);
+  return cfg_round2_(total);
 }
 
 function _leaveStats_(userId, fiscalYear) {
@@ -1502,22 +1503,22 @@ function _leaveStats_(userId, fiscalYear) {
       var adj = Number(_settingsRaw_(adjKey) || 0);
       var limit = Math.max(0, baseLimit + adj);
       stats[t] = {
-        base_limit: baseLimit,
-        adjustment: adj,
-        used: used,
-        limit: limit,
-        remaining: Math.max(0, limit - used),
+        base_limit: cfg_round2_(baseLimit),
+        adjustment: cfg_round2_(adj),
+        used: cfg_round2_(used),
+        limit: cfg_round2_(limit),
+        remaining: Math.max(0, cfg_round2_(limit - used)),
         percent: limit > 0 ? Math.round(used * 100 / limit) : 0
       };
     } else {
       // compensatory: limit และ used มาจาก _getMonthlyCompensatoryQuota_ แบบ carry-over
       var limit = Math.max(0, baseLimit);
       stats[t] = {
-        base_limit: baseLimit,
+        base_limit: cfg_round2_(baseLimit),
         adjustment: 0,
-        used: used,
-        limit: limit,
-        remaining: Math.max(0, limit - used),
+        used: cfg_round2_(used),
+        limit: cfg_round2_(limit),
+        remaining: Math.max(0, cfg_round2_(limit - used)),
         percent: limit > 0 ? Math.round(used * 100 / limit) : 0
       };
     }
@@ -2074,22 +2075,22 @@ function Reports_overview(user, p) {
     by_status[r.status] = (by_status[r.status] || 0) + 1;
     if (by_type[reportType]) {
       by_type[reportType].count++;
-      if (r.status === STATUS.APPROVED) by_type[reportType].days += Number(r.days || 0);
+      if (r.status === STATUS.APPROVED) by_type[reportType].days = cfg_round2_(by_type[reportType].days + Number(r.days || 0));
     }
     var u = users[r.requester_id] || {};
     var dept = u.department || '(ไม่ระบุสังกัด)';
     if (!by_dept[dept]) by_dept[dept] = { count: 0, days: 0 };
     by_dept[dept].count++;
-    if (r.status === STATUS.APPROVED) by_dept[dept].days += Number(r.days || 0);
+    if (r.status === STATUS.APPROVED) by_dept[dept].days = cfg_round2_(by_dept[dept].days + Number(r.days || 0));
     var ym = String(r.start_date || '').substring(0, 7);
-    if (ym) by_month[ym] = (by_month[ym] || 0) + (r.status === STATUS.APPROVED ? Number(r.days || 0) : 0);
+    if (ym) by_month[ym] = cfg_round2_((by_month[ym] || 0) + (r.status === STATUS.APPROVED ? Number(r.days || 0) : 0));
     var uid = String(r.requester_id);
     if (!byUser[uid]) byUser[uid] = { id: uid, sick: 0, personal: 0, annual: 0, total_days: 0, total_count: 0, last: '' };
     byUser[uid].total_count++;
     if (r.status === STATUS.APPROVED) {
       var d = Number(r.days || 0);
-      byUser[uid][reportType] = (byUser[uid][reportType] || 0) + d;
-      byUser[uid].total_days += d;
+      byUser[uid][reportType] = cfg_round2_((byUser[uid][reportType] || 0) + d);
+      byUser[uid].total_days = cfg_round2_(byUser[uid].total_days + d);
     }
     if (r.created_at && (!byUser[uid].last || r.created_at > byUser[uid].last)) byUser[uid].last = r.created_at;
   });
@@ -2098,7 +2099,15 @@ function Reports_overview(user, p) {
     var u = users[uid] || {};
     return Object.assign({
       full_name: u.full_name, position: u.position, department: u.department, role: u.role, avatar: u.avatar
-    }, byUser[uid]);
+    }, {
+      id: byUser[uid].id,
+      sick: cfg_round2_(byUser[uid].sick),
+      personal: cfg_round2_(byUser[uid].personal),
+      annual: cfg_round2_(byUser[uid].annual),
+      total_days: cfg_round2_(byUser[uid].total_days),
+      total_count: byUser[uid].total_count,
+      last: byUser[uid].last
+    });
   }).sort(function (a, b) { return b.total_days - a.total_days; }).slice(0, 20);
 
   var monthsList = [];
@@ -2106,7 +2115,7 @@ function Reports_overview(user, p) {
   for (var m = 11; m >= 0; m--) {
     var d = new Date(now.getFullYear(), now.getMonth() - m, 1);
     var ym = Utilities.formatDate(d, APP.TIMEZONE, 'yyyy-MM');
-    monthsList.push({ ym: ym, days: by_month[ym] || 0 });
+    monthsList.push({ ym: ym, days: cfg_round2_(by_month[ym] || 0) });
   }
 
   return {
