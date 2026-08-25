@@ -10499,6 +10499,7 @@ async function api(req) {
               cellTitle = 'หยุดงาน (OFF - ไม่มีคนแทน)';
             } else if (dayState.status === 'leave') {
               var leaveType = dayState.leave_info ? dayState.leave_info.leave_type : 'ลา';
+              var isPending = dayState.leave_info && dayState.leave_info.status && dayState.leave_info.status !== 'approved';
               if (leaveType === 'compensatory') {
                 cellClass = 'cell-compensatory';
                 cellContent = svgCompensatory;
@@ -10506,7 +10507,8 @@ async function api(req) {
               } else {
                 cellClass = 'cell-leave';
                 cellContent = svgLeave;
-                cellTitle = 'ลา (' + ((LMS.LEAVE_TYPE_LABEL||{})[leaveType] || leaveType) + ')';
+                var typeLabel = (LMS.LEAVE_TYPE_LABEL||{})[leaveType] || leaveType;
+                cellTitle = 'ลา (' + typeLabel + (isPending ? ' - รออนุมัติ' : '') + ')';
               }
               if (dayState.substitute_by) {
                 cellContent += ' ' + svgSwap;
@@ -10524,15 +10526,10 @@ async function api(req) {
             }
             
             var isClickable = canEdit;
-            if (emp.branch === 'พนักงานแทน') {
-              isClickable = canEdit;
-            } else {
-              if (dayState.status === 'leave' && leaveType !== 'compensatory') {
-                isClickable = false;
-              }
-              if (dayState.status === 'substituting') {
-                isClickable = false;
-              }
+            if (dayState.status === 'leave' && leaveType !== 'compensatory') {
+              isClickable = false;
+            } else if (dayState.status === 'substituting' && emp.branch !== 'พนักงานแทน') {
+              isClickable = false;
             }
             var clickableClass = isClickable ? ' cell-clickable' : '';
             
@@ -10638,6 +10635,17 @@ async function api(req) {
         }
         updateBatchToolbar();
         renderTable();
+        return;
+      }
+
+      if (currentStatus === 'leave' && leaveType !== 'compensatory') {
+        Swal.fire({
+          title: 'พนักงานลาหยุด',
+          html: '<strong>' + esc(empName) + '</strong> มีการลา (' + esc((LMS.LEAVE_TYPE_LABEL||{})[leaveType] || leaveType) + ') ในวันที่ ' + dateStr + '<br><span style="color:#64748b;font-size:12px;">ไม่สามารถมอบหมายงานแทนในวันที่มีการลาได้</span>',
+          icon: 'info',
+          confirmButtonText: 'ตกลง',
+          confirmButtonColor: '#4f46e5'
+        });
         return;
       }
 

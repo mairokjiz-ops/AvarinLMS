@@ -261,6 +261,10 @@ function cfg_iso_(d) {
 }
 function cfg_dateOnly_(d) {
   if (!d) return '';
+  if (typeof d === 'string') {
+    var m = d.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+  }
   var ld = cfg_localDate_(d);
   if (isNaN(ld.getTime())) return '';
   return ld.toISOString().slice(0, 10);
@@ -960,21 +964,24 @@ function Schedule_monthly(user, p) {
     return branches.indexOf(u.branch) >= 0;
   });
 
+  var visibleStatuses = {};
+  [STATUS.PENDING, STATUS.CHECKED, STATUS.REVIEWED, STATUS.APPROVED].forEach(function (s) { visibleStatuses[s] = true; });
+
+  var lastDay = new Date(year, month, 0).getDate();
+  var monthStartStr = year + '-' + String(month).padStart(2, '0') + '-01';
+  var monthEndStr = year + '-' + String(month).padStart(2, '0') + '-' + String(lastDay).padStart(2, '0');
+
   var leaves = DB_readAll(SHEETS.LEAVES).filter(function (lv) {
-    if (lv.status !== STATUS.APPROVED) return false;
+    if (!visibleStatuses[lv.status]) return false;
     var requesterId = String(lv.requester_id);
     var isTargetUser = targetUsers.some(function (u) { return String(u.id) === requesterId; });
     if (!isTargetUser) return false;
     
-    var startOfMonth = new Date(year, month - 1, 1).getTime();
-    var endOfMonth = new Date(year, month, 0, 23, 59, 59, 999).getTime();
-    var lvStart = new Date(lv.start_date).getTime();
-    var lvEnd = new Date(lv.end_date || lv.start_date).getTime();
+    var sStr = cfg_dateOnly_(lv.start_date);
+    var eStr = cfg_dateOnly_(lv.end_date || lv.start_date) || sStr;
     
-    return lvStart <= endOfMonth && lvEnd >= startOfMonth;
+    return sStr <= monthEndStr && eStr >= monthStartStr;
   });
-
-  var lastDay = new Date(year, month, 0).getDate();
 
   // Calculate monthly quota for each target user
   var quotas = {};
@@ -995,7 +1002,7 @@ function Schedule_monthly(user, p) {
   
   for (var d = 1; d <= lastDay; d++) {
     var dateObj = new Date(year, month - 1, d);
-    var dateStr = Utilities.formatDate(dateObj, 'Asia/Bangkok', 'yyyy-MM-dd');
+    var dateStr = year + '-' + String(month).padStart(2, '0') + '-' + String(d).padStart(2, '0');
     var dayOfWeek = dateObj.getDay();
     
     var branchEmployees = [];
@@ -1007,12 +1014,11 @@ function Schedule_monthly(user, p) {
       
       leaves.forEach(function (lv) {
         if (String(lv.requester_id) !== String(u.id)) return;
-        var start = new Date(lv.start_date + 'T00:00:00+07:00').getTime();
-        var end = new Date((lv.end_date || lv.start_date) + 'T23:59:59+07:00').getTime();
-        var current = new Date(dateStr + 'T12:00:00+07:00').getTime();
-        if (current >= start && current <= end) {
+        var sStr = cfg_dateOnly_(lv.start_date);
+        var eStr = cfg_dateOnly_(lv.end_date || lv.start_date) || sStr;
+        if (dateStr >= sStr && dateStr <= eStr) {
           activeLeave = lv;
-          leaveInfo = { id: lv.id, leave_type: lv.leave_type, leave_no: lv.leave_no };
+          leaveInfo = { id: lv.id, leave_type: lv.leave_type, leave_no: lv.leave_no, status: lv.status };
         }
       });
       
@@ -1024,17 +1030,17 @@ function Schedule_monthly(user, p) {
       var status = 'working';
       var subBranch = null;
 
-      if (overrideVal === 'off_no_sub') {
-        status = 'off_no_sub';
-      } else if (overrideVal.indexOf('sub_') === 0) {
-        status = 'substituting';
-        subBranch = overrideVal.substring(4);
-      } else if (activeLeave) {
+      if (activeLeave) {
         if (activeLeave.leave_type === 'work_offday') {
           status = 'working';
         } else {
           status = 'leave';
         }
+      } else if (overrideVal === 'off_no_sub') {
+        status = 'off_no_sub';
+      } else if (overrideVal.indexOf('sub_') === 0) {
+        status = 'substituting';
+        subBranch = overrideVal.substring(4);
       } else if (isOffDay) {
         status = 'off';
       }
@@ -1050,7 +1056,8 @@ function Schedule_monthly(user, p) {
         leave_info: leaveInfo,
         substitute_by: null,
         substitute_branch: subBranch,
-        override_value: overrideVal
+        override_value: overrideVal,
+        substituting_for: null
       };
       
       if (u.branch === 'พนักงานแทน') {
