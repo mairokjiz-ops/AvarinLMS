@@ -5115,7 +5115,37 @@ async function api(req) {
     });
   }
 
-  // ── API call (with timeout + existence check) ───────
+  // ── Client-side In-Flight & Data Cache ────────────────
+  var _CLIENT_CACHE = {};
+  var _CLIENT_CACHE_TIME = {};
+  var _INFLIGHT_REQUESTS = {};
+
+  var _CACHEABLE_ACTIONS = {
+    'setting.get': 10 * 60 * 1000,
+    'holiday.list': 10 * 60 * 1000,
+    'special_commission.products.list': 10 * 60 * 1000,
+    'officer_mapping.list': 10 * 60 * 1000,
+    'stock_bill.permissions.get': 5 * 60 * 1000,
+    'user.branch_directory': 5 * 60 * 1000,
+    'user.list': 3 * 60 * 1000,
+    'auth.me': 2 * 60 * 1000
+  };
+
+  function invalidateClientCache(pattern) {
+    if (!pattern) { _CLIENT_CACHE = {}; _CLIENT_CACHE_TIME = {}; return; }
+    Object.keys(_CLIENT_CACHE).forEach(function (k) {
+      if (k.indexOf(pattern) >= 0) {
+        delete _CLIENT_CACHE[k];
+        delete _CLIENT_CACHE_TIME[k];
+      }
+    });
+  }
+
+  function _getCacheKey(action, payload) {
+    return action + '::' + JSON.stringify(payload || {});
+  }
+
+  // ── API call (with caching, deduplication + fallback) ─
   function call(action, payload) {
     function isNetworkErrStr(s) {
       return s.indexOf('Failed to fetch') >= 0 || s.indexOf('NetworkError') >= 0 || s.indexOf('Load failed') >= 0;
@@ -5141,13 +5171,55 @@ async function api(req) {
         .then(function(fb) { resolve(fb && fb.ok ? fb.data : emptyData); })
         .catch(function() { resolve(emptyData); });
     }
-    return new Promise(function (resolve, reject) {
+    function stockBillFallback(resolve) {
+      handleStockBillClientApi({ action: action, payload: payload || {} })
+        .then(function(fb) { resolve(fb && fb.ok ? fb.data : { items: [], total: 0, stats: {} }); })
+        .catch(function() { resolve({ items: [], total: 0, stats: {} }); });
+    }
+
+    var cacheKey = _getCacheKey(action, payload);
+    var now = Date.now();
+    var ttl = _CACHEABLE_ACTIONS[action];
+
+    // 1. Check in-memory client cache
+    if (ttl && _CLIENT_CACHE[cacheKey] !== undefined) {
+      if (now - (_CLIENT_CACHE_TIME[cacheKey] || 0) < ttl) {
+        return Promise.resolve(_CLIENT_CACHE[cacheKey]);
+      }
+    }
+
+    // 2. Check in-flight duplicate requests
+    if (_INFLIGHT_REQUESTS[cacheKey]) {
+      return _INFLIGHT_REQUESTS[cacheKey];
+    }
+
+    var reqPromise = new Promise(function (resolve, reject) {
       api({ action: action, token: Store.token, payload: payload || {} })
         .then(function (res) {
           if (!res) return reject(new Error('ไม่ได้รับคำตอบจากเซิร์ฟเวอร์'));
-          if (res.ok) return resolve(res.data);
+          if (res.ok) {
+            // Save cache if cacheable
+            if (ttl) {
+              _CLIENT_CACHE[cacheKey] = res.data;
+              _CLIENT_CACHE_TIME[cacheKey] = Date.now();
+            }
+            // Auto invalidate on mutations
+            if (action.indexOf('.create') >= 0 || action.indexOf('.update') >= 0 || action.indexOf('.delete') >= 0 || action.indexOf('.upsert') >= 0 || action.indexOf('.submit') >= 0 || action.indexOf('.approve') >= 0 || action.indexOf('.cancel') >= 0 || action.indexOf('.check') >= 0) {
+              if (action.indexOf('leave.') >= 0) { invalidateClientCache('leave.'); _lastBadgesRefresh = 0; }
+              if (action.indexOf('expense.') >= 0) { invalidateClientCache('expense.'); _lastBadgesRefresh = 0; }
+              if (action.indexOf('user.') >= 0) { invalidateClientCache('user.'); invalidateClientCache('auth.me'); _lastBadgesRefresh = 0; }
+              if (action.indexOf('stock_bill.') >= 0) { invalidateClientCache('stock_bill.'); }
+              if (action.indexOf('special_commission.') >= 0) { invalidateClientCache('special_commission.'); }
+              if (action.indexOf('officer_mapping.') >= 0) { invalidateClientCache('officer_mapping.'); }
+              if (action.indexOf('holiday.') >= 0) { invalidateClientCache('holiday.'); }
+              if (action.indexOf('setting.') >= 0) { invalidateClientCache('setting.'); }
+            }
+            return resolve(res.data);
+          }
           // special_commission fallback
           if (action && String(action).indexOf('special_commission.') === 0) return specialCommissionFallback(resolve);
+          // stock_bill fallback
+          if (action && String(action).indexOf('stock_bill.') === 0) return stockBillFallback(resolve);
           // api() returns {ok:false, error:'Failed to fetch'} when network fails
           if (isNetworkErrStr(String(res.error || ''))) return resolveNetworkFallback(resolve, reject);
           reject(new Error(res.error || 'เกิดข้อผิดพลาด'));
@@ -5156,10 +5228,19 @@ async function api(req) {
           var errMsg = String((err && err.message) || err || '');
           // special_commission fallback
           if (action && String(action).indexOf('special_commission.') === 0) return specialCommissionFallback(resolve);
+          // stock_bill fallback
+          if (action && String(action).indexOf('stock_bill.') === 0) return stockBillFallback(resolve);
           if (isNetworkErrStr(errMsg)) return resolveNetworkFallback(resolve, reject);
           reject(err);
         });
     });
+
+    _INFLIGHT_REQUESTS[cacheKey] = reqPromise;
+    reqPromise.finally(function () {
+      delete _INFLIGHT_REQUESTS[cacheKey];
+    });
+
+    return reqPromise;
   }
 
   // ── Notifications ──────────────────────────────────
@@ -5616,13 +5697,10 @@ async function api(req) {
     '#/profile':      { title: 'โปรไฟล์ของฉัน',      sub: 'จัดการข้อมูลส่วนตัว',                  icon: 'person-circle' },
     '#/branches':     { title: 'ผังองค์กร',   sub: 'แสดงผังตามแผนก', icon: 'diagram-3' },
     '#/schedule':     { title: 'ตารางทำงานสาขา',     sub: 'ตารางทำงานและคนแทนอัตโนมัติ (6 วัน หยุด 1 วัน)', icon: 'calendar-week' },
-    '#/courses':      { title: 'คอร์สฝึกอบรม',       sub: 'จัดการเนื้อหาอบรมและควิซข้อมูลสินค้า', icon: 'journal-bookmark-fill' },
-    '#/courses/new':  { title: 'จัดการคอร์สเรียน',   sub: 'ป้อนบทเรียนและแบบทดสอบสำหรับพนักงาน', icon: 'journal-plus' },
-    '#/courses/view': { title: 'รายละเอียดคอร์ส',     sub: 'ประเมินผลการเรียนรู้ของพนักงาน', icon: 'journal-text' },
     '#/audit':        { title: 'บันทึกระบบ',         sub: 'ประวัติการใช้งาน',                    icon: 'shield-check' },
-    '#/attendance':   { title: 'ประวัติการเข้างาน',  sub: 'ตรวจสอบการลงเวลาเข้า-ออกงานและภาพถ่ายเซลฟี่', icon: 'clock-history' },
     '#/rentals':      { title: 'การเช่า-หมดอายุ',    sub: 'ติดตามรายการเช่าและสัญญาหมดอายุของพนักงานและระบบสำนักงาน', icon: 'calendar-range' },
-    '#/commission-special': { title: 'คอมมิชชั่นสินค้าพิเศษ', sub: 'คำนวณและสรุปยอดขายพนักงานหน้าร้าน & พนักงานแทน', icon: 'trophy-fill' }
+    '#/commission-special': { title: 'คอมมิชชั่นสินค้าพิเศษ', sub: 'คำนวณและสรุปยอดขายพนักงานหน้าร้าน & พนักงานแทน', icon: 'trophy-fill' },
+    '#/stock-bills': { title: 'บิลสินค้าเข้า', sub: 'ระบบบันทึกเอกสารบิลสินค้าเข้า จัดเก็บรูปบิล R2 และส่ง LINE Flex', icon: 'receipt-cutoff' }
   };
 
   // ── Menu groups ────────────────────────────────────
@@ -5654,17 +5732,12 @@ async function api(req) {
         ]
       },
       {
-        title: 'ค่าใช้จ่าย',
+        title: 'ค่าใช้จ่าย & สต็อก',
         items: [
+          { hash: '#/stock-bills',      icon: 'receipt-cutoff', label: 'บิลสินค้าเข้า (R2 & LINE)', cap: 'stock_bill.view' },
           { hash: '#/expenses/new',     icon: 'cash-coin',     label: 'เบิกค่าใช้จ่าย',     cap: 'expense.create_own' },
           { hash: '#/expenses/pending', icon: 'check2-square', label: 'ใบเบิกรอดำเนินการ', cap: 'expense.manage', badge: 'expenses_pending' },
           { hash: '#/expenses/all',     icon: 'inbox-fill',     label: 'ใบเบิกทั้งหมด',     cap: 'expense.create_own|expense.manage' }
-        ]
-      },
-      {
-        title: 'ระบบฝึกอบรม',
-        items: [
-          { hash: '#/courses', icon: 'journal-bookmark-fill', label: 'จัดการคอร์สเรียน', cap: 'setting.manage' }
         ]
       },
       {
@@ -5679,7 +5752,6 @@ async function api(req) {
       {
         title: 'รายงานและประวัติ',
         items: [
-          { hash: '#/attendance', icon: 'clock-history', label: 'ประวัติการเข้างาน', cap: 'user.manage|leave.approve|leave.comment' },
           { hash: '#/reports', icon: 'graph-up',     label: 'รายงานสถิติ', cap: 'report.view_own' },
           { hash: '#/audit',   icon: 'shield-check', label: 'บันทึกระบบ',   cap: 'audit.manage' }
         ]
@@ -6368,55 +6440,39 @@ async function api(req) {
     });
   }
 
-  function refreshBadges() {
+  var _lastBadgesRefresh = 0;
+  function refreshBadges(force) {
     if (!Store.token || !Store.user) return;
-    var promises = [];
-    if (hasCap('user.manage')) {
-      promises.push(
-        call('user.list_pending', {}).then(function (r) {
-          Store._pendingCount = (r && r.total) || 0;
-        }).catch(function () {})
-      );
-    }
-    if (hasCap('expense.manage')) {
-      promises.push(
-        call('expense.list', { status: 'pending' }).then(function (r) {
-          Store._pendingExpensesCount = (r && r.total) || 0;
-        }).catch(function () {})
-      );
-    }
-    if (hasCap('leave.check|leave.comment|leave.approve')) {
-      promises.push(
-        call('leave.list', { scope: 'pending_action' }).then(function (r) {
-          Store._pendingLeavesCount = (r && r.total) || 0;
-        }).catch(function () {})
-      );
-    }
-    promises.push(
-      new Promise(function (res) {
-        try {
-          var raw = localStorage.getItem('lms_rentals_data');
-          var list = raw ? JSON.parse(raw) : (window.__getInitialRentalsData ? window.__getInitialRentalsData() : []);
-          var todayStr = new Date().toISOString().split('T')[0];
-          var nowMs = new Date(todayStr).getTime();
-          var cnt = 0;
-          list.forEach(function (x) {
-            if (x.status === 'renewed' || x.status === 'terminated') return;
-            var endMs = new Date(x.end_date).getTime();
-            var diffDays = Math.ceil((endMs - nowMs) / (1000 * 60 * 60 * 24));
-            if (diffDays <= (x.alert_days || 60)) cnt++;
-          });
-          Store._expiringRentalsCount = cnt;
-        } catch (e) { Store._expiringRentalsCount = 0; }
-        res();
-      })
-    );
-    if (promises.length > 0) {
-      Promise.all(promises).then(function () {
-        var nav = $('.sb-nav');
-        if (nav) nav.innerHTML = sidebarNavHtml();
-      });
-    }
+    var now = Date.now();
+    if (!force && (now - _lastBadgesRefresh < 60000)) return;
+    _lastBadgesRefresh = now;
+
+    // Single unified call to fetch badge counts
+    call('app.badge_counts', {}).then(function (counts) {
+      if (counts) {
+        if (counts.pending_users !== undefined) Store._pendingCount = counts.pending_users;
+        if (counts.pending_expenses !== undefined) Store._pendingExpensesCount = counts.pending_expenses;
+        if (counts.pending_leaves !== undefined) Store._pendingLeavesCount = counts.pending_leaves;
+      }
+      // Calculate local rentals count
+      try {
+        var raw = localStorage.getItem('lms_rentals_data');
+        var list = raw ? JSON.parse(raw) : (window.__getInitialRentalsData ? window.__getInitialRentalsData() : []);
+        var todayStr = new Date().toISOString().split('T')[0];
+        var nowMs = new Date(todayStr).getTime();
+        var cnt = 0;
+        list.forEach(function (x) {
+          if (x.status === 'renewed' || x.status === 'terminated') return;
+          var endMs = new Date(x.end_date).getTime();
+          var diffDays = Math.ceil((endMs - nowMs) / (1000 * 60 * 60 * 24));
+          if (diffDays <= (x.alert_days || 60)) cnt++;
+        });
+        Store._expiringRentalsCount = cnt;
+      } catch (e) { Store._expiringRentalsCount = 0; }
+
+      var nav = $('.sb-nav');
+      if (nav) nav.innerHTML = sidebarNavHtml();
+    }).catch(function () {});
   }
 
   // ── Router ─────────────────────────────────────────
@@ -8632,464 +8688,7 @@ async function api(req) {
     renderOrganizationChart();
   };
 
-  Routes['#/courses'] = function () {
-    if (!hasCap('setting.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
-    renderCoursesDirectory();
-  };
-  Routes['#/courses/new'] = function () {
-    if (!hasCap('setting.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
-    renderCourseWizard();
-  };
-  Routes['#/courses/view'] = function () {
-    if (!hasCap('setting.manage')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
-    renderCourseDetail();
-  };
 
-  function renderCoursesDirectory() {
-    setPage('<div class="toolbar" style="justify-content:space-between">'
-      + '  <div class="search-box"><i class="bi bi-search"></i><input type="text" id="course-q" placeholder="ค้นหาคอร์สเรียน..."></div>'
-      + '  <a class="btn btn-primary" href="#/courses/new"><i class="bi bi-journal-plus"></i> สร้างคอร์สเรียนใหม่</a>'
-      + '</div>'
-      + '<div class="grid-3" id="course-list" style="margin-top:16px"></div>');
-
-    var st = { q: '' };
-
-    function load() {
-      var listDiv = $('#course-list');
-      if (!listDiv) return;
-      listDiv.innerHTML = skBlocks(3, 100);
-      call('course.list', {}).then(function (r) {
-        var items = r.items || [];
-        var filtered = items.filter(function (c) {
-          if (st.q) {
-            var search = st.q.toLowerCase();
-            return (c.title || '').toLowerCase().indexOf(search) >= 0 || (c.description || '').toLowerCase().indexOf(search) >= 0;
-          }
-          return true;
-        });
-
-        var html = '';
-        filtered.forEach(function (c) {
-          var thumb = c.thumbnail_url || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500&auto=format&fit=crop&q=60';
-          var statusBadge = c.status === 'active' ? '<span class="badge b-emerald">เปิดใช้งาน</span>' : '<span class="badge b-slate">ปิดใช้งาน</span>';
-          html += '<div class="card" style="margin:0;display:flex;flex-direction:column;gap:12px;overflow:hidden;padding:0;border:1px solid #e2e8f0;border-radius:12px">'
-            + '  <div style="height:140px;position:relative;background:#f1f5f9">'
-            + '    <img src="' + esc(thumb) + '" style="width:100%;height:100%;object-fit:cover" referrerpolicy="no-referrer">'
-            + '    <div style="position:absolute;top:10px;right:10px">' + statusBadge + '</div>'
-            + '  </div>'
-            + '  <div style="padding:16px;flex:1;display:flex;flex-direction:column;gap:8px">'
-            + '    <h3 style="margin:0;font-size:16px;font-weight:700;color:#0f172a">' + esc(c.title) + '</h3>'
-            + '    <p style="margin:0;font-size:13px;color:#64748b;flex:1;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis">' + esc(c.description || '-') + '</p>'
-            + '    <div style="display:flex;gap:8px;margin-top:10px;border-top:1px solid #f1f5f9;padding-top:12px">'
-            + '      <a class="btn btn-outline" style="flex:1;font-size:12.5px;padding:6px 12px" href="#/courses/view?id=' + esc(c.id) + '"><i class="bi bi-eye"></i> ดูรายงาน</a>'
-            + '      <a class="btn btn-outline" style="font-size:12.5px;padding:6px 10px" href="#/courses/new?id=' + esc(c.id) + '"><i class="bi bi-pencil"></i> แก้ไข</a>'
-            + '      <button class="btn btn-outline" style="font-size:12.5px;padding:6px 10px;color:#ef4444;border-color:#fca5a5" onclick="deleteCourse(\'' + esc(c.id) + '\')"><i class="bi bi-trash"></i></button>'
-            + '    </div>'
-            + '  </div>'
-            + '</div>';
-        });
-
-        if (html === '') {
-          html = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#94a3b8"><i class="bi bi-journal-bookmark" style="font-size:32px;display:block;margin-bottom:8px"></i>ไม่พบคอร์สเรียน</div>';
-        }
-        listDiv.innerHTML = html;
-      }).catch(function (e) {
-        listDiv.innerHTML = '<div style="grid-column:1/-1;color:#ef4444;text-align:center;padding:20px">' + esc(e.message) + '</div>';
-      });
-    }
-
-    window.deleteCourse = function (id) {
-      if (!confirm('ยืนยันที่จะลบคอร์สเรียนนี้ใช่หรือไม่? ข้อมูลแบบทดสอบและความก้าวหน้าพนักงานจะถูกลบทั้งหมด')) return;
-      Spinner.show('กำลังลบ...');
-      call('course.delete', { id: id }).then(function () {
-        Spinner.hide();
-        toast('ลบสำเร็จแล้ว', 'success');
-        load();
-      }).catch(function (e) {
-        Spinner.hide();
-        alertError('ผิดพลาด', e.message);
-      });
-    };
-
-    var t;
-    $('#course-q').addEventListener('input', function () {
-      clearTimeout(t);
-      t = setTimeout(function () { st.q = $('#course-q').value; load(); }, 300);
-    });
-
-    load();
-  }
-
-  function renderCourseWizard() {
-    var id = (location.hash).split('?id=')[1] || '';
-    var isEdit = !!id;
-
-    setPage('<div class="card" style="max-width:800px;margin:0 auto">'
-      + '<div class="card-head" style="border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:20px">'
-      + '  <i class="bi bi-journal-plus" style="color:#024ad8;font-size:20px"></i>'
-      + '  <h3 class="card-title">' + (isEdit ? 'แก้ไขคอร์สเรียน' : 'สร้างคอร์สเรียนและแบบทดสอบ') + '</h3>'
-      + '</div>'
-      + '<div class="card-body" style="display:flex;flex-direction:column;gap:18px">'
-      + '  <div class="grid-2">'
-      + '    <div class="form-group"><label class="form-label">ชื่อคอร์สเรียน *</label><input type="text" class="input" id="c-title" placeholder="เช่น การขายรองเท้าวิ่ง Avarin Pro 2026"></div>'
-      + '    <div class="form-group"><label class="form-label">ลิงก์ภาพหน้าปก (Thumbnail URL)</label><input type="text" class="input" id="c-thumb" placeholder="https://domain.com/image.jpg"></div>'
-      + '  </div>'
-      + '  <div class="form-group"><label class="form-label">คำอธิบายย่อ</label><textarea class="input" id="c-desc" style="height:60px" placeholder="คำอธิบายสรุปสั้น ๆ เกี่ยวกับคอร์สนี้..."></textarea></div>'
-      + '  <div class="grid-2">'
-      + '    <div class="form-group"><label class="form-label">ลิงก์วิดีโอประกอบการเรียน (YouTube URL - ไม่บังคับ)</label><input type="text" class="input" id="c-video" placeholder="https://www.youtube.com/watch?v=..."></div>'
-      + '    <div class="form-group"><label class="form-label">สถานะคอร์สเรียน</label><select class="select" id="c-status"><option value="active">เปิดใช้งาน (Active)</option><option value="inactive">ปิดใช้งาน (Inactive)</option></select></div>'
-      + '  </div>'
-      + '  <div class="form-group"><label class="form-label">เนื้อหาบทเรียนสำหรับศึกษา (รองรับ HTML/Text) *</label><textarea class="input" id="c-content" style="height:250px;font-family:inherit" placeholder="ใส่ข้อมูลเนื้อหาสินค้า จุดเด่น วิธีการแนะนำลูกค้า ฯลฯ อย่างละเอียด..."></textarea></div>'
-      + '  '
-      + '  <!-- Quiz Section -->'
-      + '  <div style="border-top:1px solid #e2e8f0;padding-top:20px;margin-top:10px">'
-      + '    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">'
-      + '      <h4 style="margin:0;font-size:16px;font-weight:700;color:#1e293b"><i class="bi bi-question-circle-fill" style="color:#024ad8"></i> แบบทดสอบข้อเขียน (ผ่านเกณฑ์ที่ 80% ขึ้นไป)</h4>'
-      + '      <div style="display:flex;gap:8px">'
-      + '        <button class="btn btn-outline" style="font-size:12.5px;padding:6px 12px;color:#10b981;border-color:#a7f3d0" type="button" onclick="generateQuizWithAI()"><i class="bi bi-robot"></i> ให้ AI ออกข้อสอบให้อัตโนมัติ</button>'
-      + '        <button class="btn btn-outline" style="font-size:12.5px;padding:6px 12px" type="button" onclick="addQuestion()"><i class="bi bi-plus-lg"></i> เพิ่มข้อสอบ</button>'
-      + '      </div>'
-      + '    </div>'
-      + '    <div id="quiz-builder-list" style="display:flex;flex-direction:column;gap:16px"></div>'
-      + '  </div>'
-      + '  '
-      + '  <div style="display:flex;gap:12px;margin-top:24px;border-top:1px solid #e2e8f0;padding-top:20px">'
-      + '    <button class="btn btn-primary" onclick="saveCourse()" style="flex:1"><i class="bi bi-save"></i> บันทึกข้อมูล</button>'
-      + '    <a class="btn btn-outline" href="#/courses" style="max-width:120px;text-align:center">ยกเลิก</a>'
-      + '  </div>'
-      + '</div>'
-      + '</div>');
-
-    var questions = [];
-
-    window.addQuestion = function (qData) {
-      var qId = crypto.randomUUID();
-      var q = qData || { question: '', options: ['', '', '', ''], correct_option: 0 };
-      q.id = qId;
-      questions.push(q);
-      renderQuestions();
-    };
-
-    window.deleteQuestion = function (qId) {
-      questions = questions.filter(function (x) { return x.id !== qId; });
-      renderQuestions();
-    };
-
-    window.generateQuizWithAI = function () {
-      call('setting.get', {}).then(function (s) {
-        var apiKey = String(s.google_gemini_api_key || '').trim();
-        if (!apiKey) {
-          alertError('ไม่พบ API Key', 'กรุณาระบุ Gemini API Key ในหน้าตั้งค่าระบบก่อนใช้งานระบบออกข้อสอบด้วย AI');
-          return;
-        }
-
-        var title = $('#c-title').value.trim();
-        var content = $('#c-content').value.trim();
-        if (!title || !content) {
-          toast('กรุณากรอกชื่อคอร์สและเนื้อหาบทเรียนอย่างละเอียด เพื่อให้ AI วิเคราะห์ก่อนออกข้อสอบ', 'warning');
-          return;
-        }
-
-        Spinner.show('AI กำลังวิเคราะห์เนื้อหาและออกข้อสอบสไตล์วิเคราะห์สินค้า...');
-        var prompt = "คุณคือผู้เชี่ยวชาญการออกข้อสอบสำหรับการเรียนรู้อบรมพนักงานสาขาหน้าร้าน\n"
-          + "จงออกข้อสอบปรนัย 4 ตัวเลือก จำนวน 5 ข้อ จากเนื้อหาต่อไปนี้:\n"
-          + "ชื่อคอร์ส: " + title + "\n"
-          + "เนื้อหา: " + content + "\n\n"
-          + "กติกา:\n"
-          + "1. ออกข้อสอบ 5 ข้อ แต่ละข้อมี 4 ตัวเลือก\n"
-          + "2. กำหนด correct_option เป็นดัชนีของตัวเลือกที่ถูกต้อง (0, 1, 2, หรือ 3)\n"
-          + "3. ส่งผลลัพธ์กลับมาเป็น JSON Array รูปแบบนี้เท่านั้น ห้ามใส่ markdown block (เช่น ```json) หรือข้อความอธิบายใดๆ ทั้งก่อนและหลัง JSON โดยเด็ดขาด:\n"
-          + "[\n"
-          + "  {\n"
-          + "    \"question\": \"คำถาม...\",\n"
-          + "    \"options\": [\"ตัวเลือก 0\", \"ตัวเลือก 1\", \"ตัวเลือก 2\", \"ตัวเลือก 3\"],\n"
-          + "    \"correct_option\": 0\n"
-          + "  }\n"
-          + "]";
-
-        var models = [
-          "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey,
-          "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey,
-          "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" + apiKey
-        ];
-        
-        function tryFetch(index) {
-          if (index >= models.length) {
-            Spinner.hide();
-            alertError('ผิดพลาด', 'ไม่สามารถเชื่อมต่อกับ Gemini API ได้ หรือโควต้าของคีย์คุณหมดแล้ว กรุณาตรวจสอบการตั้งค่าคีย์ของคุณ');
-            return;
-          }
-          
-          var targetUrl = models[index];
-          var payload = {
-            contents: [{ parts: [{ text: prompt }] }]
-          };
-          
-          if (targetUrl.indexOf('v1beta') >= 0) {
-            payload.generationConfig = { response_mime_type: "application/json" };
-          } else {
-            payload.generationConfig = { responseMimeType: "application/json" };
-          }
-          
-          fetch(targetUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-          })
-          .then(function (res) {
-            if (!res.ok) {
-              return res.json().then(function (errJson) {
-                var msg = errJson && errJson.error && errJson.error.message ? errJson.error.message : ('Status ' + res.status);
-                return Promise.reject(new Error(msg));
-              }).catch(function () {
-                return Promise.reject(new Error('Status ' + res.status));
-              });
-            }
-            return res.json();
-          })
-          .then(function (json) {
-            if (!json) return;
-            Spinner.hide();
-            if (!json.candidates || !json.candidates[0] || !json.candidates[0].content || !json.candidates[0].content.parts[0].text) {
-              throw new Error('ไม่ได้รับข้อมูลตอบกลับที่ถูกต้องจาก AI');
-            }
-            var text = json.candidates[0].content.parts[0].text.trim();
-            if (text.indexOf('```') === 0) {
-              text = text.replace(/^```(?:json)?\s*|```\s*$/g, '').trim();
-            }
-            var qList = JSON.parse(text);
-            if (!Array.isArray(qList)) throw new Error('รูปแบบข้อมูลจาก AI ไม่ถูกต้อง');
-            
-            questions = [];
-            qList.forEach(function (q) {
-              addQuestion({
-                question: q.question,
-                options: q.options,
-                correct_option: q.correct_option
-              });
-            });
-            toast('AI ออกข้อสอบเสร็จสิ้นจำนวน ' + qList.length + ' ข้อ', 'success');
-          })
-          .catch(function (err) {
-            console.warn('Gemini API call failed for ' + targetUrl + ':', err.message);
-            tryFetch(index + 1);
-          });
-        }
-        
-        tryFetch(0);
-      }).catch(function (e) {
-        alertError('ผิดพลาด', 'โหลดการตั้งค่าไม่สำเร็จ: ' + e.message);
-      });
-    };
-
-    function renderQuestions() {
-      var container = $('#quiz-builder-list');
-      if (!container) return;
-      
-      if (questions.length === 0) {
-        container.innerHTML = '<div style="text-align:center;padding:20px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;color:#94a3b8">ยังไม่มีคำถามแบบทดสอบ กรุณากดเพิ่มข้อสอบ</div>';
-        return;
-      }
-
-      container.innerHTML = questions.map(function (q, index) {
-        var optsHtml = q.options.map(function (opt, optIndex) {
-          return '<div style="display:flex;align-items:center;gap:8px">'
-            + '  <span style="font-size:12px;color:#64748b;width:60px">ตัวเลือกที่ ' + (optIndex + 1) + '</span>'
-            + '  <input type="text" class="input" style="padding:6px 10px;font-size:13.5px" id="q-' + q.id + '-opt-' + optIndex + '" value="' + esc(opt) + '" placeholder="กรอกคำตอบตัวเลือก...">'
-            + '</div>';
-        }).join('');
-
-        return '<div class="card" style="margin:0;padding:16px;border:1.5px solid #e2e8f0;background:#f8fafc;position:relative">'
-          + '  <div style="position:absolute;top:10px;right:10px">'
-          + '    <button class="btn btn-outline" style="color:#ef4444;border-color:#fca5a5;padding:4px 8px;font-size:12px" type="button" onclick="deleteQuestion(\'' + q.id + '\')"><i class="bi bi-trash"></i> ลบข้อนี้</button>'
-          + '  </div>'
-          + '  <div style="font-weight:700;margin-bottom:12px;color:#024ad8">คำถามข้อที่ ' + (index + 1) + '</div>'
-          + '  <div class="form-group" style="margin-bottom:12px">'
-          + '    <input type="text" class="input" style="font-weight:600" id="q-' + q.id + '-title" value="' + esc(q.question) + '" placeholder="กรอกคำถาม เช่น ข้อใดคือจุดเด่นของรองเท้าวิ่งรุ่นนี้?">'
-          + '  </div>'
-          + '  <div style="display:grid;gap:8px;margin-bottom:12px">'
-          + optsHtml
-          + '  </div>'
-          + '  <div style="display:flex;align-items:center;gap:12px">'
-          + '    <label class="form-label" style="margin:0;font-size:13px">คำตอบที่ถูกต้อง:</label>'
-          + '    <select class="select" style="max-width:180px;padding:4px 8px;font-size:13px" id="q-' + q.id + '-correct">'
-          + '      <option value="0" ' + (Number(q.correct_option) === 0 ? 'selected' : '') + '>ตัวเลือกที่ 1</option>'
-          + '      <option value="1" ' + (Number(q.correct_option) === 1 ? 'selected' : '') + '>ตัวเลือกที่ 2</option>'
-          + '      <option value="2" ' + (Number(q.correct_option) === 2 ? 'selected' : '') + '>ตัวเลือกที่ 3</option>'
-          + '      <option value="3" ' + (Number(q.correct_option) === 3 ? 'selected' : '') + '>ตัวเลือกที่ 4</option>'
-          + '    </select>'
-          + '  </div>'
-          + '</div>';
-      }).join('');
-    }
-
-    if (isEdit) {
-      Spinner.show('กำลังโหลดข้อมูลคอร์สเรียน...');
-      Promise.all([
-        call('course.get', { id: id }),
-        call('quiz.get_questions', { course_id: id })
-      ]).then(function (res) {
-        Spinner.hide();
-        var c = res[0].course || {};
-        var qList = res[1].items || [];
-
-        $('#c-title').value = c.title || '';
-        $('#c-thumb').value = c.thumbnail_url || '';
-        $('#c-desc').value = c.description || '';
-        $('#c-video').value = c.video_url || '';
-        $('#c-status').value = c.status || 'active';
-        $('#c-content').value = c.content || '';
-
-        questions = [];
-        qList.forEach(function (q) {
-          addQuestion({
-            question: q.question,
-            options: q.options,
-            correct_option: q.correct_option
-          });
-        });
-      }).catch(function (e) {
-        Spinner.hide();
-        alertError('ผิดพลาด', e.message);
-        location.hash = '#/courses';
-      });
-    } else {
-      addQuestion();
-    }
-
-    window.saveCourse = function () {
-      var title = $('#c-title').value.trim();
-      var content = $('#c-content').value.trim();
-      if (!title) { toast('กรุณาระบุชื่อคอร์สเรียน', 'warning'); return; }
-      if (!content) { toast('กรุณาระบุเนื้อหาบทเรียน', 'warning'); return; }
-
-      var updatedQuestions = [];
-      for (var i = 0; i < questions.length; i++) {
-        var oldQ = questions[i];
-        var qTitle = $('#q-' + oldQ.id + '-title').value.trim();
-        if (!qTitle) { toast('กรุณากรอกคำถามข้อที่ ' + (i + 1), 'warning'); return; }
-        
-        var opts = [];
-        for (var j = 0; j < 4; j++) {
-          var optVal = $('#q-' + oldQ.id + '-opt-' + j).value.trim();
-          if (!optVal) { toast('กรุณากรอกตัวเลือกที่ ' + (j + 1) + ' ของคำถามข้อที่ ' + (i + 1), 'warning'); return; }
-          opts.push(optVal);
-        }
-
-        var correctOpt = Number($('#q-' + oldQ.id + '-correct').value);
-
-        updatedQuestions.push({
-          question: qTitle,
-          options: opts,
-          correct_option: correctOpt
-        });
-      }
-
-      var payload = {
-        title: title,
-        description: $('#c-desc').value.trim(),
-        thumbnail_url: $('#c-thumb').value.trim(),
-        content: content,
-        video_url: $('#c-video').value.trim(),
-        status: $('#c-status').value,
-        questions: updatedQuestions
-      };
-
-      var apiAction = isEdit ? 'course.update' : 'course.create';
-      if (isEdit) payload.id = id;
-
-      Spinner.show('กำลังบันทึก...');
-      call(apiAction, payload).then(function () {
-        Spinner.hide();
-        toast('บันทึกคอร์สเรียนสำเร็จแล้ว', 'success');
-        location.hash = '#/courses';
-      }).catch(function (e) {
-        Spinner.hide();
-        alertError('ผิดพลาด', e.message);
-      });
-    };
-  }
-
-  function renderCourseDetail() {
-    var id = (location.hash).split('?id=')[1] || '';
-    if (!id) { toast('ไม่พบคอร์สเรียน', 'error'); location.hash = '#/courses'; return; }
-
-    setPage('<div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start">'
-      + '  <div style="display:flex;flex-direction:column;gap:20px">'
-      + '    <div class="card" style="margin:0">'
-      + '      <div class="card-head" style="border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:20px;justify-content:space-between">'
-      + '        <div style="display:flex;align-items:center;gap:10px">'
-      + '          <i class="bi bi-journal-text" style="color:#024ad8;font-size:20px"></i>'
-      + '          <h3 class="card-title" id="cd-title">กำลังโหลด...</h3>'
-      + '        </div>'
-      + '        <a class="btn btn-outline" style="font-size:12.5px;padding:6px 12px" id="cd-edit-btn"><i class="bi bi-pencil"></i> แก้ไขบทเรียน</a>'
-      + '      </div>'
-      + '      <div class="card-body" id="cd-body">'
-      + '        <p id="cd-desc" style="color:#64748b;font-size:14px;margin-bottom:20px;line-height:1.5;background:#f8fafc;padding:12px;border-left:4px solid #cbd5e1;border-radius:0 8px 8px 0"></p>'
-      + '        <div id="cd-content-area" style="font-size:14.5px;line-height:1.7;color:#334155;white-space:pre-wrap"></div>'
-      + '      </div>'
-      + '    </div>'
-      + '  </div>'
-      + '  '
-      + '  <div style="display:flex;flex-direction:column;gap:20px">'
-      + '    <div class="card" style="margin:0"><div class="card-head"><i class="bi bi-bar-chart-fill" style="color:#024ad8"></i> <span class="card-title">ความคืบหน้าของพนักงาน</span></div>'
-      + '      <div class="card-body" style="padding:0">'
-      + '        <table class="table" style="font-size:12.5px">'
-      + '          <thead>'
-      + '            <tr>'
-      + '              <th>พนักงาน</th>'
-      + '              <th style="text-align:center">คะแนนสอบ</th>'
-      + '              <th style="text-align:center">สถานะ</th>'
-      + '            </tr>'
-      + '          </thead>'
-      + '          <tbody id="progress-list-body"></tbody>'
-      + '        </table>'
-      + '      </div>'
-      + '    </div>'
-      + '  </div>'
-      + '</div>');
-
-    Spinner.show('กำลังโหลดข้อมูล...');
-    Promise.all([
-      call('course.get', { id: id }),
-      call('course.progress_list', { course_id: id })
-    ]).then(function (res) {
-      Spinner.hide();
-      var c = res[0].course || {};
-      var progressList = res[1].items || [];
-
-      $('#cd-title').textContent = c.title || '';
-      $('#cd-desc').textContent = c.description || 'ไม่มีคำอธิบายย่อ';
-      $('#cd-content-area').innerHTML = c.content || '';
-      $('#cd-edit-btn').href = '#/courses/new?id=' + encodeURIComponent(id);
-
-      var progressBody = $('#progress-list-body');
-      if (!progressBody) return;
-
-      if (progressList.length === 0) {
-        progressBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#94a3b8;padding:20px">ยังไม่มีพนักงานเข้าเรียนและทดสอบ</td></tr>';
-        return;
-      }
-
-      progressBody.innerHTML = progressList.map(function (p) {
-        var scoreText = p.quiz_score + '/' + p.quiz_total;
-        var badge = p.is_passed === 'yes' ? '<span class="badge b-emerald">ผ่านเกณฑ์</span>' : '<span class="badge b-rose">ไม่ผ่าน</span>';
-        return '<tr>'
-          + '  <td>'
-          + '    <div style="font-weight:600">' + esc(p.full_name) + '</div>'
-          + '    <div style="font-size:10.5px;color:#64748b">' + esc(p.department) + '</div>'
-          + '  </td>'
-          + '  <td style="text-align:center;font-weight:600">' + scoreText + '</td>'
-          + '  <td style="text-align:center">' + badge + '</td>'
-          + '</tr>';
-      }).join('');
-
-    }).catch(function (e) {
-      Spinner.hide();
-      alertError('ผิดพลาด', e.message);
-      location.hash = '#/courses';
-    });
-  }
 
 
 
@@ -9657,7 +9256,8 @@ async function api(req) {
     // Check editing rights
     var isSalesSupervisor = LMS.Store.user.role === 'supervisor' && (LMS.Store.user.department === 'ฝ่ายขาย' || LMS.Store.user.department === 'ฝ่ายปฏิบัติการ' || LMS.Store.user.department === 'ฝ่ายขายและการตลาด');
     var isAdmin = LMS.Store.user.role === 'admin';
-    var canEdit = isAdmin || isSalesSupervisor;
+    var isHR = LMS.Store.user.role === 'approver';
+    var canEdit = isAdmin || isHR || isSalesSupervisor || hasCap('leave.adjust_quota') || hasCap('setting.manage');
 
     // Batch Edit State
     var isBatchMode = false;
@@ -9723,6 +9323,9 @@ async function api(req) {
       + '  .schedule-table th.sticky-col { position: sticky; left: 0; z-index: 15; background: #f1f5f9; text-align: left; min-width: 160px; max-width: 200px; box-shadow: 3px 0 8px rgba(0,0,0,.06); border-right: 2px solid #e2e8f0; padding: 8px 14px; }'
       + '  .schedule-table td.sticky-col { position: sticky; left: 0; z-index: 10; background: #fff; text-align: left; min-width: 160px; max-width: 200px; box-shadow: 3px 0 8px rgba(0,0,0,.06); border-right: 2px solid #f0f0f0; padding: 8px 14px; }'
       + '  .emp-offday-tag { display: inline-flex; align-items: center; gap: 3px; margin-top: 4px; padding: 2px 7px; border-radius: 99px; font-size: 10px; font-weight: 600; background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }'
+      + '  .sched-quota-badge { display: inline-flex; align-items: center; gap: 3px; margin-top: 4px; padding: 2px 7px; border-radius: 99px; font-size: 10px; font-weight: 600; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }'
+      + '  .sched-quota-badge.editable { cursor: pointer; transition: all 0.2s; }'
+      + '  .sched-quota-badge.editable:hover { background: #024ad8; color: #fff; border-color: #024ad8; box-shadow: 0 2px 6px rgba(2,74,216,0.3); }'
       + '  .schedule-table tr.branch-row td { background: linear-gradient(90deg, #f1f5f9, #f8fafc); font-weight: 800; color: #1a1a1a; font-size: 11px; text-align: left; padding: 8px 14px; border-bottom: 2px solid #e2e8f0; letter-spacing: .03em; text-transform: uppercase; }'
       + '  .schedule-table tr.clickable-row:hover td { background-color: #f8faff !important; }'
       + '  .schedule-table tr.clickable-row:hover td.sticky-col { background: #f0f5ff !important; }'
@@ -9789,6 +9392,7 @@ async function api(req) {
       + '    <select class="select" id="sched-year" style="width:95px;"></select>'
       + '    <button class="btn btn-ghost" id="sched-next"><i class="bi bi-chevron-right"></i></button>'
       + '    <div class="sched-controls-sep"></div>'
+      + (canEdit ? '    <button class="btn btn-outline" id="sched-adjust-quota-btn" style="border-color:#2563eb; color:#1d4ed8; font-weight:700;"><i class="bi bi-sliders"></i> ปรับวันหยุดชดเชยคงเหลือ</button>' : '')
       + (canEdit ? '    <button class="btn btn-outline" id="sched-batch-edit-btn" style="border-color:#6366f1; color:#4f46e5; font-weight:700;"><i class="bi bi-pencil-square"></i> แก้ไขหลายวันพร้อมกัน</button>' : '')
       + '    <button class="btn btn-primary" id="sched-print" style="margin-left:auto"><i class="bi bi-printer"></i> พิมพ์ตาราง</button>'
       + '  </div>'
@@ -9797,7 +9401,7 @@ async function api(req) {
       + '  <div class="sched-card">'
       + '    <div class="sched-card-head">'
       + '      <h3 class="sched-card-title"><i class="bi bi-table"></i> แผนตารางปฏิบัติงาน</h3>'
-      + '      <span class="sched-card-hint"><i class="bi bi-info-circle" style="margin-right:4px"></i>กดชื่อพนักงานเพื่อตั้งค่าวันหยุดประจำสัปดาห์</span>'
+      + '      <span class="sched-card-hint"><i class="bi bi-info-circle" style="margin-right:4px"></i>คลิกช่องตารางเพื่อจัดตาราง / คลิกแท็กวันหยุดเพื่อตั้งวันหยุดประจำ / คลิกแท็กชดเชยเพื่อปรับยอดคงเหลือ</span>'
       + '    </div>'
       + '    <div class="table-scroll-wrapper" id="sched-table-wrapper"></div>'
       + '  </div>'
@@ -9932,6 +9536,12 @@ async function api(req) {
     $('#sched-print').addEventListener('click', function () {
       window.print();
     });
+
+    if (canEdit && $('#sched-adjust-quota-btn')) {
+      $('#sched-adjust-quota-btn').addEventListener('click', function () {
+        openSelectEmployeeForQuotaModal();
+      });
+    }
 
     if (canEdit && $('#sched-batch-edit-btn')) {
       $('#sched-batch-edit-btn').addEventListener('click', function () {
@@ -10219,6 +9829,8 @@ async function api(req) {
           if (action === 'work_offday') {
             var p = leaveId ? call('leave.delete', { id: leaveId }) : Promise.resolve();
             return p.then(function () {
+              return call('schedule.save_override', { user_id: uid, date: dateStr, value: '' });
+            }).then(function () {
               return call('leave.create', {
                 requester_id: uid,
                 leave_type: 'work_offday',
@@ -10232,6 +9844,8 @@ async function api(req) {
           } else if (action === 'compensatory') {
             var p = leaveId ? call('leave.delete', { id: leaveId }) : Promise.resolve();
             return p.then(function () {
+              return call('schedule.save_override', { user_id: uid, date: dateStr, value: '' });
+            }).then(function () {
               return call('leave.create', {
                 requester_id: uid,
                 leave_type: 'compensatory',
@@ -10243,7 +9857,10 @@ async function api(req) {
               });
             });
           } else if (action === 'off_no_sub' || action.indexOf('sub_') === 0) {
-            return call('schedule.save_override', { user_id: uid, date: dateStr, value: action });
+            var p = leaveId ? call('leave.delete', { id: leaveId }) : Promise.resolve();
+            return p.then(function () {
+              return call('schedule.save_override', { user_id: uid, date: dateStr, value: action });
+            });
           } else if (action === 'reset') {
             var p = leaveId ? call('leave.delete', { id: leaveId }) : Promise.resolve();
             return p.then(function () {
@@ -10448,7 +10065,13 @@ async function api(req) {
           var q = loadedData.quotas && loadedData.quotas[emp.id];
           var quotaText = '';
           if (q) {
-            quotaText = '<div style="font-size:10px;color:#024ad8;font-weight:600;margin-top:3px;">🔄 ชดเชยสะสมคงเหลือ: ' + q.remaining_quota + '/' + q.total_quota + ' วัน</div>';
+            var qEditClass = canEdit ? ' editable' : '';
+            var qEditTitle = canEdit ? ' title="คลิกเพื่อปรับยอดวันหยุดชดเชยคงเหลือ"' : '';
+            quotaText = '<div class="sched-quota-badge' + qEditClass + '"' + qEditTitle
+              + ' data-uid="' + esc(emp.id) + '" data-name="' + esc(emp.full_name) + '" data-branch="' + esc(emp.branch || '') + '">'
+              + '<i class="bi bi-arrow-repeat" style="font-size:9px;margin-right:2px;"></i>ชดเชยคงเหลือ: ' + q.remaining_quota + '/' + q.total_quota + ' วัน'
+              + (canEdit ? ' <i class="bi bi-pencil-fill" style="font-size:8px;opacity:.7;"></i>' : '')
+              + '</div>';
           }
           
           var offDayVal = emp.off_day;
@@ -10613,7 +10236,182 @@ async function api(req) {
             });
           });
         });
+
+        // Re-bind click handlers for compensatory quota badges
+        $$('.sched-quota-badge.editable').forEach(function (el) {
+          el.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var uid = el.getAttribute('data-uid');
+            var empObj = null;
+            Object.keys(branchGroups).forEach(function (b) {
+              branchGroups[b].forEach(function (x) {
+                if (String(x.id) === String(uid)) empObj = x;
+              });
+            });
+            if (empObj) {
+              var q = loadedData && loadedData.quotas && loadedData.quotas[empObj.id];
+              openCompensatoryQuotaModal(empObj, q, curYear, curMonth);
+            }
+          });
+        });
       }
+    }
+
+    function openCompensatoryQuotaModal(emp, q, targetYear, targetMonth) {
+      if (!emp) return;
+      q = q || { holidays_quota: 0, worked_offdays: 0, used_quota: 0, adjusted_quota: 0, total_quota: 0, remaining_quota: 0 };
+      var fy = targetYear || curYear;
+      var curRem = Number(q.remaining_quota || 0);
+      var base = (Number(q.holidays_quota || 0) + Number(q.worked_offdays || 0)) - Number(q.used_quota || 0);
+      var curAdj = Number(q.adjusted_quota || 0);
+
+      var html = '<div style="text-align:left; display:flex; flex-direction:column; gap:14px; font-size:13px;">'
+        + '  <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:12px 16px;">'
+        + '    <div style="font-size:14px; font-weight:700; color:#1e293b;">' + esc(emp.full_name) + '</div>'
+        + '    <div style="font-size:12px; color:#64748b; margin-top:2px;">สาขา: <strong>' + esc(emp.branch || 'พนักงานแทน') + '</strong> · ตำแหน่ง: ' + esc(emp.position || 'พนักงาน') + '</div>'
+        + '  </div>'
+        + '  <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:12px; padding:12px 16px;">'
+        + '    <div style="font-size:12px; font-weight:700; color:#1d4ed8; margin-bottom:8px; display:flex; align-items:center; gap:6px;"><i class="bi bi-info-circle-fill"></i> สรุปสิทธิ์วันหยุดชดเชยสะสม (ปี ' + (fy + 543) + ')</div>'
+        + '    <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 12px; font-size:12px; color:#334155;">'
+        + '      <div>📅 วันหยุดนักขัตฤกษ์สะสม: <strong>' + q.holidays_quota + ' วัน</strong></div>'
+        + '      <div>💼 ทำงานวันหยุดสะสม: <strong>' + q.worked_offdays + ' วัน</strong></div>'
+        + '      <div>🔴 ใช้วันหยุดชดเชยแล้ว: <strong>' + q.used_quota + ' วัน</strong></div>'
+        + '      <div>⚙️ ปรับยอดพิเศษเดิม: <strong>' + (curAdj >= 0 ? '+' + curAdj : curAdj) + ' วัน</strong></div>'
+        + '    </div>'
+        + '    <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #bfdbfe; font-size:13px; font-weight:700; color:#024ad8; display:flex; justify-content:space-between;">'
+        + '      <span>วันหยุดชดเชยคงเหลือปัจจุบัน:</span>'
+        + '      <span>' + curRem + ' วัน (สะสมทั้งหมด ' + q.total_quota + ' วัน)</span>'
+        + '    </div>'
+        + '  </div>'
+        + '  <div>'
+        + '    <label style="font-weight:700; color:#1e293b; display:block; margin-bottom:6px;">1. กำหนดวันหยุดชดเชยคงเหลือสุทธิ (วัน)</label>'
+        + '    <div style="display:flex; align-items:center; gap:8px;">'
+        + '      <button type="button" class="btn btn-ghost" id="adj-modal-rem-minus" style="width:42px; height:42px; font-size:18px; font-weight:700; border:1px solid #cbd5e1;">-</button>'
+        + '      <input type="number" class="input" id="adj-modal-rem-input" value="' + curRem + '" min="0" step="1" style="height:42px; font-size:16px; font-weight:700; text-align:center; color:#024ad8;">'
+        + '      <button type="button" class="btn btn-ghost" id="adj-modal-rem-plus" style="width:42px; height:42px; font-size:18px; font-weight:700; border:1px solid #cbd5e1;">+</button>'
+        + '    </div>'
+        + '  </div>'
+        + '  <div>'
+        + '    <label style="font-weight:700; color:#1e293b; display:block; margin-bottom:6px;">2. หรือระบุจำนวนวันปรับเพิ่ม/ลดพิเศษ (Adjustment Offset)</label>'
+        + '    <div style="display:flex; align-items:center; gap:8px;">'
+        + '      <button type="button" class="btn btn-ghost" id="adj-modal-offset-minus" style="width:42px; height:42px; font-size:18px; font-weight:700; border:1px solid #cbd5e1;">-</button>'
+        + '      <input type="number" class="input" id="adj-modal-offset-input" value="' + curAdj + '" step="1" style="height:42px; font-size:16px; font-weight:700; text-align:center;">'
+        + '      <button type="button" class="btn btn-ghost" id="adj-modal-offset-plus" style="width:42px; height:42px; font-size:18px; font-weight:700; border:1px solid #cbd5e1;">+</button>'
+        + '    </div>'
+        + '    <div style="font-size:11.5px; color:#64748b; margin-top:4px;">* กำหนดจำนวนวันที่ต้องการบวกเพิ่ม (+) หรือหักออก (-) จากยอดคำนวณอัตโนมัติ</div>'
+        + '  </div>'
+        + '</div>';
+
+      Swal.fire({
+        title: 'ปรับวันหยุดชดเชยคงเหลือ',
+        html: html,
+        showCancelButton: true,
+        confirmButtonText: 'บันทึกการปรับยอด',
+        cancelButtonText: 'ยกเลิก',
+        confirmButtonColor: '#024ad8',
+        cancelButtonColor: '#64748b',
+        didOpen: function () {
+          var remInput = $('#adj-modal-rem-input');
+          var offsetInput = $('#adj-modal-offset-input');
+          var remMinus = $('#adj-modal-rem-minus');
+          var remPlus = $('#adj-modal-rem-plus');
+          var offMinus = $('#adj-modal-offset-minus');
+          var offPlus = $('#adj-modal-offset-plus');
+
+          function syncFromRemaining() {
+            var rVal = Number(remInput.value || 0);
+            if (rVal < 0) { rVal = 0; remInput.value = 0; }
+            var calcAdj = rVal - base;
+            offsetInput.value = calcAdj;
+          }
+
+          function syncFromOffset() {
+            var oVal = Number(offsetInput.value || 0);
+            var calcRem = Math.max(0, base + oVal);
+            remInput.value = calcRem;
+          }
+
+          if (remInput) remInput.addEventListener('input', syncFromRemaining);
+          if (offsetInput) offsetInput.addEventListener('input', syncFromOffset);
+
+          if (remMinus) remMinus.addEventListener('click', function () {
+            var v = Math.max(0, Number(remInput.value || 0) - 1);
+            remInput.value = v;
+            syncFromRemaining();
+          });
+          if (remPlus) remPlus.addEventListener('click', function () {
+            var v = Number(remInput.value || 0) + 1;
+            remInput.value = v;
+            syncFromRemaining();
+          });
+
+          if (offMinus) offMinus.addEventListener('click', function () {
+            var v = Number(offsetInput.value || 0) - 1;
+            offsetInput.value = v;
+            syncFromOffset();
+          });
+          if (offPlus) offPlus.addEventListener('click', function () {
+            var v = Number(offsetInput.value || 0) + 1;
+            offsetInput.value = v;
+            syncFromOffset();
+          });
+        }
+      }).then(function (res) {
+        if (!res.isConfirmed) return;
+        var finalAdjustment = Number($('#adj-modal-offset-input').value || 0);
+        Spinner.show('กำลังบันทึกการปรับยอดวันหยุดชดเชย...');
+        call('leave.adjust_quota', {
+          user_id: emp.id,
+          leave_type: 'compensatory',
+          fiscal_year: fy,
+          adjustment: finalAdjustment
+        }).then(function () {
+          Spinner.hide();
+          toast('ปรับวันหยุดชดเชยของ ' + emp.full_name + ' สำเร็จ', 'success');
+          load();
+        }).catch(function (err) {
+          Spinner.hide();
+          alertError('เกิดข้อผิดพลาดในการบันทึก', err.message);
+        });
+      });
+    }
+
+    function openSelectEmployeeForQuotaModal() {
+      if (!loadedData) return;
+      var empSelectOptions = '';
+      var allList = [];
+      var branchesList = ['ราชพฤกษ์', 'ปอโต', 'วิรันด้า', 'พนักงานแทน'];
+      branchesList.forEach(function (b) {
+        var emps = branchGroups[b] || [];
+        if (emps.length > 0) {
+          empSelectOptions += '<optgroup label="สาขา: ' + esc(b) + '">';
+          emps.forEach(function (emp) {
+            var q = loadedData.quotas && loadedData.quotas[emp.id];
+            var remText = q ? (' (คงเหลือ: ' + q.remaining_quota + ' วัน)') : '';
+            empSelectOptions += '<option value="' + esc(emp.id) + '">' + esc(emp.full_name) + remText + '</option>';
+            allList.push(emp);
+          });
+          empSelectOptions += '</optgroup>';
+        }
+      });
+
+      Swal.fire({
+        title: 'เลือกพนักงานเพื่อปรับวันหยุดชดเชย',
+        html: '<div style="text-align:left;"><label style="font-weight:700; color:#334155; display:block; margin-bottom:6px;">รายชื่อพนักงานสาขาและพนักงานแทน:</label><select class="select" id="select-emp-quota-input" style="width:100%; height:40px;">' + empSelectOptions + '</select></div>',
+        showCancelButton: true,
+        confirmButtonText: 'ถัดไป',
+        cancelButtonText: 'ยกเลิก',
+        confirmButtonColor: '#024ad8',
+        cancelButtonColor: '#64748b'
+      }).then(function (res) {
+        if (!res.isConfirmed) return;
+        var selectedId = $('#select-emp-quota-input').value;
+        var emp = allList.find(function (x) { return String(x.id) === String(selectedId); });
+        if (emp) {
+          var q = loadedData.quotas && loadedData.quotas[emp.id];
+          openCompensatoryQuotaModal(emp, q, curYear, curMonth);
+        }
+      });
     }
 
     function handleCellClick(uid, empName, dateStr, currentStatus, leaveType, leaveId, empBranch, currentOverride) {
@@ -10655,14 +10453,30 @@ async function api(req) {
           "sub_ราชพฤกษ์": "ปฏิบัติงานแทนที่สาขา ราชพฤกษ์",
           "sub_ปอโต": "ปฏิบัติงานแทนที่สาขา ปอโต",
           "sub_วิรันด้า": "ปฏิบัติงานแทนที่สาขา วิรันด้า",
+          "compensatory": 'จัดเป็น "วันหยุดชดเชย" (หักโควตา 1 วัน)',
           "off_no_sub": "หยุดงาน (OFF)"
         };
+        if (currentStatus === 'off') {
+          options["work_offday"] = 'เปลี่ยนเป็นวัน "ทำงาน (ชดเชย)"';
+        }
+
+        var currentVal = currentOverride || '';
+        if (currentStatus === 'leave' && leaveType === 'compensatory') {
+          currentVal = 'compensatory';
+        } else if (currentStatus === 'working' && leaveType === 'work_offday') {
+          currentVal = 'work_offday';
+        }
+
+        var userQuota = loadedData && loadedData.quotas && loadedData.quotas[uid];
+        var remainingQuota = userQuota ? userQuota.remaining_quota : 0;
+        var quotaInfoHtml = '<div style="margin-top:6px; font-size:11.5px; color:#024ad8; font-weight:600;">🔄 โควตาวันหยุดชดเชยคงเหลือ: ' + remainingQuota + ' วัน</div>';
+
         Swal.fire({
           title: 'มอบหมายงานพนักงานแทน',
-          html: 'ระบุการมอบหมายสำหรับ <strong>' + esc(empName) + '</strong> ในวันที่ ' + dateStr + ':',
+          html: 'ระบุการมอบหมายสำหรับ <strong>' + esc(empName) + '</strong> ในวันที่ ' + dateStr + ':' + quotaInfoHtml,
           input: 'select',
           inputOptions: options,
-          inputValue: currentOverride || '',
+          inputValue: currentVal,
           showCancelButton: true,
           confirmButtonText: 'บันทึก',
           cancelButtonText: 'ยกเลิก',
@@ -10670,15 +10484,74 @@ async function api(req) {
           cancelButtonColor: '#64748b'
         }).then(function (result) {
           if (result.isConfirmed) {
-            Spinner.show('กำลังบันทึก...');
-            call('schedule.save_override', { user_id: uid, date: dateStr, value: result.value }).then(function () {
-              Spinner.hide();
-              toast('บันทึกการมอบหมายสำเร็จ', 'success');
-              load();
-            }).catch(function (e) {
-              Spinner.hide();
-              alertError('เกิดข้อผิดพลาด', e.message);
-            });
+            var selectedVal = result.value;
+            if (selectedVal === currentVal) return;
+
+            var deleteOldLeave = (leaveId && (leaveType === 'compensatory' || leaveType === 'work_offday'))
+              ? call('leave.delete', { id: leaveId })
+              : Promise.resolve();
+
+            if (selectedVal === 'compensatory') {
+              if (remainingQuota <= 0 && leaveType !== 'compensatory') {
+                Swal.fire('โควตาไม่เพียงพอ', 'ไม่สามารถจัดให้หยุดชดเชยได้เนื่องจากโควตาสะสมคงเหลือของพนักงานไม่เพียงพอ (คงเหลือ ' + remainingQuota + ' วัน)', 'warning');
+                return;
+              }
+              Spinner.show('กำลังบันทึก...');
+              deleteOldLeave.then(function () {
+                return call('schedule.save_override', { user_id: uid, date: dateStr, value: '' });
+              }).then(function () {
+                return call('leave.create', {
+                  requester_id: uid,
+                  leave_type: 'compensatory',
+                  start_date: dateStr,
+                  end_date: dateStr,
+                  days: 1,
+                  status: 'approved',
+                  reason: 'ใช้สิทธิ์วันหยุดชดเชย'
+                });
+              }).then(function () {
+                Spinner.hide();
+                toast('จัดวันหยุดชดเชยสำเร็จ', 'success');
+                load();
+              }).catch(function (err) {
+                Spinner.hide();
+                alertError('เกิดข้อผิดพลาด', err.message);
+              });
+            } else if (selectedVal === 'work_offday') {
+              Spinner.show('กำลังบันทึก...');
+              deleteOldLeave.then(function () {
+                return call('schedule.save_override', { user_id: uid, date: dateStr, value: '' });
+              }).then(function () {
+                return call('leave.create', {
+                  requester_id: uid,
+                  leave_type: 'work_offday',
+                  start_date: dateStr,
+                  end_date: dateStr,
+                  days: 1,
+                  status: 'approved',
+                  reason: 'มาทำงานในวันหยุดชดเชย'
+                });
+              }).then(function () {
+                Spinner.hide();
+                toast('เปลี่ยนเป็นวันทำงานชดเชยสำเร็จ', 'success');
+                load();
+              }).catch(function (err) {
+                Spinner.hide();
+                alertError('เกิดข้อผิดพลาด', err.message);
+              });
+            } else {
+              Spinner.show('กำลังบันทึก...');
+              deleteOldLeave.then(function () {
+                return call('schedule.save_override', { user_id: uid, date: dateStr, value: selectedVal });
+              }).then(function () {
+                Spinner.hide();
+                toast('บันทึกการมอบหมายสำเร็จ', 'success');
+                load();
+              }).catch(function (e) {
+                Spinner.hide();
+                alertError('เกิดข้อผิดพลาด', e.message);
+              });
+            }
           }
         });
         return;
@@ -10772,9 +10645,13 @@ async function api(req) {
       }
 
       if (Object.keys(options).length > 0) {
+        var userQuota = loadedData && loadedData.quotas && loadedData.quotas[uid];
+        var remaining = userQuota ? userQuota.remaining_quota : 0;
+        var quotaInfoHtml = '<div style="margin-top:6px; font-size:11.5px; color:#024ad8; font-weight:600;">🔄 โควตาวันหยุดชดเชยคงเหลือ: ' + remaining + ' วัน</div>';
+
         Swal.fire({
           title: 'จัดการตารางงาน',
-          html: 'เลือกการดำเนินการสำหรับ <strong>' + esc(empName) + '</strong> วันที่ ' + dateStr + ':',
+          html: 'เลือกการดำเนินการสำหรับ <strong>' + esc(empName) + '</strong> วันที่ ' + dateStr + ':' + quotaInfoHtml,
           input: 'select',
           inputOptions: options,
           showCancelButton: true,
@@ -10804,8 +10681,6 @@ async function api(req) {
                 alertError('เกิดข้อผิดพลาด', err.message);
               });
             } else if (val === 'compensatory') {
-              var userQuota = loadedData && loadedData.quotas && loadedData.quotas[uid];
-              var remaining = userQuota ? userQuota.remaining_quota : 0;
               if (remaining <= 0) {
                 Swal.fire('โควตาไม่เพียงพอ', 'ไม่สามารถจัดให้หยุดชดเชยได้เนื่องจากโควตาสะสมคงเหลือของพนักงานไม่เพียงพอ (คงเหลือ ' + remaining + ' วัน)', 'warning');
                 return;
@@ -11278,208 +11153,8 @@ async function api(req) {
     }
     load();
   };
-  // ── Attendance Logs ─────────────────────────────────
-  Routes['#/attendance'] = function () {
-    if (!hasCap('user.manage|leave.approve|leave.comment')) { toast('ไม่มีสิทธิ์', 'warning'); location.hash = '#/dashboard'; return; }
-    var st = { page: 1, user_id: '', branch: '', department: '', q: '' };
-    
-    Spinner.show('กำลังโหลดข้อมูล...');
-    call('user.list', { per_page: 1000 }).then(function (userRes) {
-      Spinner.hide();
-      var users = userRes.items || [];
-      
-      setPage('<div class="toolbar">'
-        + '<div class="search-box"><i class="bi bi-search"></i><input type="text" id="att-q" placeholder="ค้นหา ชื่อพนักงาน..."></div>'
-        + '<select class="select" id="att-user" style="max-width:180px"><option value="">พนักงานทั้งหมด</option>'
-        + users.map(function (u) { return '<option value="' + u.id + '">' + esc(u.full_name) + '</option>'; }).join('')
-        + '</select>'
-        + '<select class="select" id="att-branch" style="max-width:150px"><option value="">ทุกสาขา</option>'
-        + BRANCHES.map(function (b) { return '<option value="' + b + '">' + esc(b) + '</option>'; }).join('')
-        + '</select>'
-        + '<select class="select" id="att-dept" style="max-width:150px"><option value="">ทุกแผนก</option>'
-        + DEPARTMENTS.map(function (d) { return '<option value="' + d + '">' + esc(d) + '</option>'; }).join('')
-        + '</select>'
-        + '</div>'
-        + '<div id="att-content">'
-        + '  <div id="att-list">' + skBlocks(5, 50) + '</div>'
-        + '  <div id="lv-pager" style="margin-top:14px"></div>'
-        + '</div>');
-        
-      var allCheckins = [];
-      
-      function load() {
-        Spinner.show('กำลังโหลดประวัติการเข้างาน...');
-        call('checkin.list', { per_page: 1000 }).then(function (r) {
-          Spinner.hide();
-          allCheckins = r.items || [];
-          render();
-        }).catch(function (e) {
-          Spinner.hide();
-          alertError('ผิดพลาด', e.message);
-        });
-      }
-      
-      function render() {
-        var filtered = allCheckins.filter(function (item) {
-          if (st.user_id && item.user_id !== st.user_id) return false;
-          if (st.branch) {
-            var matchCheckIn = item.check_in_loc && item.check_in_loc.indexOf(st.branch) >= 0;
-            var matchCheckOut = item.check_out_loc && item.check_out_loc.indexOf(st.branch) >= 0;
-            if (!matchCheckIn && !matchCheckOut) return false;
-          }
-          if (st.department && item.department !== st.department) return false;
-          if (st.q) {
-            var qLower = st.q.toLowerCase();
-            var nameLower = (item.full_name || '').toLowerCase();
-            if (nameLower.indexOf(qLower) === -1) return false;
-          }
-          return true;
-        });
-        
-        var total = filtered.length;
-        var per = 15;
-        var pages = Math.ceil(total / per) || 1;
-        if (st.page > pages) st.page = pages;
-        var pageItems = filtered.slice((st.page - 1) * per, st.page * per);
-        
-        var rows = pageItems.map(function (item) {
-          var dateStr = TH.date(item.check_in_at);
-          
-          var checkInPhotoHtml = '-';
-          if (item.check_in_img) {
-            checkInPhotoHtml = '<button class="btn btn-sm btn-ghost btn-icon view-selfie-btn" data-img="' + esc(item.check_in_img) + '" data-name="' + esc(item.full_name) + '" data-type="เช็คอิน" data-time="' + esc(TH.time(item.check_in_at)) + '">'
-              + '<i class="bi bi-camera-fill" style="color:#024ad8;font-size:16px;"></i></button>';
-          }
-          
-          var checkInLocHtml = esc(item.check_in_loc || 'พิกัด GPS');
-          if (item.check_in_lat && item.check_in_lng) {
-            var mapUrl = 'https://www.google.com/maps?q=' + item.check_in_lat + ',' + item.check_in_lng;
-            checkInLocHtml = '<a href="' + mapUrl + '" target="_blank" class="map-link" style="color:#024ad8;text-decoration:none;display:inline-flex;align-items:center;gap:4px;" title="ดูแผนที่">'
-              + '<i class="bi bi-geo-alt-fill" style="color:#ef4444"></i>' + esc(item.check_in_loc || 'แผนที่') + '</a>';
-          }
-          
-          var checkOutPhotoHtml = '-';
-          var checkOutTimeHtml = '<span style="color:#94a3b8">-</span>';
-          var checkOutLocHtml = '<span style="color:#94a3b8">-</span>';
-          
-          if (item.check_out_at) {
-            checkOutTimeHtml = TH.time(item.check_out_at);
-            if (item.check_out_img) {
-              checkOutPhotoHtml = '<button class="btn btn-sm btn-ghost btn-icon view-selfie-btn" data-img="' + esc(item.check_out_img) + '" data-name="' + esc(item.full_name) + '" data-type="เช็คเอาท์" data-time="' + esc(TH.time(item.check_out_at)) + '">'
-                + '<i class="bi bi-camera-fill" style="color:#024ad8;font-size:16px;"></i></button>';
-            }
-            if (item.check_out_lat && item.check_out_lng) {
-              var mapUrl = 'https://www.google.com/maps?q=' + item.check_out_lat + ',' + item.check_out_lng;
-              checkOutLocHtml = '<a href="' + mapUrl + '" target="_blank" class="map-link" style="color:#024ad8;text-decoration:none;display:inline-flex;align-items:center;gap:4px;" title="ดูแผนที่">'
-                + '<i class="bi bi-geo-alt-fill" style="color:#ef4444"></i>' + esc(item.check_out_loc || 'แผนที่') + '</a>';
-            } else {
-              checkOutLocHtml = esc(item.check_out_loc || 'พิกัด GPS');
-            }
-          }
-          
-          var statusHtml = '';
-          if (item.check_out_at) {
-            statusHtml = '<span class="badge b-emerald"><i class="bi bi-check-circle-fill"></i> ลงเวลาครบ</span>';
-          } else {
-            statusHtml = '<span class="badge b-amber"><i class="bi bi-clock-fill"></i> ยังไม่เช็คเอาท์</span>';
-          }
-          
-          return '<tr>'
-            + '<td>'
-            + '  <div style="font-weight:600">' + esc(item.full_name) + '</div>'
-            + '  <div style="font-size:11px;color:#94a3b8">' + esc(item.department) + '</div>'
-            + '</td>'
-            + '<td>' + dateStr + '</td>'
-            + '<td>'
-            + '  <div style="font-weight:600">' + TH.time(item.check_in_at) + '</div>'
-            + '  <div style="font-size:11px;margin-top:2px">' + checkInLocHtml + '</div>'
-            + '</td>'
-            + '<td style="text-align:center">' + checkInPhotoHtml + '</td>'
-            + '<td>'
-            + '  <div style="font-weight:600">' + checkOutTimeHtml + '</div>'
-            + '  <div style="font-size:11px;margin-top:2px">' + checkOutLocHtml + '</div>'
-            + '</td>'
-            + '<td style="text-align:center">' + checkOutPhotoHtml + '</td>'
-            + '<td>' + statusHtml + '</td>'
-            + '</tr>';
-        }).join('');
-        
-        var tableHtml = '<table class="data-table">'
-          + '<thead><tr>'
-          + '  <th>พนักงาน</th>'
-          + '  <th>วันที่</th>'
-          + '  <th>เวลาเข้างาน</th>'
-          + '  <th style="text-align:center">เซลฟี่เข้า</th>'
-          + '  <th>เวลาออกงาน</th>'
-          + '  <th style="text-align:center">เซลฟี่ออก</th>'
-          + '  <th>สถานะ</th>'
-          + '</tr></thead>'
-          + '<tbody>' + (rows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:30px">ไม่พบข้อมูลการเข้างาน</td></tr>') + '</tbody>'
-          + '</table>';
-          
-        $('#att-list').innerHTML = tableHtml;
-        
-        var pagerObj = { page: st.page, pages: pages };
-        $('#lv-pager').innerHTML = pagerHtml(pagerObj);
-        wirePager(pagerObj, function (n) {
-          st.page = n;
-          render();
-        });
-        
-        $$('#att-list .view-selfie-btn').forEach(function (btn) {
-          btn.addEventListener('click', function () {
-            var img = btn.getAttribute('data-img');
-            var name = btn.getAttribute('data-name');
-            var type = btn.getAttribute('data-type');
-            var time = btn.getAttribute('data-time');
-            viewSelfie(img, 'รูปเซลฟี่ ' + type + ' - ' + name + ' (' + time + ')');
-          });
-        });
-      }
-      
-      function viewSelfie(imageUrl, title) {
-        Modal.open({
-          title: title || 'ภาพถ่ายลงเวลา',
-          html: '<div style="text-align:center; padding:10px;"><img src="' + esc(imageUrl) + '" style="max-width:100%; max-height:65vh; border-radius:12px; box-shadow:0 8px 30px rgba(0,0,0,0.15); border: 2px solid rgba(255,255,255,0.1);"></div>',
-          footer: '<button class="btn btn-secondary" style="width:100%" data-modal-close>ปิดหน้าต่าง</button>'
-        });
-      }
-      
-      var searchInput = $('#att-q');
-      var t;
-      searchInput.addEventListener('input', function () {
-        clearTimeout(t);
-        t = setTimeout(function () {
-          st.q = searchInput.value;
-          st.page = 1;
-          render();
-        }, 300);
-      });
-      
-      $('#att-user').addEventListener('change', function () {
-        st.user_id = $('#att-user').value;
-        st.page = 1;
-        render();
-      });
-      
-      $('#att-branch').addEventListener('change', function () {
-        st.branch = $('#att-branch').value;
-        st.page = 1;
-        render();
-      });
-      
-      $('#att-dept').addEventListener('change', function () {
-        st.department = $('#att-dept').value;
-        st.page = 1;
-        render();
-      });
-      
-      load();
-    }).catch(function (err) {
-      Spinner.hide();
-      alertError('โหลดผู้ใช้ล้มเหลว', err.message);
-    });
-  };
+
+
   // ── Workforce / Calendar / Schedule / Missions ───────────
   function _mkMonthKey(v) {
     if (!v) { var dn = new Date(); return dn.getFullYear() + '-' + ('0' + (dn.getMonth() + 1)).slice(-2); }
@@ -15254,8 +14929,1590 @@ async function api(req) {
     renderPage();
   };
 
-  // ── Standalone Expenses End ──
+  // ── Stock Bills (Goods Receipt & R2 & LINE Flex) ─────────────────
 
+  function getStoredStockBills() {
+    try {
+      var raw = localStorage.getItem('lms_stock_bills');
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [
+      {
+        id: 'sb-demo-001',
+        bill_no: 'INV-2026-0801',
+        bill_date: '2026-08-20',
+        supplier_name: 'บริษัท สปอร์ตแวร์ อินเตอร์เนชั่นแนล จำกัด',
+        branch: 'สำนักงานใหญ่ / คลังกลาง',
+        category: 'เสื้อผ้า / เครื่องแต่งกาย (Apparel)',
+        total_amount: 45000,
+        vat_type: 'include',
+        vat_amount: 2943.93,
+        net_amount: 45000,
+        payment_status: 'paid',
+        status: 'completed',
+        image_url: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800&auto=format&fit=crop&q=80',
+        images: JSON.stringify(['https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800&auto=format&fit=crop&q=80']),
+        items_detail: JSON.stringify([
+          { name: 'เสื้อวิ่ง AVR Heart Edition (S/M/L)', qty: 50, unit: 'ตัว', unit_price: 500, total_price: 25000, note: 'คละไซส์' },
+          { name: 'กางเกงวิ่ง AVR Velo Core', qty: 40, unit: 'ตัว', unit_price: 500, total_price: 20000, note: '' }
+        ]),
+        notes: 'ตรวจรับสินค้าเข้าคลังสินค้าหลักครบถ้วนตามใบสั่งซื้อ',
+        created_by: 'admin',
+        created_by_name: 'ผู้ดูแลระบบ',
+        created_at: '2026-08-20T10:30:00+07:00',
+        updated_at: '2026-08-20T10:30:00+07:00'
+      }
+    ];
+  }
+
+  function saveStoredStockBills(items) {
+    try {
+      localStorage.setItem('lms_stock_bills', JSON.stringify(items || []));
+    } catch (e) {}
+  }
+
+  function getStoredStockBillPermissions() {
+    try {
+      var raw = localStorage.getItem('lms_stock_bill_permissions');
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return {
+      allowed_roles: ['admin', 'approver', 'supervisor'],
+      allowed_users: [],
+      notify_target: ''
+    };
+  }
+
+  function saveStoredStockBillPermissions(cfg) {
+    try {
+      localStorage.setItem('lms_stock_bill_permissions', JSON.stringify(cfg));
+    } catch (e) {}
+  }
+
+  async function handleStockBillClientApi(req) {
+    var action = req.action;
+    var p = req.payload || {};
+    var items = getStoredStockBills();
+
+    if (action === 'stock_bill.list') {
+      var q = String(p.q || '').toLowerCase().trim();
+      var supplier = String(p.supplier || '').toLowerCase().trim();
+      var branch = String(p.branch || '').trim();
+      var category = String(p.category || '').trim();
+      var status = String(p.status || '').trim();
+      var startDate = String(p.start_date || '').trim();
+      var endDate = String(p.end_date || '').trim();
+      var month = String(p.month || '').trim();
+
+      var filtered = items.slice();
+      if (month) filtered = filtered.filter(function(b){ return String(b.bill_date || '').substring(0, 7) === month; });
+      if (startDate) filtered = filtered.filter(function(b){ return String(b.bill_date || '') >= startDate; });
+      if (endDate) filtered = filtered.filter(function(b){ return String(b.bill_date || '') <= endDate; });
+      if (branch && branch !== 'all') filtered = filtered.filter(function(b){ return String(b.branch || '').trim() === branch; });
+      if (category && category !== 'all') filtered = filtered.filter(function(b){ return String(b.category || '').trim() === category; });
+      if (status && status !== 'all') filtered = filtered.filter(function(b){ return String(b.status || '').trim() === status; });
+      if (supplier) filtered = filtered.filter(function(b){ return String(b.supplier_name || '').toLowerCase().indexOf(supplier) >= 0; });
+      if (q) {
+        filtered = filtered.filter(function(b){
+          return [b.bill_no, b.supplier_name, b.branch, b.notes, b.created_by_name].join(' ').toLowerCase().indexOf(q) >= 0;
+        });
+      }
+
+      var totalAmt = 0;
+      var thisMonthCount = 0;
+      var thisMonthAmt = 0;
+      var nowM = new Date().toISOString().substring(0, 7);
+      var suppCounts = {};
+      var brCounts = {};
+      var pendingCount = 0;
+
+      items.forEach(function(b) {
+        var amt = Number(b.total_amount || 0);
+        if (String(b.bill_date || '').substring(0, 7) === nowM) {
+          thisMonthCount++;
+          thisMonthAmt += amt;
+        }
+        if (b.status === 'pending') pendingCount++;
+      });
+
+      filtered.forEach(function(b) {
+        totalAmt += Number(b.total_amount || 0);
+        suppCounts[b.supplier_name || 'ไม่ระบุ'] = (suppCounts[b.supplier_name || 'ไม่ระบุ'] || 0) + 1;
+        brCounts[b.branch || 'ส่วนกลาง'] = (brCounts[b.branch || 'ส่วนกลาง'] || 0) + 1;
+      });
+
+      return {
+        ok: true,
+        data: {
+          items: filtered,
+          total: filtered.length,
+          stats: {
+            filtered_count: filtered.length,
+            filtered_amount: totalAmt,
+            this_month_count: thisMonthCount,
+            this_month_amount: thisMonthAmt,
+            pending_count: pendingCount,
+            supplier_counts: suppCounts,
+            branch_counts: brCounts
+          }
+        }
+      };
+    }
+
+    if (action === 'stock_bill.get') {
+      var found = items.find(function(b){ return b.id === p.id; });
+      if (!found) return { ok: false, error: 'ไม่พบเอกสารบิล' };
+      return { ok: true, data: { item: found } };
+    }
+
+    if (action === 'stock_bill.create') {
+      var u = (window.LMS && window.LMS.Store && window.LMS.Store.user) || { id: 'admin', full_name: 'ผู้ดูแลระบบ' };
+      var newBill = {
+        id: 'sb-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+        bill_no: String(p.bill_no || '').trim(),
+        bill_date: String(p.bill_date || new Date().toISOString().substring(0, 10)).trim(),
+        supplier_name: String(p.supplier_name || '').trim(),
+        branch: String(p.branch || '').trim(),
+        category: String(p.category || 'สินค้าขาย (Stock)').trim(),
+        total_amount: Number(p.total_amount || 0),
+        vat_type: String(p.vat_type || 'none').trim(),
+        vat_amount: Number(p.vat_amount || 0),
+        net_amount: Number(p.net_amount || p.total_amount || 0),
+        payment_status: String(p.payment_status || 'paid').trim(),
+        status: String(p.status || 'completed').trim(),
+        image_url: String(p.image_url || '').trim(),
+        images: Array.isArray(p.images) ? p.images : (p.images ? [p.images] : []),
+        items_detail: Array.isArray(p.items_detail) ? p.items_detail : [],
+        notes: String(p.notes || '').trim(),
+        created_by: u.id,
+        created_by_name: u.full_name || u.username || 'เจ้าหน้าที่',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      items.unshift(newBill);
+      saveStoredStockBills(items);
+      return { ok: true, data: { item: newBill, success: true } };
+    }
+
+    if (action === 'stock_bill.update') {
+      var idx = items.findIndex(function(b){ return b.id === p.id; });
+      if (idx < 0) return { ok: false, error: 'ไม่พบเอกสารบิล' };
+      var updated = Object.assign({}, items[idx], p, { updated_at: new Date().toISOString() });
+      items[idx] = updated;
+      saveStoredStockBills(items);
+      return { ok: true, data: { item: updated, success: true } };
+    }
+
+    if (action === 'stock_bill.delete') {
+      var filtered = items.filter(function(b){ return b.id !== p.id; });
+      saveStoredStockBills(filtered);
+      return { ok: true, data: { success: true } };
+    }
+
+    if (action === 'stock_bill.permissions.get') {
+      var cfg = getStoredStockBillPermissions();
+      return {
+        ok: true,
+        data: {
+          allowed_roles: cfg.allowed_roles || ['admin', 'approver', 'supervisor'],
+          allowed_users: cfg.allowed_users || [],
+          notify_target: cfg.notify_target || '',
+          available_roles: [
+            { id: 'admin', label: 'ผู้ดูแลระบบ (Admin)' },
+            { id: 'approver', label: 'ผู้อำนวยการ / ผู้บริหาร (Approver)' },
+            { id: 'supervisor', label: 'หัวหน้างาน (Supervisor)' },
+            { id: 'checker', label: 'เจ้าหน้าที่ตรวจสอบ (Checker)' },
+            { id: 'employee', label: 'พนักงานทั่วไป (Employee)' }
+          ]
+        }
+      };
+    }
+
+    if (action === 'stock_bill.permissions.update') {
+      saveStoredStockBillPermissions({
+        allowed_roles: p.allowed_roles || ['admin'],
+        allowed_users: p.allowed_users || [],
+        notify_target: p.notify_target || ''
+      });
+      return { ok: true, data: { success: true } };
+    }
+
+    if (action === 'stock_bill.generate_flex') {
+      var b = p.bill || items.find(function(x){ return x.id === p.id; });
+      return { ok: true, data: { flex: generateStockBillFlexJson(b), bill: b } };
+    }
+
+    if (action === 'stock_bill.send_line') {
+      return { ok: true, data: { success: true } };
+    }
+
+    return { ok: false, error: 'Unknown action' };
+  }
+
+  function generateStockBillFlexJson(bill) {
+    if (!bill) return { type: 'text', text: 'ไม่พบข้อมูลบิล' };
+    var bNo = String(bill.bill_no || 'ไม่ระบุเลขที่');
+    var bDate = String(bill.bill_date || '-');
+    var supp = String(bill.supplier_name || 'ไม่ระบุซัพพลายเออร์');
+    var branch = String(bill.branch || 'สำนักงานใหญ่ / คลังกลาง');
+    var totalAmt = Number(bill.total_amount || 0);
+    var cat = String(bill.category || 'สินค้าขาย (Stock)');
+    var status = String(bill.status || 'completed');
+    var statusText = status === 'completed' ? '✓ ตรวจรับเข้าคลังแล้ว' : (status === 'pending' ? '⏳ รอตรวจสอบ' : '📝 บันทึกแบบร่าง');
+    var statusColor = status === 'completed' ? '#10b981' : (status === 'pending' ? '#f59e0b' : '#64748b');
+    var creator = String(bill.created_by_name || 'เจ้าหน้าที่');
+    var notes = String(bill.notes || '').trim();
+    var imgUrl = String(bill.image_url || '').trim();
+
+    var items = [];
+    try {
+      if (typeof bill.items_detail === 'string') items = JSON.parse(bill.items_detail || '[]');
+      else if (Array.isArray(bill.items_detail)) items = bill.items_detail;
+    } catch(e) { items = []; }
+
+    var itemsBoxContents = [];
+    if (items && items.length > 0) {
+      itemsBoxContents.push({
+        type: 'text',
+        text: '📋 รายการสินค้า (' + items.length + ' รายการ):',
+        weight: 'bold',
+        size: 'xs',
+        color: '#334155',
+        margin: 'md'
+      });
+
+      var showItems = items.slice(0, 4);
+      showItems.forEach(function(it, idx) {
+        var name = String(it.name || ('รายการที่ ' + (idx + 1)));
+        var qty = Number(it.qty || 1);
+        var unit = String(it.unit || 'ชิ้น');
+        var price = Number(it.total_price || (qty * Number(it.unit_price || 0)));
+
+        itemsBoxContents.push({
+          type: 'box',
+          layout: 'horizontal',
+          margin: 'xs',
+          contents: [
+            { type: 'text', text: '• ' + name, size: 'xxs', color: '#475569', flex: 3, wrap: true },
+            { type: 'text', text: qty + ' ' + unit + (price > 0 ? ' (฿' + price.toLocaleString() + ')' : ''), size: 'xxs', color: '#0f172a', align: 'end', flex: 2, weight: 'bold' }
+          ]
+        });
+      });
+
+      if (items.length > 4) {
+        itemsBoxContents.push({
+          type: 'text',
+          text: '... และรายการอื่นๆ อีก ' + (items.length - 4) + ' รายการ',
+          size: 'xxs',
+          color: '#94a3b8',
+          margin: 'xs'
+        });
+      }
+    }
+
+    var bubble = {
+      type: 'bubble',
+      size: 'giga',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#0f172a',
+        paddingAll: '16px',
+        contents: [
+          {
+            type: 'box',
+            layout: 'horizontal',
+            contents: [
+              { type: 'text', text: '📦 เอกสารบิลสินค้าเข้า', weight: 'bold', color: '#38bdf8', size: 'md', flex: 3 },
+              { type: 'text', text: statusText, weight: 'bold', color: statusColor, size: 'xs', align: 'end', flex: 2 }
+            ]
+          },
+          {
+            type: 'text',
+            text: 'เลขที่บิล: ' + bNo,
+            color: '#ffffff',
+            size: 'sm',
+            weight: 'bold',
+            margin: 'xs'
+          },
+          {
+            type: 'text',
+            text: 'วันที่: ' + bDate + ' · สาขา: ' + branch,
+            color: '#94a3b8',
+            size: 'xxs',
+            margin: 'xs'
+          }
+        ]
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        paddingAll: '16px',
+        contents: [
+          {
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: '#f8fafc',
+            paddingAll: '12px',
+            cornerRadius: '10px',
+            contents: [
+              {
+                type: 'box',
+                layout: 'horizontal',
+                contents: [
+                  { type: 'text', text: 'ผู้จำหน่าย:', size: 'xs', color: '#64748b', flex: 2 },
+                  { type: 'text', text: supp, size: 'xs', color: '#0f172a', weight: 'bold', flex: 3, wrap: true }
+                ]
+              },
+              {
+                type: 'box',
+                layout: 'horizontal',
+                margin: 'xs',
+                contents: [
+                  { type: 'text', text: 'หมวดหมู่:', size: 'xs', color: '#64748b', flex: 2 },
+                  { type: 'text', text: cat, size: 'xs', color: '#0f172a', flex: 3 }
+                ]
+              },
+              {
+                type: 'box',
+                layout: 'horizontal',
+                margin: 'xs',
+                contents: [
+                  { type: 'text', text: 'การชำระเงิน:', size: 'xs', color: '#64748b', flex: 2 },
+                  { type: 'text', text: bill.payment_status === 'paid' ? 'ชำระเงินแล้ว' : (bill.payment_status === 'credit' ? 'เครดิต' : 'รอชำระ'), size: 'xs', color: '#0f172a', weight: 'bold', flex: 3 }
+                ]
+              }
+            ]
+          },
+          ...itemsBoxContents,
+          {
+            type: 'box',
+            layout: 'horizontal',
+            margin: 'md',
+            paddingAll: '12px',
+            backgroundColor: '#ecfdf5',
+            cornerRadius: '10px',
+            contents: [
+              { type: 'text', text: '💰 ยอดรวมบิล', weight: 'bold', size: 'sm', color: '#065f46', flex: 2 },
+              { type: 'text', text: '฿' + totalAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}), weight: 'bold', size: 'md', color: '#059669', align: 'end', flex: 3 }
+            ]
+          },
+          (notes ? {
+            type: 'box',
+            layout: 'vertical',
+            margin: 'sm',
+            contents: [
+              { type: 'text', text: '📝 หมายเหตุ: ' + notes, size: 'xxs', color: '#64748b', wrap: true }
+            ]
+          } : {
+            type: 'box',
+            layout: 'vertical',
+            contents: []
+          }),
+          {
+            type: 'box',
+            layout: 'horizontal',
+            margin: 'sm',
+            contents: [
+              { type: 'text', text: '👤 บันทึกโดย: ' + creator, size: 'xxs', color: '#94a3b8', flex: 1 }
+            ]
+          }
+        ]
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        paddingAll: '12px',
+        contents: []
+      }
+    };
+
+    if (imgUrl) {
+      bubble.hero = {
+        type: 'image',
+        url: imgUrl,
+        size: 'full',
+        aspectRatio: '16:9',
+        aspectMode: 'cover',
+        action: {
+          type: 'uri',
+          label: 'ดูรูปบิลเต็ม',
+          uri: imgUrl
+        }
+      };
+      bubble.footer.contents.push({
+        type: 'button',
+        style: 'primary',
+        color: '#0284c7',
+        height: 'sm',
+        action: {
+          type: 'uri',
+          label: '🔍 ดูรูปบิลต้นฉบับ (R2)',
+          uri: imgUrl
+        }
+      });
+    }
+
+    bubble.footer.contents.push({
+      type: 'button',
+      style: 'secondary',
+      height: 'sm',
+      action: {
+        type: 'uri',
+        label: '📄 เปิดดูในระบบ LMS',
+        uri: window.location.href.split('#')[0] + '#/stock-bills'
+      }
+    });
+
+    return {
+      type: 'flex',
+      altText: '📦 เอกสารบิลสินค้าเข้า: ' + bNo + ' (' + supp + ') ยอด ฿' + totalAmt.toLocaleString(),
+      contents: bubble
+    };
+  }
+
+  function compressImageToDataUrl(file, maxWidth, maxHeight, quality) {
+    return new Promise(function (resolve, reject) {
+      if (!file) return reject(new Error('No file'));
+      maxWidth = maxWidth || 1600;
+      maxHeight = maxHeight || 1600;
+      quality = quality || 0.85;
+
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        var img = new Image();
+        img.onload = function () {
+          var width = img.width;
+          var height = img.height;
+
+          if (width > maxWidth || height > maxHeight) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          var canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          var mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+          var dataUrl = canvas.toDataURL(mimeType, quality);
+          resolve({
+            dataUrl: dataUrl,
+            width: width,
+            height: height,
+            filename: file.name
+          });
+        };
+        img.onerror = function () {
+          resolve({ dataUrl: e.target.result, filename: file.name });
+        };
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // ── Stock Bills Route View ───────────────────────────────────────
+  Routes['#/stock-bills'] = function () {
+    var u = (Store.user) || {};
+    var isAdmin = u.role === 'admin';
+    var canAccess = isAdmin || hasCap('stock_bill.view') || hasCap('stock_bill.manage') || hasCap('setting.manage');
+
+    if (!canAccess) {
+      setPage('<div class="card" style="padding:48px 24px;text-align:center;border-radius:20px;max-width:550px;margin:40px auto;box-shadow:0 10px 30px rgba(0,0,0,0.06)">'
+        + '<div style="width:72px;height:72px;background:#fef2f2;color:#dc2626;border-radius:50%;display:grid;place-items:center;margin:0 auto 16px;font-size:32px"><i class="bi bi-shield-lock-fill"></i></div>'
+        + '<h2 style="margin:0 0 10px;font-weight:800;font-size:20px;color:#0f172a">ไม่มีสิทธิ์เข้าถึงระบบบิลสินค้าเข้า</h2>'
+        + '<p style="color:#64748b;font-size:13px;line-height:1.6;margin:0 0 24px">ระบบบันทึกเอกสารบิลสินค้าเข้าถูกจำกัดสิทธิ์เฉพาะผู้ใช้ที่ได้รับอนุญาตจากผู้ดูแลระบบ (Admin) เท่านั้น หากคุณต้องการใช้งานโปรดติดต่อ Admin เพื่อเปิดสิทธิ์</p>'
+        + '<a href="#/dashboard" class="btn btn-primary" style="padding:10px 24px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:8px"><i class="bi bi-house-door"></i> กลับหน้าหลัก</a>'
+        + '</div>');
+      return;
+    }
+
+    var state = {
+      q: '',
+      month: new Date().toISOString().substring(0, 7),
+      branch: 'all',
+      category: 'all',
+      status: 'all',
+      supplier: '',
+      page: 1,
+      per_page: 50,
+      _items: [],
+      _stats: {}
+    };
+
+    function renderPage() {
+      var html = '<div style="display:flex;flex-direction:column;gap:20px;">'
+        // Top Banner Header
+        + '<div style="background:linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0369a1 100%);border-radius:20px;padding:24px 28px;color:#fff;box-shadow:0 12px 28px -6px rgba(15,23,42,0.35);position:relative;overflow:hidden">'
+        + '<div style="position:absolute;right:-30px;top:-30px;width:180px;height:180px;background:rgba(56,189,248,0.08);border-radius:50%;pointer-events:none"></div>'
+        + '<div style="position:absolute;right:120px;bottom:-40px;width:140px;height:140px;background:rgba(255,255,255,0.04);border-radius:50%;pointer-events:none"></div>'
+        + '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:18px;position:relative;z-index:1">'
+        + '  <div>'
+        + '    <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(56,189,248,0.2);color:#bae6fd;border:1px solid rgba(56,189,248,0.35);font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;margin-bottom:8px">'
+        + '      <i class="bi bi-cloud-arrow-up-fill" style="color:#38bdf8"></i> Cloudflare R2 Storage + LINE Flex Message'
+        + '    </div>'
+        + '    <h1 style="font-size:24px;font-weight:800;margin:0 0 6px;letter-spacing:-0.5px;color:#fff;display:flex;align-items:center;gap:10px"><i class="bi bi-receipt-cutoff" style="color:#38bdf8"></i> ระบบบันทึกเอกสารบิลสินค้าเข้า</h1>'
+        + '    <p style="font-size:13px;color:#cbd5e1;margin:0">จัดเก็บเอกสารบิลรับสินค้าเข้าคลัง อัปโหลดรูปบิลเก็บไว้ใน R2 และส่งแจ้งเตือนทาง LINE Flex ได้ทันที</p>'
+        + '  </div>'
+        + '  <div style="display:flex;gap:10px;flex-wrap:wrap">'
+        + '    <button class="btn" id="btn-new-bill" style="background:linear-gradient(135deg, #0284c7, #0369a1);color:#fff;border:0;font-weight:700;box-shadow:0 4px 14px rgba(2,132,199,0.4);padding:10px 18px;border-radius:10px"><i class="bi bi-plus-circle-fill"></i> บันทึกบิลสินค้าเข้าใหม่</button>'
+        + (isAdmin ? '<button class="btn" id="btn-stock-permissions" style="background:rgba(99,102,241,0.25);color:#c7d2fe;border:1px solid rgba(99,102,241,0.4);backdrop-filter:blur(5px);font-weight:600;border-radius:10px"><i class="bi bi-shield-lock-fill"></i> จัดการสิทธิ์ผู้ใช้งาน (Admin)</button>' : '')
+        + '    <button class="btn" id="btn-export-csv" style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.2);backdrop-filter:blur(5px);font-weight:600;border-radius:10px"><i class="bi bi-file-earmark-spreadsheet"></i> ส่งออก CSV</button>'
+        + '    <button class="btn" id="btn-refresh-bills" style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.2);backdrop-filter:blur(5px);font-weight:600;border-radius:10px"><i class="bi bi-arrow-clockwise"></i> รีเฟรช</button>'
+        + '  </div>'
+        + '</div>'
+        + '</div>'
+
+        // KPI Summary Cards
+        + '<div id="sec-stock-stats" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;">'
+        +   skBlocks(4, 85)
+        + '</div>'
+
+        // Main Content Card (Filters + Table)
+        + '<div class="card" style="padding:22px;border-radius:18px;box-shadow:0 4px 20px rgba(0,0,0,0.03);background:#fff">'
+        + '  <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #f1f5f9">'
+        + '    <div style="display:flex;align-items:center;gap:10px">'
+        + '      <div style="width:36px;height:36px;background:#e0f2fe;color:#0284c7;border-radius:10px;display:grid;place-items:center;font-size:18px"><i class="bi bi-folder2-open"></i></div>'
+        + '      <div>'
+        + '        <h3 style="font-size:16px;font-weight:800;margin:0;color:#0f172a">รายการเอกสารบิลสินค้าเข้า</h3>'
+        + '        <span style="font-size:12px;color:#64748b" id="lbl-bill-count">กำลังโหลดข้อมูล...</span>'
+        + '      </div>'
+        + '    </div>'
+        + '    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">'
+        + '      <input type="month" id="sb-filter-month" class="input" value="' + state.month + '" style="max-width:150px;border-radius:10px">'
+        + '      <select id="sb-filter-branch" class="input" style="max-width:160px;border-radius:10px">'
+        + '        <option value="all">🏢 ทุกสาขา / คลัง</option>'
+        + '        <option value="สำนักงานใหญ่ / คลังกลาง">สำนักงานใหญ่ / คลังกลาง</option>'
+        + '        <option value="พระราม 2">สาขาพระราม 2</option>'
+        + '        <option value="ปอร์โต ชิโน่">สาขาปอร์โต ชิโน่</option>'
+        + '        <option value="ราชพฤกษ์">สาขาราชพฤกษ์</option>'
+        + '        <option value="คริสตัล วีรันดา">สาขาคริสตัล วีรันดา</option>'
+        + '        <option value="Online">Online / E-Commerce</option>'
+        + '      </select>'
+        + '      <select id="sb-filter-cat" class="input" style="max-width:150px;border-radius:10px">'
+        + '        <option value="all">🏷️ ทุกหมวดหมู่</option>'
+        + '        <option value="สินค้าขาย (Stock)">สินค้าขาย (Stock)</option>'
+        + '        <option value="เสื้อผ้า / เครื่องแต่งกาย (Apparel)">เสื้อผ้า / เครื่องแต่งกาย</option>'
+        + '        <option value="รองเท้ากีฬา (Shoes)">รองเท้ากีฬา</option>'
+        + '        <option value="อุปกรณ์ / แกดเจ็ต (Gear)">อุปกรณ์ / แกดเจ็ต</option>'
+        + '        <option value="อุปกรณ์สำนักงาน / สิ้นเปลือง">อุปกรณ์สำนักงาน / สิ้นเปลือง</option>'
+        + '        <option value="อื่นๆ">อื่นๆ</option>'
+        + '      </select>'
+        + '      <select id="sb-filter-status" class="input" style="max-width:140px;border-radius:10px">'
+        + '        <option value="all">📌 ทุกสถานะ</option>'
+        + '        <option value="completed">✓ ตรวจรับแล้ว</option>'
+        + '        <option value="pending">⏳ รอตรวจสอบ</option>'
+        + '        <option value="draft">📝 ฉบับร่าง</option>'
+        + '      </select>'
+        + '      <div class="search-box" style="max-width:220px;border-radius:10px"><i class="bi bi-search"></i><input type="text" id="sb-filter-q" placeholder="ค้นหาเลขที่บิล, ร้านค้า, ผู้บันทึก..." value="' + esc(state.q) + '"></div>'
+        + '    </div>'
+        + '  </div>'
+
+        + '  <div id="sec-stock-table">' + skBlocks(5, 60) + '</div>'
+        + '</div>'
+        + '</div>';
+
+      setPage(html);
+
+      // Wire top buttons
+      $('#btn-new-bill').addEventListener('click', function () {
+        openStockBillFormModal(null, function () { loadStockBills(); });
+      });
+
+      if ($('#btn-stock-permissions')) {
+        $('#btn-stock-permissions').addEventListener('click', function () {
+          openStockBillPermissionsModal();
+        });
+      }
+
+      $('#btn-export-csv').addEventListener('click', function () {
+        exportStockBillsCsv(state._items || []);
+      });
+
+      $('#btn-refresh-bills').addEventListener('click', function () {
+        loadStockBills();
+      });
+
+      // Wire filter inputs
+      $('#sb-filter-month').addEventListener('change', function () { state.month = this.value; loadStockBills(); });
+      $('#sb-filter-branch').addEventListener('change', function () { state.branch = this.value; loadStockBills(); });
+      $('#sb-filter-cat').addEventListener('change', function () { state.category = this.value; loadStockBills(); });
+      $('#sb-filter-status').addEventListener('change', function () { state.status = this.value; loadStockBills(); });
+
+      var searchTimer;
+      $('#sb-filter-q').addEventListener('input', function () {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () {
+          state.q = $('#sb-filter-q').value;
+          loadStockBills();
+        }, 300);
+      });
+
+      loadStockBills();
+    }
+
+    function loadStockBills() {
+      Spinner.show('กำลังโหลดข้อมูลบิลสินค้าเข้า...');
+      call('stock_bill.list', state).then(function (res) {
+        Spinner.hide();
+        var items = res.items || [];
+        var stats = res.stats || {};
+        state._items = items;
+        state._stats = stats;
+        renderKpiCards(stats, items);
+        renderBillsTable(items);
+        if ($('#lbl-bill-count')) {
+          $('#lbl-bill-count').textContent = 'แสดงทั้งหมด ' + items.length + ' รายการ · รวมยอด ฿' + Number(stats.filtered_amount || 0).toLocaleString();
+        }
+      }).catch(function (e) {
+        Spinner.hide();
+        toast('โหลดข้อมูลไม่สำเร็จ: ' + e.message, 'error');
+        // Offline fallback
+        handleStockBillClientApi({ action: 'stock_bill.list', payload: state }).then(function (fb) {
+          if (fb && fb.ok) {
+            state._items = fb.data.items || [];
+            state._stats = fb.data.stats || {};
+            renderKpiCards(state._stats, state._items);
+            renderBillsTable(state._items);
+          }
+        });
+      });
+    }
+
+    function renderKpiCards(stats, items) {
+      stats = stats || {};
+      var totalAmt = Number(stats.filtered_amount || 0);
+      var monthAmt = Number(stats.this_month_amount || 0);
+      var monthCount = Number(stats.this_month_count || 0);
+      var pendingCount = Number(stats.pending_count || 0);
+
+      var kpisHtml = ''
+        + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:18px;box-shadow:0 2px 10px rgba(0,0,0,0.02);display:flex;align-items:center;gap:14px">'
+        + '  <div style="width:48px;height:48px;background:#e0f2fe;color:#0284c7;border-radius:12px;display:grid;place-items:center;font-size:22px;flex-shrink:0"><i class="bi bi-receipt"></i></div>'
+        + '  <div>'
+        + '    <div style="font-size:12px;color:#64748b;font-weight:600">บิลสินค้าเข้า (ตามตัวกรอง)</div>'
+        + '    <div style="font-size:22px;font-weight:800;color:#0f172a;line-height:1.2">' + (items.length || 0) + ' <span style="font-size:13px;font-weight:500;color:#94a3b8">ฉบับ</span></div>'
+        + '  </div>'
+        + '</div>'
+
+        + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:18px;box-shadow:0 2px 10px rgba(0,0,0,0.02);display:flex;align-items:center;gap:14px">'
+        + '  <div style="width:48px;height:48px;background:#ecfdf5;color:#059669;border-radius:12px;display:grid;place-items:center;font-size:22px;flex-shrink:0"><i class="bi bi-cash-stack"></i></div>'
+        + '  <div>'
+        + '    <div style="font-size:12px;color:#64748b;font-weight:600">ยอดรวมสินค้าเข้า (บิลนี้)</div>'
+        + '    <div style="font-size:22px;font-weight:800;color:#059669;line-height:1.2">฿' + totalAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</div>'
+        + '  </div>'
+        + '</div>'
+
+        + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:18px;box-shadow:0 2px 10px rgba(0,0,0,0.02);display:flex;align-items:center;gap:14px">'
+        + '  <div style="width:48px;height:48px;background:#f5f3ff;color:#7c3aed;border-radius:12px;display:grid;place-items:center;font-size:22px;flex-shrink:0"><i class="bi bi-calendar-check-fill"></i></div>'
+        + '  <div>'
+        + '    <div style="font-size:12px;color:#64748b;font-weight:600">ยอดรับเข้าประจำเดือนนี้</div>'
+        + '    <div style="font-size:22px;font-weight:800;color:#7c3aed;line-height:1.2">฿' + monthAmt.toLocaleString() + ' <span style="font-size:12px;font-weight:500;color:#94a3b8">(' + monthCount + ' บิล)</span></div>'
+        + '  </div>'
+        + '</div>'
+
+        + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:18px;box-shadow:0 2px 10px rgba(0,0,0,0.02);display:flex;align-items:center;gap:14px">'
+        + '  <div style="width:48px;height:48px;background:#fffbeb;color:#d97706;border-radius:12px;display:grid;place-items:center;font-size:22px;flex-shrink:0"><i class="bi bi-hourglass-split"></i></div>'
+        + '  <div>'
+        + '    <div style="font-size:12px;color:#64748b;font-weight:600">รอดำเนินการ / ตรวจสอบ</div>'
+        + '    <div style="font-size:22px;font-weight:800;color:#d97706;line-height:1.2">' + pendingCount + ' <span style="font-size:13px;font-weight:500;color:#94a3b8">รายการ</span></div>'
+        + '  </div>'
+        + '</div>';
+
+      $('#sec-stock-stats').innerHTML = kpisHtml;
+    }
+
+    function renderBillsTable(items) {
+      if (!items || items.length === 0) {
+        $('#sec-stock-table').innerHTML = '<div style="text-align:center;padding:48px 16px;color:#94a3b8">'
+          + '<i class="bi bi-inbox" style="font-size:48px;display:block;margin-bottom:12px;color:#cbd5e1"></i>'
+          + '<div style="font-weight:700;font-size:15px;color:#475569">ไม่พบเอกสารบิลสินค้าเข้า</div>'
+          + '<p style="font-size:13px;margin:6px 0 16px">คุณสามารถกดปุ่ม \"บันทึกบิลสินค้าเข้าใหม่\" เพื่อเพิ่มเอกสารแรก</p>'
+          + '<button class="btn btn-primary" id="btn-empty-new-bill" style="border-radius:10px;padding:8px 18px"><i class="bi bi-plus-lg"></i> บันทึกบิลใหม่</button>'
+          + '</div>';
+
+        if ($('#btn-empty-new-bill')) {
+          $('#btn-empty-new-bill').addEventListener('click', function () {
+            openStockBillFormModal(null, function () { loadStockBills(); });
+          });
+        }
+        return;
+      }
+
+      var rowsHtml = items.map(function (b, idx) {
+        var imgHtml = '';
+        var allImgs = [];
+        try {
+          if (typeof b.images === 'string') allImgs = JSON.parse(b.images || '[]');
+          else if (Array.isArray(b.images)) allImgs = b.images;
+        } catch(e){}
+        if (!allImgs.length && b.image_url) allImgs = [b.image_url];
+
+        var mainImg = b.image_url || (allImgs.length > 0 ? allImgs[0] : '');
+
+        if (mainImg) {
+          imgHtml = '<div style="position:relative;width:52px;height:52px;flex-shrink:0;cursor:pointer" class="btn-thumb-preview" data-idx="' + idx + '">'
+            + '<img src="' + esc(mainImg) + '" style="width:100%;height:100%;object-fit:cover;border-radius:10px;border:1px solid #e2e8f0;box-shadow:0 2px 6px rgba(0,0,0,0.06)">'
+            + (allImgs.length > 1 ? '<span style="position:absolute;bottom:-3px;right:-3px;background:#0f172a;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:6px;border:1px solid #fff">+' + (allImgs.length - 1) + '</span>' : '')
+            + '</div>';
+        } else {
+          imgHtml = '<div style="width:52px;height:52px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;display:grid;place-items:center;color:#94a3b8;font-size:18px;flex-shrink:0">'
+            + '<i class="bi bi-image"></i>'
+            + '</div>';
+        }
+
+        var statusPill = '';
+        if (b.status === 'completed') {
+          statusPill = '<span style="background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;display:inline-flex;align-items:center;gap:4px"><i class="bi bi-check-circle-fill"></i> ตรวจรับแล้ว</span>';
+        } else if (b.status === 'pending') {
+          statusPill = '<span style="background:#fffbeb;color:#d97706;border:1px solid #fde68a;font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;display:inline-flex;align-items:center;gap:4px"><i class="bi bi-hourglass-split"></i> รอตรวจสอบ</span>';
+        } else {
+          statusPill = '<span style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px">📝 แบบร่าง</span>';
+        }
+
+        var payPill = '';
+        if (b.payment_status === 'paid') {
+          payPill = '<span style="color:#059669;font-size:11px;font-weight:600"><i class="bi bi-check2"></i> ชำระแล้ว</span>';
+        } else if (b.payment_status === 'credit') {
+          payPill = '<span style="color:#d97706;font-size:11px;font-weight:600"><i class="bi bi-clock-history"></i> เครดิต</span>';
+        } else {
+          payPill = '<span style="color:#dc2626;font-size:11px;font-weight:600"><i class="bi bi-x-circle"></i> รอชำระ</span>';
+        }
+
+        return '<tr class="stock-bill-row" style="border-bottom:1px solid #f1f5f9;transition:background 0.15s">'
+          + '<td style="padding:12px 10px;text-align:center;width:60px">' + imgHtml + '</td>'
+          + '<td style="padding:12px 10px">'
+          + '  <div style="font-weight:800;font-size:14px;color:#0f172a;display:flex;align-items:center;gap:6px">'
+          + esc(b.bill_no)
+          + '  </div>'
+          + '  <div style="font-size:11px;color:#64748b;margin-top:2px"><i class="bi bi-calendar3"></i> ' + esc(b.bill_date) + '</div>'
+          + '</td>'
+          + '<td style="padding:12px 10px">'
+          + '  <div style="font-weight:700;font-size:13px;color:#1e293b">' + esc(b.supplier_name) + '</div>'
+          + '  <div style="font-size:11px;color:#64748b;margin-top:2px"><i class="bi bi-geo-alt"></i> ' + esc(b.branch || 'สำนักงานใหญ่') + ' · <span style="color:#0284c7">' + esc(b.category || 'สินค้า') + '</span></div>'
+          + '</td>'
+          + '<td style="padding:12px 10px;text-align:right">'
+          + '  <div style="font-weight:800;font-size:15px;color:#059669">฿' + Number(b.total_amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</div>'
+          + '  <div style="margin-top:2px">' + payPill + '</div>'
+          + '</td>'
+          + '<td style="padding:12px 10px;text-align:center">'
+          +    statusPill
+          + '  <div style="font-size:10px;color:#94a3b8;margin-top:4px">' + esc(b.created_by_name || 'เจ้าหน้าที่') + '</div>'
+          + '</td>'
+          + '<td style="padding:12px 10px;text-align:center;white-space:nowrap">'
+          + '  <div style="display:inline-flex;gap:6px">'
+          + '    <button class="btn btn-sm btn-line-flex" data-idx="' + idx + '" title="ส่งหรือดู LINE Flex Message" style="background:#06c755;color:#fff;border:0;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600"><i class="bi bi-line"></i> Flex</button>'
+          + '    <button class="btn btn-sm btn-view-bill" data-idx="' + idx + '" title="ดูรายละเอียดเอกสาร" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:8px;padding:5px 9px;font-size:12px"><i class="bi bi-eye"></i></button>'
+          + '    <button class="btn btn-sm btn-edit-bill" data-idx="' + idx + '" title="แก้ไขข้อมูลบิล" style="background:#f1f5f9;color:#2563eb;border:1px solid #cbd5e1;border-radius:8px;padding:5px 9px;font-size:12px"><i class="bi bi-pencil"></i></button>'
+          + '    <button class="btn btn-sm btn-del-bill" data-idx="' + idx + '" title="ลบเอกสาร" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;padding:5px 9px;font-size:12px"><i class="bi bi-trash"></i></button>'
+          + '  </div>'
+          + '</td>'
+          + '</tr>';
+      }).join('');
+
+      var tableHtml = '<div style="overflow-x:auto">'
+        + '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+        + '<thead>'
+        + '  <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:700;font-size:12px">'
+        + '    <th style="padding:10px;text-align:center;width:60px">รูปบิล (R2)</th>'
+        + '    <th style="padding:10px;text-align:left">เลขที่บิล / วันที่</th>'
+        + '    <th style="padding:10px;text-align:left">ผู้จำหน่าย / สาขา</th>'
+        + '    <th style="padding:10px;text-align:right">ยอดรวม (บาท)</th>'
+        + '    <th style="padding:10px;text-align:center">สถานะ / ผู้บันทึก</th>'
+        + '    <th style="padding:10px;text-align:center">จัดการ</th>'
+        + '  </tr>'
+        + '</thead>'
+        + '<tbody>'
+        +    rowsHtml
+        + '</tbody>'
+        + '</table>'
+        + '</div>';
+
+      $('#sec-stock-table').innerHTML = tableHtml;
+
+      // Wire table action buttons
+      $$('.btn-thumb-preview').forEach(function (el) {
+        el.addEventListener('click', function () {
+          var idx = Number(this.getAttribute('data-idx'));
+          var bill = items[idx];
+          if (bill && bill.image_url) {
+            openImgPreview(bill.image_url, 'รูปบิล: ' + bill.bill_no + ' (' + bill.supplier_name + ')');
+          }
+        });
+      });
+
+      $$('.btn-line-flex').forEach(function (el) {
+        el.addEventListener('click', function () {
+          var idx = Number(this.getAttribute('data-idx'));
+          var bill = items[idx];
+          if (bill) openStockBillLineFlexModal(bill);
+        });
+      });
+
+      $$('.btn-view-bill').forEach(function (el) {
+        el.addEventListener('click', function () {
+          var idx = Number(this.getAttribute('data-idx'));
+          var bill = items[idx];
+          if (bill) openStockBillDetailModal(bill);
+        });
+      });
+
+      $$('.btn-edit-bill').forEach(function (el) {
+        el.addEventListener('click', function () {
+          var idx = Number(this.getAttribute('data-idx'));
+          var bill = items[idx];
+          if (bill) openStockBillFormModal(bill, function () { loadStockBills(); });
+        });
+      });
+
+      $$('.btn-del-bill').forEach(function (el) {
+        el.addEventListener('click', function () {
+          var idx = Number(this.getAttribute('data-idx'));
+          var bill = items[idx];
+          if (!bill) return;
+          if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบเอกสารบิล \"' + bill.bill_no + '\" (' + bill.supplier_name + ')?')) return;
+          Spinner.show('กำลังลบเอกสารบิล...');
+          call('stock_bill.delete', { id: bill.id }).then(function () {
+            Spinner.hide();
+            toast('ลบเอกสารบิลเรียบร้อยแล้ว', 'success');
+            loadStockBills();
+          }).catch(function (err) {
+            Spinner.hide();
+            toast('ลบไม่สำเร็จ: ' + err.message, 'error');
+          });
+        });
+      });
+    }
+
+    renderPage();
+  };
+
+  // ── Modal: Create / Edit Stock Bill ──────────────────────────────
+  function openStockBillFormModal(billToEdit, onSaved) {
+    var isEdit = !!(billToEdit && billToEdit.id);
+    var u = (Store.user) || {};
+    var todayStr = new Date().toISOString().substring(0, 10);
+
+    var existingItems = [];
+    try {
+      if (billToEdit && typeof billToEdit.items_detail === 'string') existingItems = JSON.parse(billToEdit.items_detail || '[]');
+      else if (billToEdit && Array.isArray(billToEdit.items_detail)) existingItems = billToEdit.items_detail;
+    } catch(e){ existingItems = []; }
+
+    var existingImages = [];
+    try {
+      if (billToEdit && typeof billToEdit.images === 'string') existingImages = JSON.parse(billToEdit.images || '[]');
+      else if (billToEdit && Array.isArray(billToEdit.images)) existingImages = billToEdit.images;
+    } catch(e){ existingImages = []; }
+    if (billToEdit && billToEdit.image_url && existingImages.indexOf(billToEdit.image_url) < 0) {
+      existingImages.unshift(billToEdit.image_url);
+    }
+
+    var defaultBranch = (billToEdit && billToEdit.branch) || u.branch || 'สำนักงานใหญ่ / คลังกลาง';
+    var defaultCategory = (billToEdit && billToEdit.category) || 'สินค้าขาย (Stock)';
+    var defaultPay = (billToEdit && billToEdit.payment_status) || 'paid';
+    var defaultStatus = (billToEdit && billToEdit.status) || 'completed';
+
+    var formHtml = '<form id="form-stock-bill" style="display:flex;flex-direction:column;gap:16px;max-height:75vh;overflow-y:auto;padding-right:4px">'
+      + '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px">'
+      + '  <div style="font-weight:800;font-size:13px;color:#0f172a;display:flex;align-items:center;gap:6px"><i class="bi bi-file-text-fill" style="color:#0284c7"></i> ข้อมูลเอกสารบิลสินค้าเข้า</div>'
+      + '  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px">'
+      + '    <div>'
+      + '      <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">เลขที่บิล / Invoice No <span style="color:#ef4444">*</span></label>'
+      + '      <div style="display:flex;gap:6px">'
+      + '        <input type="text" id="sb-bill-no" class="input" placeholder="e.g. INV-2026-001" value="' + esc(billToEdit ? billToEdit.bill_no : '') + '" required style="width:100%;font-weight:700">'
+      + '        <button type="button" class="btn btn-sm" id="btn-autogen-billno" title="สุ่มเลขที่บิลอัตโนมัติ" style="background:#e0f2fe;color:#0284c7;border:0;border-radius:8px;font-size:11px;white-space:nowrap;padding:0 8px"><i class="bi bi-magic"></i> รหัสออโต้</button>'
+      + '      </div>'
+      + '    </div>'
+      + '    <div>'
+      + '      <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">วันที่ในบิล / วันที่รับเข้า <span style="color:#ef4444">*</span></label>'
+      + '      <input type="date" id="sb-bill-date" class="input" value="' + esc(billToEdit ? billToEdit.bill_date : todayStr) + '" required style="width:100%">'
+      + '    </div>'
+      + '  </div>'
+
+      + '  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px">'
+      + '    <div>'
+      + '      <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">ผู้จำหน่าย / ซัพพลายเออร์ (Supplier) <span style="color:#ef4444">*</span></label>'
+      + '      <input type="text" id="sb-supplier-name" class="input" placeholder="e.g. บริษัท สปอร์ต จำกัด / ร้านค้า" value="' + esc(billToEdit ? billToEdit.supplier_name : '') + '" required style="width:100%">'
+      + '    </div>'
+      + '    <div>'
+      + '      <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">สาขา / คลังที่รับสินค้าเข้า</label>'
+      + '      <select id="sb-branch" class="input" style="width:100%">'
+      + '        <option value="สำนักงานใหญ่ / คลังกลาง"' + (defaultBranch.indexOf('สำนักงานใหญ่') >= 0 ? ' selected' : '') + '>สำนักงานใหญ่ / คลังกลาง</option>'
+      + '        <option value="พระราม 2"' + (defaultBranch === 'พระราม 2' ? ' selected' : '') + '>สาขาพระราม 2</option>'
+      + '        <option value="ปอร์โต ชิโน่"' + (defaultBranch === 'ปอร์โต ชิโน่' ? ' selected' : '') + '>สาขาปอร์โต ชิโน่</option>'
+      + '        <option value="ราชพฤกษ์"' + (defaultBranch === 'ราชพฤกษ์' ? ' selected' : '') + '>สาขาราชพฤกษ์</option>'
+      + '        <option value="คริสตัล วีรันดา"' + (defaultBranch === 'คริสตัล วีรันดา' ? ' selected' : '') + '>สาขาคริสตัล วีรันดา</option>'
+      + '        <option value="Online"' + (defaultBranch === 'Online' ? ' selected' : '') + '>Online / E-Commerce</option>'
+      + '      </select>'
+      + '    </div>'
+      + '  </div>'
+
+      + '  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:12px">'
+      + '    <div>'
+      + '      <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">หมวดหมู่สินค้า</label>'
+      + '      <select id="sb-category" class="input" style="width:100%">'
+      + '        <option value="สินค้าขาย (Stock)"' + (defaultCategory === 'สินค้าขาย (Stock)' ? ' selected' : '') + '>สินค้าขาย (Stock)</option>'
+      + '        <option value="เสื้อผ้า / เครื่องแต่งกาย (Apparel)"' + (defaultCategory.indexOf('เสื้อผ้า') >= 0 ? ' selected' : '') + '>เสื้อผ้า / เครื่องแต่งกาย</option>'
+      + '        <option value="รองเท้ากีฬา (Shoes)"' + (defaultCategory.indexOf('รองเท้า') >= 0 ? ' selected' : '') + '>รองเท้ากีฬา</option>'
+      + '        <option value="อุปกรณ์ / แกดเจ็ต (Gear)"' + (defaultCategory.indexOf('อุปกรณ์') >= 0 ? ' selected' : '') + '>อุปกรณ์ / แกดเจ็ต</option>'
+      + '        <option value="อุปกรณ์สำนักงาน / สิ้นเปลือง"' + (defaultCategory.indexOf('สำนักงาน') >= 0 ? ' selected' : '') + '>อุปกรณ์สำนักงาน / สิ้นเปลือง</option>'
+      + '        <option value="อื่นๆ"' + (defaultCategory === 'อื่นๆ' ? ' selected' : '') + '>อื่นๆ</option>'
+      + '      </select>'
+      + '    </div>'
+      + '    <div>'
+      + '      <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">การชำระเงิน</label>'
+      + '      <select id="sb-payment-status" class="input" style="width:100%">'
+      + '        <option value="paid"' + (defaultPay === 'paid' ? ' selected' : '') + '>ชำระเงินเรียบร้อย (Paid)</option>'
+      + '        <option value="credit"' + (defaultPay === 'credit' ? ' selected' : '') + '>เครดิต / วางบิล (Credit)</option>'
+      + '        <option value="unpaid"' + (defaultPay === 'unpaid' ? ' selected' : '') + '>รอชำระ (Unpaid)</option>'
+      + '      </select>'
+      + '    </div>'
+      + '    <div>'
+      + '      <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">สถานะเอกสาร</label>'
+      + '      <select id="sb-status" class="input" style="width:100%">'
+      + '        <option value="completed"' + (defaultStatus === 'completed' ? ' selected' : '') + '>✓ ตรวจรับเข้าคลังแล้ว</option>'
+      + '        <option value="pending"' + (defaultStatus === 'pending' ? ' selected' : '') + '>⏳ รอตรวจสอบ</option>'
+      + '        <option value="draft"' + (defaultStatus === 'draft' ? ' selected' : '') + '>📝 ฉบับร่าง</option>'
+      + '      </select>'
+      + '    </div>'
+      + '  </div>'
+      + '</div>'
+
+      + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px">'
+      + '  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+      + '    <div style="font-weight:800;font-size:13px;color:#0f172a;display:flex;align-items:center;gap:6px"><i class="bi bi-box-seam-fill" style="color:#0284c7"></i> รายการสินค้าในบิล (Optional)</div>'
+      + '    <button type="button" class="btn btn-sm" id="btn-add-item-row" style="background:#e0f2fe;color:#0284c7;border:0;font-weight:700;border-radius:8px;font-size:11px;padding:4px 10px"><i class="bi bi-plus-lg"></i> เพิ่มรายการสินค้า</button>'
+      + '  </div>'
+      + '  <div id="sb-items-container" style="display:flex;flex-direction:column;gap:8px"></div>'
+      + '  <div style="display:flex;justify-content:flex-end;gap:20px;align-items:center;margin-top:14px;padding-top:12px;border-top:1px dashed #cbd5e1">'
+      + '    <div style="font-size:13px;color:#64748b">ยอดรวมสุทธิทั้งบิล (บาท):</div>'
+      + '    <div style="width:160px"><input type="number" id="sb-total-amount" class="input" step="0.01" value="' + (billToEdit ? billToEdit.total_amount : 0) + '" required style="font-weight:800;font-size:16px;color:#059669;text-align:right"></div>'
+      + '  </div>'
+      + '</div>'
+
+      + '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px">'
+      + '  <div style="display:flex;justify-content:space-between;align-items:center">'
+      + '    <div style="font-weight:800;font-size:13px;color:#0f172a;display:flex;align-items:center;gap:6px">'
+      + '      <i class="bi bi-cloud-arrow-up-fill" style="color:#0284c7"></i> แนบรูปถ่ายบิล / ใบกำกับ / สลิป (จัดเก็บบน Cloudflare R2)'
+      + '    </div>'
+      + '    <span style="font-size:11px;color:#64748b" id="r2-upload-status"><i class="bi bi-shield-check" style="color:#059669"></i> R2 พร้อมใช้งาน</span>'
+      + '  </div>'
+      + '  <div id="r2-dropzone" style="border:2px dashed #93c5fd;border-radius:12px;padding:20px;text-align:center;background:#eff6ff;cursor:pointer;transition:all 0.2s">'
+      + '    <i class="bi bi-camera-fill" style="font-size:32px;color:#0284c7;display:block;margin-bottom:6px"></i>'
+      + '    <div style="font-weight:700;font-size:13px;color:#1e293b">คลิกถ่ายภาพ หรือ ลากไฟล์รูปบิลมาวางที่นี่</div>'
+      + '    <div style="font-size:11px;color:#64748b;margin-top:4px">รองรับ JPG, PNG, WEBP (บีบอัดภาพอัตโนมัติและส่งขึ้น R2 ทันที)</div>'
+      + '    <input type="file" id="r2-file-input" accept="image/*" capture="environment" multiple style="display:none">'
+      + '  </div>'
+      + '  <div id="r2-preview-grid" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:4px"></div>'
+      + '</div>'
+
+      + '<div>'
+      + '  <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">หมายเหตุเพิ่มเติม</label>'
+      + '  <textarea id="sb-notes" class="input" rows="2" placeholder="ระบุรายละเอียดเพิ่มเติม หรือเลขอ้างอิง..." style="width:100%">' + esc(billToEdit ? billToEdit.notes : '') + '</textarea>'
+      + '</div>'
+
+      + '<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px">'
+      + '  <input type="checkbox" id="sb-send-line" style="width:18px;height:18px;cursor:pointer"' + (!isEdit ? ' checked' : '') + '>'
+      + '  <label for="sb-send-line" style="font-size:12px;font-weight:700;color:#065f46;cursor:pointer;margin:0">'
+      + '    <i class="bi bi-line" style="color:#06c755;font-size:16px;margin-right:4px"></i> ส่งการแจ้งเตือนทาง LINE Flex ทันทีเมื่อบันทึก'
+      + '  </label>'
+      + '</div>'
+      + '</form>';
+
+    var uploadedImages = existingImages.slice();
+
+    Modal.open({
+      title: isEdit ? '✏️ แก้ไขเอกสารบิลสินค้าเข้า' : '📦 บันทึกบิลสินค้าเข้าใหม่ (R2 & LINE)',
+      html: formHtml,
+      footer: '<button class="btn" data-modal-close>ยกเลิก</button>'
+        + '<button class="btn btn-primary" id="btn-submit-stock-bill" style="background:#0284c7;border:0;color:#fff;font-weight:700"><i class="bi bi-check-lg"></i> ' + (isEdit ? 'บันทึกการแก้ไข' : 'บันทึกบิลเข้าคลัง') + '</button>',
+      onOpen: function () {
+        $('#btn-autogen-billno').addEventListener('click', function () {
+          var d = new Date();
+          var ymd = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+          var rnd = Math.floor(Math.random() * 900 + 100);
+          $('#sb-bill-no').value = 'SB-' + ymd + '-' + rnd;
+        });
+
+        var itemsContainer = $('#sb-items-container');
+
+        function addItemRow(it) {
+          it = it || { name: '', qty: 1, unit: 'ชิ้น', unit_price: 0, total_price: 0, note: '' };
+          var rowId = 'row-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+          var div = document.createElement('div');
+          div.className = 'sb-item-row';
+          div.id = rowId;
+          div.style.cssText = 'display:grid;grid-template-columns:3fr 1fr 1fr 1.5fr 1.5fr auto;gap:8px;align-items:center;background:#f8fafc;padding:8px 10px;border-radius:10px;border:1px solid #e2e8f0';
+          div.innerHTML = '<input type="text" class="input item-name" placeholder="ชื่อสินค้า / รายการ" value="' + esc(it.name) + '" style="font-size:12px;padding:6px 8px">'
+            + '<input type="number" class="input item-qty" placeholder="จำนวน" value="' + (it.qty || 1) + '" min="1" style="font-size:12px;padding:6px 4px;text-align:center">'
+            + '<input type="text" class="input item-unit" placeholder="หน่วย" value="' + esc(it.unit || 'ชิ้น') + '" style="font-size:12px;padding:6px 4px;text-align:center">'
+            + '<input type="number" class="input item-price" placeholder="ราคา/หน่วย" value="' + (it.unit_price || 0) + '" min="0" step="0.01" style="font-size:12px;padding:6px 6px;text-align:right">'
+            + '<input type="number" class="input item-total" placeholder="ราคารวม" value="' + (it.total_price || 0) + '" min="0" step="0.01" style="font-size:12px;padding:6px 6px;text-align:right;font-weight:700">'
+            + '<button type="button" class="btn btn-sm btn-del-row" style="background:#fee2e2;color:#dc2626;border:0;border-radius:6px;padding:4px 8px"><i class="bi bi-x-lg"></i></button>';
+
+          itemsContainer.appendChild(div);
+
+          var elQty = div.querySelector('.item-qty');
+          var elPrice = div.querySelector('.item-price');
+          var elTotal = div.querySelector('.item-total');
+
+          function calcRow() {
+            var q = Number(elQty.value || 0);
+            var p = Number(elPrice.value || 0);
+            var tot = q * p;
+            if (tot > 0) elTotal.value = tot;
+            recalculateGrandTotal();
+          }
+
+          elQty.addEventListener('input', calcRow);
+          elPrice.addEventListener('input', calcRow);
+          elTotal.addEventListener('input', recalculateGrandTotal);
+
+          div.querySelector('.btn-del-row').addEventListener('click', function () {
+            div.remove();
+            recalculateGrandTotal();
+          });
+        }
+
+        function recalculateGrandTotal() {
+          var sum = 0;
+          $$('.sb-item-row', itemsContainer).forEach(function (r) {
+            var tot = Number(r.querySelector('.item-total').value || 0);
+            sum += tot;
+          });
+          if (sum > 0) {
+            $('#sb-total-amount').value = sum;
+          }
+        }
+
+        if (existingItems && existingItems.length > 0) {
+          existingItems.forEach(function (it) { addItemRow(it); });
+        } else {
+          addItemRow();
+        }
+
+        $('#btn-add-item-row').addEventListener('click', function () {
+          addItemRow();
+        });
+
+        var dropzone = $('#r2-dropzone');
+        var fileInput = $('#r2-file-input');
+        var previewGrid = $('#r2-preview-grid');
+
+        function renderImagesGrid() {
+          if (!uploadedImages.length) {
+            previewGrid.innerHTML = '';
+            return;
+          }
+          previewGrid.innerHTML = uploadedImages.map(function (url, i) {
+            return '<div style="position:relative;width:80px;height:80px;border-radius:10px;overflow:hidden;border:1px solid #cbd5e1;box-shadow:0 2px 8px rgba(0,0,0,0.08)">'
+              + '<img src="' + esc(url) + '" class="r2-grid-thumb" data-url="' + esc(url) + '" style="width:100%;height:100%;object-fit:cover;cursor:pointer">'
+              + (i === 0 ? '<span style="position:absolute;top:2px;left:2px;background:#0284c7;color:#fff;font-size:8px;font-weight:700;padding:1px 4px;border-radius:4px">หลัก</span>' : '')
+              + '<button type="button" class="btn-remove-r2-img" data-idx="' + i + '" style="position:absolute;top:2px;right:2px;background:rgba(220,38,38,0.85);color:#fff;border:0;border-radius:50%;width:18px;height:18px;font-size:10px;display:grid;place-items:center;cursor:pointer"><i class="bi bi-x"></i></button>'
+              + '</div>';
+          }).join('');
+
+          $$('.r2-grid-thumb', previewGrid).forEach(function (img) {
+            img.addEventListener('click', function () {
+              openImgPreview(this.getAttribute('data-url'), 'รูปถ่ายบิล');
+            });
+          });
+
+          $$('.btn-remove-r2-img', previewGrid).forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+              e.stopPropagation();
+              var idx = Number(this.getAttribute('data-idx'));
+              uploadedImages.splice(idx, 1);
+              renderImagesGrid();
+            });
+          });
+        }
+
+        renderImagesGrid();
+
+        dropzone.addEventListener('click', function () {
+          fileInput.click();
+        });
+
+        dropzone.addEventListener('dragover', function (e) {
+          e.preventDefault();
+          dropzone.style.background = '#dbeafe';
+          dropzone.style.borderColor = '#2563eb';
+        });
+
+        dropzone.addEventListener('dragleave', function () {
+          dropzone.style.background = '#eff6ff';
+          dropzone.style.borderColor = '#93c5fd';
+        });
+
+        dropzone.addEventListener('drop', function (e) {
+          e.preventDefault();
+          dropzone.style.background = '#eff6ff';
+          dropzone.style.borderColor = '#93c5fd';
+          if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+            handleFiles(e.dataTransfer.files);
+          }
+        });
+
+        fileInput.addEventListener('change', function () {
+          if (fileInput.files && fileInput.files.length) {
+            handleFiles(fileInput.files);
+          }
+        });
+
+        async function handleFiles(files) {
+          var statusEl = $('#r2-upload-status');
+          for (var i = 0; i < files.length; i++) {
+            var f = files[i];
+            try {
+              statusEl.innerHTML = '<span style="color:#0284c7"><i class="bi bi-arrow-repeat spin"></i> กำลังอัปโหลดภาพที่ ' + (i+1) + '/' + files.length + ' ขึ้น R2...</span>';
+              var compressed = await compressImageToDataUrl(f);
+              var uploadRes = await call('r2.upload', {
+                filename: f.name || ('bill_' + Date.now() + '.jpg'),
+                contentType: 'image/jpeg',
+                base64: compressed.dataUrl
+              });
+
+              if (uploadRes && uploadRes.publicUrl) {
+                uploadedImages.push(uploadRes.publicUrl);
+                renderImagesGrid();
+              }
+            } catch (err) {
+              console.warn('R2 upload fallback:', err);
+              uploadedImages.push(compressed ? compressed.dataUrl : '');
+              renderImagesGrid();
+            }
+          }
+          statusEl.innerHTML = '<span style="color:#059669"><i class="bi bi-check-circle-fill"></i> อัปโหลดขึ้น R2 เรียบร้อย (' + uploadedImages.length + ' ภาพ)</span>';
+        }
+
+        $('#btn-submit-stock-bill').addEventListener('click', function () {
+          var billNo = $('#sb-bill-no').value.trim();
+          var billDate = $('#sb-bill-date').value;
+          var supplierName = $('#sb-supplier-name').value.trim();
+          var totalAmount = Number($('#sb-total-amount').value || 0);
+
+          if (!billNo) {
+            toast('กรุณากรอกเลขที่บิล', 'warning');
+            $('#sb-bill-no').focus();
+            return;
+          }
+          if (!supplierName) {
+            toast('กรุณากรอกชื่อผู้จำหน่าย (Supplier)', 'warning');
+            $('#sb-supplier-name').focus();
+            return;
+          }
+
+          var itemsDetail = [];
+          $$('.sb-item-row', itemsContainer).forEach(function (r) {
+            var name = r.querySelector('.item-name').value.trim();
+            var qty = Number(r.querySelector('.item-qty').value || 1);
+            var unit = r.querySelector('.item-unit').value.trim();
+            var price = Number(r.querySelector('.item-price').value || 0);
+            var tot = Number(r.querySelector('.item-total').value || 0);
+            if (name) {
+              itemsDetail.push({ name: name, qty: qty, unit: unit, unit_price: price, total_price: tot });
+            }
+          });
+
+          var payload = {
+            id: isEdit ? billToEdit.id : undefined,
+            bill_no: billNo,
+            bill_date: billDate,
+            supplier_name: supplierName,
+            branch: $('#sb-branch').value,
+            category: $('#sb-category').value,
+            total_amount: totalAmount,
+            vat_type: 'include',
+            vat_amount: 0,
+            net_amount: totalAmount,
+            payment_status: $('#sb-payment-status').value,
+            status: $('#sb-status').value,
+            image_url: uploadedImages.length > 0 ? uploadedImages[0] : '',
+            images: uploadedImages,
+            items_detail: itemsDetail,
+            notes: $('#sb-notes').value.trim(),
+            send_line: $('#sb-send-line').checked
+          };
+
+          Spinner.show(isEdit ? 'กำลังบันทึกการแก้ไข...' : 'กำลังบันทึกเอกสารบิล...');
+          var actionName = isEdit ? 'stock_bill.update' : 'stock_bill.create';
+
+          call(actionName, payload).then(function (res) {
+            Spinner.hide();
+            Modal.close();
+            toast(isEdit ? 'แก้ไขเอกสารบิลเรียบร้อยแล้ว!' : 'บันทึกบิลสินค้าเข้าเรียบร้อยแล้ว!', 'success');
+            if (onSaved) onSaved(res.item);
+          }).catch(function (e) {
+            Spinner.hide();
+            toast('บันทึกไม่สำเร็จ: ' + e.message, 'error');
+          });
+        });
+      }
+    });
+  }
+
+  // ── Modal: Stock Bill Detail & Voucher Print ─────────────────────
+  function openStockBillDetailModal(bill) {
+    if (!bill) return;
+    var allImgs = [];
+    try {
+      if (typeof bill.images === 'string') allImgs = JSON.parse(bill.images || '[]');
+      else if (Array.isArray(bill.images)) allImgs = bill.images;
+    } catch(e){}
+    if (!allImgs.length && bill.image_url) allImgs = [bill.image_url];
+
+    var items = [];
+    try {
+      if (typeof bill.items_detail === 'string') items = JSON.parse(bill.items_detail || '[]');
+      else if (Array.isArray(bill.items_detail)) items = bill.items_detail;
+    } catch(e){}
+
+    var itemsTableHtml = items.length === 0
+      ? '<div style="color:#94a3b8;font-size:12px;padding:8px 0">ไม่มีรายการสินค้าแยกย่อย</div>'
+      : '<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:12px">'
+        + '<thead><tr style="background:#f1f5f9;color:#475569"><th style="padding:6px;text-align:left">#</th><th style="padding:6px;text-align:left">รายการสินค้า</th><th style="padding:6px;text-align:center">จำนวน</th><th style="padding:6px;text-align:right">ราคา/หน่วย</th><th style="padding:6px;text-align:right">ราคารวม</th></tr></thead>'
+        + '<tbody>'
+        + items.map(function (it, idx) {
+            var tot = Number(it.total_price || (it.qty * it.unit_price) || 0);
+            return '<tr style="border-bottom:1px solid #f1f5f9">'
+              + '<td style="padding:6px">' + (idx + 1) + '</td>'
+              + '<td style="padding:6px;font-weight:600">' + esc(it.name) + '</td>'
+              + '<td style="padding:6px;text-align:center">' + it.qty + ' ' + esc(it.unit || 'ชิ้น') + '</td>'
+              + '<td style="padding:6px;text-align:right">฿' + Number(it.unit_price || 0).toLocaleString() + '</td>'
+              + '<td style="padding:6px;text-align:right;font-weight:700">฿' + tot.toLocaleString() + '</td>'
+              + '</tr>';
+          }).join('')
+        + '</tbody></table>';
+
+    var galleryHtml = allImgs.length === 0
+      ? '<div style="color:#94a3b8;font-size:12px;padding:8px 0">ไม่มีรูปภาพแนบในเอกสารนี้</div>'
+      : '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px" id="bill-detail-gallery">'
+        + allImgs.map(function (url) {
+            return '<div class="bill-detail-thumb" data-url="' + esc(url) + '" style="position:relative;width:110px;height:110px;border-radius:10px;overflow:hidden;border:1px solid #cbd5e1;cursor:pointer">'
+              + '<img src="' + esc(url) + '" style="width:100%;height:100%;object-fit:cover">'
+              + '<span style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.6);color:#fff;font-size:9px;text-align:center;padding:2px"><i class="bi bi-zoom-in"></i> ขยายดูรูป</span>'
+              + '</div>';
+          }).join('')
+        + '</div>';
+
+    var detailHtml = '<div style="display:flex;flex-direction:column;gap:16px;max-height:75vh;overflow-y:auto">'
+      + '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:16px">'
+      + '  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">'
+      + '    <div>'
+      + '      <span style="font-size:11px;color:#0284c7;font-weight:700;text-transform:uppercase">Avarin Stock Inward Voucher</span>'
+      + '      <h2 style="font-size:18px;font-weight:800;margin:2px 0 6px;color:#0f172a">เลขที่บิล: ' + esc(bill.bill_no) + '</h2>'
+      + '      <div style="font-size:12px;color:#64748b">วันที่รับเข้า: <strong>' + esc(bill.bill_date) + '</strong> · สาขา: <strong>' + esc(bill.branch || 'สำนักงานใหญ่') + '</strong></div>'
+      + '    </div>'
+      + '    <div style="text-align:right">'
+      + '      <div style="font-size:11px;color:#64748b">ยอดเงินรวมทั้งสิ้น</div>'
+      + '      <div style="font-size:20px;font-weight:800;color:#059669">฿' + Number(bill.total_amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</div>'
+      + '    </div>'
+      + '  </div>'
+      + '</div>'
+
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px">'
+      + '  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px">'
+      + '    <div style="font-size:11px;color:#64748b;font-weight:600">ผู้จำหน่าย / ร้านค้า (Supplier):</div>'
+      + '    <div style="font-weight:800;color:#0f172a;margin-top:2px">' + esc(bill.supplier_name) + '</div>'
+      + '    <div style="font-size:11px;color:#64748b;margin-top:4px">หมวดหมู่: ' + esc(bill.category || 'สินค้าขาย') + '</div>'
+      + '  </div>'
+      + '  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px">'
+      + '    <div style="font-size:11px;color:#64748b;font-weight:600">สถานะการชำระเงิน & ตรวจรับ:</div>'
+      + '    <div style="font-weight:800;color:#0f172a;margin-top:2px">' + (bill.payment_status === 'paid' ? '✓ ชำระเงินเรียบร้อย' : '⏳ เครดิต / รอชำระ') + '</div>'
+      + '    <div style="font-size:11px;color:#64748b;margin-top:4px">ผู้บันทึก: ' + esc(bill.created_by_name || 'เจ้าหน้าที่') + '</div>'
+      + '  </div>'
+      + '</div>'
+
+      + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px">'
+      + '  <div style="font-size:12px;font-weight:700;color:#0f172a">รายการสินค้า</div>'
+      +    itemsTableHtml
+      + '</div>'
+
+      + '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px">'
+      + '  <div style="font-size:12px;font-weight:700;color:#0f172a"><i class="bi bi-images" style="color:#0284c7"></i> รูปถ่ายบิลและเอกสารแนบ (Cloudflare R2)</div>'
+      +    galleryHtml
+      + '</div>'
+
+      + (bill.notes ? ('<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;font-size:12px;color:#475569"><strong>หมายเหตุ:</strong> ' + esc(bill.notes) + '</div>') : '')
+      + '</div>';
+
+    Modal.open({
+      title: '📄 รายละเอียดเอกสารบิลสินค้าเข้า',
+      html: detailHtml,
+      footer: '<button class="btn" data-modal-close>ปิด</button>'
+        + '<button class="btn" id="btn-detail-line-flex" style="background:#06c755;color:#fff;border:0"><i class="bi bi-line"></i> LINE Flex</button>'
+        + '<button class="btn btn-primary" id="btn-print-voucher" style="background:#0f172a;border:0;color:#fff"><i class="bi bi-printer"></i> พิมพ์เอกสาร</button>',
+      onOpen: function () {
+        $$('.bill-detail-thumb').forEach(function (el) {
+          el.addEventListener('click', function () {
+            openImgPreview(this.getAttribute('data-url'), 'รูปบิล: ' + bill.bill_no);
+          });
+        });
+
+        $('#btn-detail-line-flex').addEventListener('click', function () {
+          Modal.close();
+          openStockBillLineFlexModal(bill);
+        });
+        $('#btn-print-voucher').addEventListener('click', function () {
+          window.print();
+        });
+      }
+    });
+  }
+
+  // ── Modal: LINE Flex Message Viewer & Push ───────────────────────
+  function openStockBillLineFlexModal(bill) {
+    if (!bill) return;
+    var flexJson = generateStockBillFlexJson(bill);
+    var jsonStr = JSON.stringify(flexJson, null, 2);
+
+    var previewCard = '<div style="background:#0f172a;color:#fff;border-radius:16px;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.2);font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:380px;margin:0 auto">'
+      + '<div style="background:linear-gradient(135deg, #0f172a, #1e293b);padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.1)">'
+      + '  <div style="display:flex;justify-content:space-between;align-items:center">'
+      + '    <span style="color:#38bdf8;font-weight:800;font-size:14px">📦 เอกสารบิลสินค้าเข้า</span>'
+      + '    <span style="background:rgba(16,185,129,0.2);color:#34d399;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px">✓ ตรวจรับแล้ว</span>'
+      + '  </div>'
+      + '  <div style="font-weight:800;font-size:13px;color:#fff;margin-top:4px">เลขที่: ' + esc(bill.bill_no) + '</div>'
+      + '  <div style="color:#94a3b8;font-size:11px">วันที่: ' + esc(bill.bill_date) + ' · สาขา: ' + esc(bill.branch || 'สำนักงานใหญ่') + '</div>'
+      + '</div>'
+      + (bill.image_url ? '<div style="width:100%;height:160px;overflow:hidden"><img src="' + esc(bill.image_url) + '" style="width:100%;height:100%;object-fit:cover"></div>' : '')
+      + '<div style="padding:14px;background:#fff;color:#0f172a">'
+      + '  <div style="background:#f8fafc;border-radius:8px;padding:10px;font-size:12px;line-height:1.6">'
+      + '    <div><span style="color:#64748b">ผู้จำหน่าย:</span> <strong>' + esc(bill.supplier_name) + '</strong></div>'
+      + '    <div><span style="color:#64748b">หมวดหมู่:</span> ' + esc(bill.category || 'สินค้า') + '</div>'
+      + '  </div>'
+      + '  <div style="display:flex;justify-content:space-between;align-items:center;background:#ecfdf5;border:1px solid #a7f3d0;padding:10px 12px;border-radius:8px;margin-top:10px">'
+      + '    <span style="font-weight:800;color:#065f46;font-size:13px">💰 ยอดรวมบิล:</span>'
+      + '    <span style="font-weight:800;color:#059669;font-size:16px">฿' + Number(bill.total_amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</span>'
+      + '  </div>'
+      + '</div>'
+      + '</div>';
+
+    var modalHtml = '<div style="display:flex;flex-direction:column;gap:14px">'
+      + '<div style="font-size:12px;color:#64748b;text-align:center">ตัวอย่างการแสดงผลบน LINE Application (Flex Message Bubble)</div>'
+      +  previewCard
+      + '<div>'
+      + '  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+      + '    <label style="font-size:12px;font-weight:700;color:#475569"><i class="bi bi-code-slash"></i> LINE Flex Message JSON Payload</label>'
+      + '    <span style="font-size:11px;color:#64748b">พร้อมใช้กับ LINE Bot / OA Broadcast</span>'
+      + '  </div>'
+      + '  <textarea id="stock-bill-flex-json" class="input" rows="4" readonly style="font-family:monospace;font-size:11px;width:100%;background:#f8fafc">' + esc(jsonStr) + '</textarea>'
+      + '</div>'
+      + '</div>';
+
+    Modal.open({
+      title: '📱 LINE Flex Message - ' + esc(bill.bill_no),
+      html: modalHtml,
+      footer: '<button class="btn" data-modal-close>ปิด</button>'
+        + '<button class="btn" id="btn-copy-bill-flex" style="background:#06c755;color:#fff;border:0;font-weight:600"><i class="bi bi-clipboard"></i> คัดลอก LINE Flex JSON</button>'
+        + '<button class="btn btn-primary" id="btn-push-line-bill" style="background:#0284c7;border:0;color:#fff;font-weight:700"><i class="bi bi-send-fill"></i> ส่งเข้า LINE ทันที</button>',
+      onOpen: function () {
+        $('#btn-copy-bill-flex').addEventListener('click', function () {
+          navigator.clipboard.writeText(jsonStr).then(function () {
+            toast('คัดลอก LINE Flex JSON เรียบร้อยแล้ว!', 'success');
+          }).catch(function () {
+            var ta = $('#stock-bill-flex-json');
+            ta.select();
+            document.execCommand('copy');
+            toast('คัดลอก LINE Flex JSON เรียบร้อยแล้ว!', 'success');
+          });
+        });
+
+        $('#btn-push-line-bill').addEventListener('click', function () {
+          Spinner.show('กำลังส่งการแจ้งเตือนเข้า LINE...');
+          call('stock_bill.send_line', { bill: bill }).then(function () {
+            Spinner.hide();
+            toast('ส่งแจ้งเตือนเข้า LINE สำเร็จ!', 'success');
+          }).catch(function (e) {
+            Spinner.hide();
+            toast('ส่งเข้า LINE ไม่สำเร็จ: ' + e.message, 'warning');
+          });
+        });
+      }
+    });
+  }
+
+  // ── Modal: Admin Permissions Management ─────────────────────────
+  function openStockBillPermissionsModal() {
+    Spinner.show('กำลังโหลดข้อมูลการตั้งค่าสิทธิ์...');
+    call('stock_bill.permissions.get', {}).then(function (res) {
+      Spinner.hide();
+      var allowedRoles = res.allowed_roles || ['admin'];
+      var allowedUsers = res.allowed_users || [];
+      var allUsers = res.all_users || [];
+      var notifyTarget = res.notify_target || '';
+
+      var rolesHtml = (res.available_roles || [
+        { id: 'admin', label: 'ผู้ดูแลระบบ (Admin)' },
+        { id: 'approver', label: 'ผู้อำนวยการ / ผู้บริหาร (Approver)' },
+        { id: 'supervisor', label: 'หัวหน้างาน (Supervisor)' },
+        { id: 'checker', label: 'เจ้าหน้าที่ตรวจสอบ (Checker)' },
+        { id: 'employee', label: 'พนักงานทั่วไป (Employee)' }
+      ]).map(function (r) {
+        var isChecked = allowedRoles.indexOf(r.id) >= 0 || r.id === 'admin';
+        return '<label style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;cursor:pointer">'
+          + '<input type="checkbox" class="role-perm-checkbox" value="' + r.id + '"' + (isChecked ? ' checked' : '') + (r.id === 'admin' ? ' disabled' : '') + ' style="width:18px;height:18px">'
+          + '<span style="font-weight:700;font-size:13px;color:#1e293b">' + esc(r.label) + '</span>'
+          + '</label>';
+      }).join('');
+
+      var usersHtml = allUsers.length === 0
+        ? '<div style="color:#94a3b8;font-size:12px;padding:8px">ไม่พบรายชื่อพนักงาน</div>'
+        : allUsers.map(function (u) {
+            var isUserChecked = allowedUsers.indexOf(String(u.id)) >= 0 || allowedUsers.indexOf(String(u.username)) >= 0;
+            return '<label class="user-perm-item" data-name="' + esc(u.full_name || u.username) + '" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;cursor:pointer">'
+              + '<div style="display:flex;align-items:center;gap:10px">'
+              + '  <input type="checkbox" class="user-perm-checkbox" value="' + u.id + '"' + (isUserChecked ? ' checked' : '') + ' style="width:18px;height:18px">'
+              + '  <div>'
+              + '    <div style="font-weight:700;font-size:13px;color:#0f172a">' + esc(u.full_name || u.username) + '</div>'
+              + '    <div style="font-size:11px;color:#64748b">' + esc(u.position || 'พนักงาน') + ' · ' + esc(u.branch || u.department || 'สำนักงานใหญ่') + '</div>'
+              + '  </div>'
+              + '</div>'
+              + '<span style="font-size:11px;font-weight:600;color:#0284c7;background:#e0f2fe;padding:2px 8px;border-radius:6px">' + esc(u.role) + '</span>'
+              + '</label>';
+          }).join('');
+
+      var modalHtml = '<div style="display:flex;flex-direction:column;gap:16px;max-height:75vh;overflow-y:auto">'
+        + '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px">'
+        + '  <div style="font-weight:800;font-size:13px;color:#0f172a;display:flex;align-items:center;gap:6px">'
+        + '    <i class="bi bi-people-fill" style="color:#6366f1"></i> 1. กำหนดสิทธิ์ตามบทบาท (Role Permissions)'
+        + '  </div>'
+        + '  <div style="font-size:12px;color:#64748b">เลือกบทบาทที่อนุญาตให้เข้าถึงและบันทึกเอกสารบิลสินค้าเข้า:</div>'
+        + '  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:8px">'
+        +      rolesHtml
+        + '  </div>'
+        + '</div>'
+
+        + '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px">'
+        + '  <div style="display:flex;justify-content:space-between;align-items:center">'
+        + '    <div style="font-weight:800;font-size:13px;color:#0f172a;display:flex;align-items:center;gap:6px">'
+        + '      <i class="bi bi-person-check-fill" style="color:#059669"></i> 2. กำหนดสิทธิ์รายบุคคล (Specific User Whitelist)'
+        + '    </div>'
+        + '    <span style="font-size:11px;color:#64748b">เลือกเฉพาะพนักงานคลังสินค้า / หน้าร้าน</span>'
+        + '  </div>'
+        + '  <div class="search-box" style="width:100%"><i class="bi bi-search"></i><input type="text" id="perm-search-user" placeholder="ค้นหาชื่อพนักงาน..."></div>'
+        + '  <div id="perm-users-list" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;padding-right:4px">'
+        +      usersHtml
+        + '  </div>'
+        + '</div>'
+
+        + '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px">'
+        + '  <div style="font-weight:800;font-size:13px;color:#0f172a;display:flex;align-items:center;gap:6px">'
+        + '    <i class="bi bi-line" style="color:#06c755"></i> 3. ปลายทางการแจ้งเตือนอัตโนมัติ (LINE Notification Target)'
+        + '  </div>'
+        + '  <div style="font-size:12px;color:#64748b">ระบุ LINE Group ID หรือ LINE User ID สำหรับแจ้งเตือนเมื่อมีบิลสินค้าเข้าใหม่:</div>'
+        + '  <input type="text" id="perm-notify-target" class="input" placeholder="e.g. C1234567890abcdef... หรือ U1234567890..." value="' + esc(notifyTarget) + '" style="font-family:monospace;font-size:12px">'
+        + '</div>'
+        + '</div>';
+
+      Modal.open({
+        title: '⚙️ จัดการสิทธิ์การเข้าถึงระบบบิลสินค้าเข้า (Admin)',
+        html: modalHtml,
+        footer: '<button class="btn" data-modal-close>ยกเลิก</button>'
+          + '<button class="btn btn-primary" id="btn-save-stock-perms" style="background:#6366f1;border:0;color:#fff;font-weight:700"><i class="bi bi-check-lg"></i> บันทึกการตั้งค่าสิทธิ์</button>',
+        onOpen: function () {
+          $('#perm-search-user').addEventListener('input', function () {
+            var q = this.value.toLowerCase().trim();
+            $$('.user-perm-item').forEach(function (el) {
+              var name = (el.getAttribute('data-name') || '').toLowerCase();
+              el.style.display = (!q || name.indexOf(q) >= 0) ? 'flex' : 'none';
+            });
+          });
+
+          $('#btn-save-stock-perms').addEventListener('click', function () {
+            var selectedRoles = [];
+            $$('.role-perm-checkbox:checked').forEach(function (cb) {
+              selectedRoles.push(cb.value);
+            });
+            if (selectedRoles.indexOf('admin') < 0) selectedRoles.push('admin');
+
+            var selectedUsers = [];
+            $$('.user-perm-checkbox:checked').forEach(function (cb) {
+              selectedUsers.push(cb.value);
+            });
+
+            var target = $('#perm-notify-target').value.trim();
+
+            Spinner.show('กำลังบันทึกการตั้งค่าสิทธิ์...');
+            call('stock_bill.permissions.update', {
+              allowed_roles: selectedRoles,
+              allowed_users: selectedUsers,
+              notify_target: target
+            }).then(function () {
+              Spinner.hide();
+              Modal.close();
+              toast('บันทึกการตั้งค่าสิทธิ์การใช้งานเรียบร้อยแล้ว!', 'success');
+              if (Store.caps && Store.caps.indexOf('stock_bill.view') < 0) {
+                Store.caps.push('stock_bill.view');
+              }
+            }).catch(function (e) {
+              Spinner.hide();
+              toast('บันทึกสิทธิ์ไม่สำเร็จ: ' + e.message, 'error');
+            });
+          });
+        }
+      });
+    }).catch(function (e) {
+      Spinner.hide();
+      toast('ไม่สามารถโหลดการตั้งค่าได้: ' + e.message, 'error');
+    });
+  }
+
+  // ── Export Stock Bills CSV ───────────────────────────────────────
+  function exportStockBillsCsv(items) {
+    if (!items || !items.length) {
+      toast('ไม่มีข้อมูลที่จะส่งออก', 'warning');
+      return;
+    }
+
+    var headers = ['เลขที่บิล', 'วันที่รับเข้า', 'ผู้จำหน่าย', 'สาขา', 'หมวดหมู่', 'ยอดเงินรวม', 'การชำระเงิน', 'สถานะ', 'ผู้บันทึก', 'มีรูปภาพ R2', 'หมายเหตุ'];
+    var csvRows = [headers.join(',')];
+
+    items.forEach(function (b) {
+      var row = [
+        '"' + (b.bill_no || '').replace(/"/g, '""') + '"',
+        '"' + (b.bill_date || '').replace(/"/g, '""') + '"',
+        '"' + (b.supplier_name || '').replace(/"/g, '""') + '"',
+        '"' + (b.branch || '').replace(/"/g, '""') + '"',
+        '"' + (b.category || '').replace(/"/g, '""') + '"',
+        Number(b.total_amount || 0),
+        '"' + (b.payment_status || '').replace(/"/g, '""') + '"',
+        '"' + (b.status || '').replace(/"/g, '""') + '"',
+        '"' + (b.created_by_name || '').replace(/"/g, '""') + '"',
+        b.image_url ? 'มี' : 'ไม่มี',
+        '"' + (b.notes || '').replace(/"/g, '""') + '"'
+      ];
+      csvRows.push(row.join(','));
+    });
+
+    var csvContent = '\uFEFF' + csvRows.join('\r\n');
+    var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'stock_bills_' + new Date().toISOString().substring(0, 10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast('ส่งออกไฟล์ CSV เรียบร้อยแล้ว', 'success');
+  }
+
+  // ── Standalone Expenses End ──
   })();
 
 // Dynamic Injection script from Scripts.html

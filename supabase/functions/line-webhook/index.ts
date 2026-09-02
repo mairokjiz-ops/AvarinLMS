@@ -536,11 +536,34 @@ function _dbIdCol_(table) {
   return 'id';
 }
 
+var DB_CACHE_TIME = {};
+
+function _getTableTtl_(table) {
+  if (table === 'Settings' || table === 'Holidays' || table === 'SpecialCommissionProducts' || table === 'OfficerMappings') {
+    return 5 * 60 * 1000; // 5 minutes
+  }
+  if (table === 'Users' || table === 'Sessions') {
+    return 2 * 60 * 1000; // 2 minutes
+  }
+  return 30 * 1000; // 30s for transactional tables
+}
+
+function _getTableFetchParams_(table) {
+  if (table === 'AuditLog') return 'select=id,user_id,action,entity,entity_id,created_at&order=created_at.desc&limit=100';
+  if (table === 'Leaves') return 'select=*&order=created_at.desc&limit=300';
+  if (table === 'Expenses') return 'select=*&order=created_at.desc&limit=300';
+  if (table === 'Missions') return 'select=*&order=created_at.desc&limit=200';
+  if (table === 'StockBills') return 'select=*&order=bill_date.desc&limit=300';
+  if (table === 'SpecialCommissionSales') return 'select=*&order=sale_date.desc&limit=500';
+  if (table === 'Sessions') return 'select=*&order=created_at.desc&limit=100';
+  return 'select=*&limit=500';
+}
+
 // Warm only the database tables that are needed for the current request.
-// If no table list is provided, keep the legacy behavior and warm everything.
 async function DB_warmCache(tables) {
-  var defaultTables = ['Users', 'Leaves', 'Sessions', 'Settings', 'AuditLog', 'Missions', 'Expenses', 'Holidays'];
+  var defaultTables = ['Users', 'Leaves', 'Sessions', 'Settings', 'Holidays'];
   var list = Array.isArray(tables) && tables.length ? tables.slice() : defaultTables.slice();
+  var now = Date.now();
   var seen = {};
   list = list.filter(function (t) {
     if (!t || seen[t]) return false;
@@ -548,11 +571,23 @@ async function DB_warmCache(tables) {
     return true;
   });
 
-  await Promise.all(list.map(async function (t) {
-    if (DB_CACHE[t]) return;
-    var rows = await sbFetch('GET', t, 'select=*&limit=10000');
-    DB_CACHE[t] = rows || [];
-  }));
+  var toFetch = list.filter(function (t) {
+    var ttl = _getTableTtl_(t);
+    return !DB_CACHE[t] || (now - (DB_CACHE_TIME[t] || 0) > ttl);
+  });
+
+  if (toFetch.length > 0) {
+    await Promise.all(toFetch.map(async function (t) {
+      try {
+        var params = _getTableFetchParams_(t);
+        var rows = await sbFetch('GET', t, params);
+        DB_CACHE[t] = rows || [];
+        DB_CACHE_TIME[t] = Date.now();
+      } catch(e) {
+        if (!DB_CACHE[t]) DB_CACHE[t] = [];
+      }
+    }));
+  }
 
   if (DB_CACHE['Holidays']) {
     GLOBAL_HOLIDAYS = {};
@@ -1274,6 +1309,8 @@ function _getMonthlyCompensatoryQuota_(userId, year, month) {
     worked_offdays: workedOffdays,
     adjusted_quota: adjustedQuota,
     total_quota: totalQuota,
+    used_quota: usedQuota,
+    remaining_quota: remainingQuota
   };
 }
 
@@ -2970,7 +3007,7 @@ async function LINE_buildAllCommissionSummaryFlex_(monthStr: string) {
   } catch (e) {}
 
   // Load OfficerMappings and Users from DB
-  var mappings: any[] = await sbFetch('GET', 'OfficerMappings', 'select=*&limit=10000').catch(() => []) || [];
+  var mappings: any[] = await sbFetch('GET', 'OfficerMappings', 'select=*&limit=1000').catch(() => []) || [];
   var allUsers: any[] = DB_readAll('Users').filter((u: any) => String(u.is_active || '').toLowerCase() === 'yes');
 
   // Products definition (hardcoded same as commission flex)
@@ -5944,9 +5981,6 @@ serve(async (req) => {
   }
 
   try {
-    // Reset cache to prevent cross-request leakage and ensure real-time sync with database
-    DB_CACHE = {};
-
     const bodyText = await req.text();
     const signature = req.headers.get('x-line-signature') || '';
 

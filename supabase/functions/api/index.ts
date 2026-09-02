@@ -77,14 +77,10 @@ const SHEETS = Object.freeze({
   MISSIONS:  'Missions',
   EXPENSES:  'Expenses',
   HOLIDAYS:  'Holidays',
-  CHECKINS:  'Checkins',
-  COURSES:   'Courses',
-  QUIZZES:   'Quizzes',
-  PROGRESS:  'UserProgress',
-  COURSE_CHUNKS: 'CourseChunks',
   SPECIAL_COMMISSION_PRODUCTS: 'SpecialCommissionProducts',
   SPECIAL_COMMISSION_SALES: 'SpecialCommissionSales',
-  OFFICER_MAPPINGS: 'OfficerMappings'
+  OFFICER_MAPPINGS: 'OfficerMappings',
+  STOCK_BILLS: 'StockBills'
 });
 
 // ── Schemas ─────────────────────────────────────────────────
@@ -97,21 +93,18 @@ const SCHEMAS = Object.freeze({
   Missions: ['id','mission_no','requester_id','title','purpose','destination','start_date','end_date','transport_type','requested_amount','status','approver_id','approver_comment','approver_at','approved_amount','created_at','updated_at','work_type'],
   Expenses: ['id','expense_no','mission_id','expense_date','expense_type','description','amount','receipt_url','bank_account','status','approver_id','approver_comment','approver_at','approved_amount','created_by','created_at','updated_at'],
   Holidays: ['id','holiday_date','name','created_at','updated_at'],
-  Checkins: ['id','user_id','check_in_at','check_out_at','check_in_lat','check_in_lng','check_out_lat','check_out_lng','check_in_loc','check_out_loc','status','created_at','updated_at','check_in_img','check_out_img'],
-  Courses: ['id','title','description','thumbnail_url','content','video_url','status','category','duration_hours','pass_score','instructor','ai_summary','ai_modules','ai_quiz','ai_flashcards','ai_key_points','ai_checklist','created_at','updated_at'],
-  Quizzes: ['id','course_id','question','options','correct_option','created_at','updated_at'],
-  UserProgress: ['id','user_id','course_id','quiz_score','quiz_total','is_passed','created_at','updated_at'],
-  CourseChunks: ['id','course_id','chunk_index','content','metadata','embedding','created_at','updated_at'],
   SpecialCommissionProducts: ['id','sku','name','unit','commission_rate','bonus_min_qty','bonus_amount','bonus_description','image_url','is_active','created_at','updated_at'],
   SpecialCommissionSales: ['id','employee_id','product_id','quantity','sale_date','branch','order_no','created_by','created_at','updated_at'],
-  OfficerMappings: ['id','api_officer_name','api_officer_id','lms_user_id','created_at','updated_at']
+  OfficerMappings: ['id','api_officer_name','api_officer_id','lms_user_id','created_at','updated_at'],
+  StockBills: ['id','bill_no','bill_date','supplier_name','branch','category','total_amount','vat_type','vat_amount','net_amount','payment_status','status','image_url','images','items_detail','notes','created_by','created_by_name','created_at','updated_at']
 });
 
 // ── TEXT_COLUMNS — บังคับ Sheet เก็บเป็น text กัน auto-coercion ─
 const TEXT_COLUMNS = Object.freeze([
   'phone','contact_phone','leave_no','token','password_hash','salt','attachment_url','appointment_url','avatar',
   'mission_no','title','purpose','destination','transport_type','expense_type','description','receipt_url','work_type',
-  'holiday_date','expense_no','line_user_id','line_connect_code','question','options','content','ai_summary','ai_modules','ai_quiz','ai_flashcards','ai_key_points','ai_checklist'
+  'holiday_date','expense_no','line_user_id','line_connect_code','question','options','content','ai_summary','ai_modules','ai_quiz','ai_flashcards','ai_key_points','ai_checklist',
+  'bill_no','bill_date','supplier_name','image_url','images','items_detail'
 ]);
 
 // ── Roles ────────────────────────────────────────────────────
@@ -127,21 +120,22 @@ const ROLE_LABEL = Object.freeze({
 const CAPS = Object.freeze({
   admin: [
     'user.manage','setting.manage','audit.manage','leave.manage',
-    'leave.view_all','leave.create_own','leave.cancel_own','leave.check','leave.comment','leave.approve','leave.delete',
+    'leave.view_all','leave.create_own','leave.cancel_own','leave.check','leave.comment','leave.approve','leave.delete','leave.adjust_quota',
     'report.view_all','report.view_own','file.upload',
     'calendar.view_all','calendar.view_department','calendar.view_own',
     'mission.view_all','mission.view_department','mission.view_own','mission.create_own','mission.approve',
-    'expense.manage','expense.create_own','schedule.view_all'
+    'expense.manage','expense.create_own','schedule.view_all',
+    'stock_bill.manage','stock_bill.view','stock_bill.create','stock_bill.delete'
   ],
   approver: [
-    'leave.view_all','leave.create_own','leave.cancel_own','leave.approve',
+    'leave.view_all','leave.create_own','leave.cancel_own','leave.approve','leave.delete','leave.adjust_quota',
     'report.view_all','report.view_own','file.upload',
     'calendar.view_all','calendar.view_department',
     'mission.view_all','mission.view_department','mission.view_own','mission.approve',
     'expense.manage','expense.create_own','setting.read','schedule.view_all'
   ],
   supervisor: [
-    'leave.view_all','leave.create_own','leave.cancel_own','leave.comment','leave.adjust_quota',
+    'leave.view_all','leave.create_own','leave.cancel_own','leave.comment','leave.delete','leave.adjust_quota',
     'report.view_all','report.view_own','file.upload',
     'calendar.view_all','calendar.view_department','calendar.view_own',
     'mission.view_department','mission.view_own','mission.create_own',
@@ -244,7 +238,10 @@ const SETTINGS_DEFAULTS = Object.freeze({
   openai_api_key: '',
   openai_generation_model: 'gpt-5.5',
   openai_embedding_model: 'text-embedding-3-small',
-  rentals_json: ''
+  rentals_json: '',
+  stock_bill_allowed_roles: 'admin,approver,supervisor',
+  stock_bill_allowed_users: '',
+  stock_bill_notify_target: ''
 });
 const SETTINGS_SENSITIVE = Object.freeze([]);
 
@@ -443,6 +440,7 @@ async function sbFetch(method, table, params, body) {
       'apikey': SUPABASE_KEY,
       'Authorization': 'Bearer ' + SUPABASE_KEY,
       'Content-Type': 'application/json',
+      'Accept-Encoding': 'gzip, deflate, br',
       'Prefer': method === 'POST' ? 'return=representation' : (method === 'PATCH' ? 'return=representation' : '')
     }
   };
@@ -463,7 +461,8 @@ async function sbRpc(fn, body) {
     headers: {
       'apikey': SUPABASE_KEY,
       'Authorization': 'Bearer ' + SUPABASE_KEY,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'Accept-Encoding': 'gzip, deflate, br'
     },
     body: JSON.stringify(body || {})
   });
@@ -481,12 +480,162 @@ function _dbIdCol_(table) {
   return 'id';
 }
 
-async function DB_warmCache() {
-  var tables = ['Users', 'Leaves', 'Sessions', 'Settings', 'AuditLog', 'Missions', 'Expenses', 'Holidays', 'Checkins', 'Courses', 'Quizzes', 'UserProgress', 'SpecialCommissionProducts', 'SpecialCommissionSales', 'OfficerMappings'];
-  for (var i = 0; i < tables.length; i++) {
-    var t = tables[i];
-    var rows = await sbFetch('GET', t, 'select=*&limit=10000').catch(function(){ return []; });
-    DB_CACHE[t] = rows || [];
+var DB_CACHE_TIME = {};
+
+function _getTableTtl_(table) {
+  if (table === 'Settings' || table === 'Holidays' || table === 'SpecialCommissionProducts' || table === 'OfficerMappings') {
+    return 10 * 60 * 1000; // 10 minutes
+  }
+  if (table === 'Users' || table === 'Sessions') {
+    return 5 * 60 * 1000; // 5 minutes
+  }
+  return 60 * 1000; // 1 minute for transactional tables
+}
+
+// Map each action to ONLY the tables it actually reads/writes
+var ACTION_TABLES_MAP = {
+  'app.bootstrap': ['Settings', 'Holidays'],
+  'app.badge_counts': [],
+  'auth.login': ['Settings'],
+  'auth.line_login': ['Settings'],
+  'auth.logout': [],
+  'auth.verify': [],
+  'auth.me': ['Settings'],
+  'auth.change_password': ['Settings'],
+  'auth.forgot_password': ['Settings'],
+  'auth.link_line': ['Settings', 'AuditLog'],
+  'user.register': ['Settings', 'AuditLog'],
+  'user.list': ['Users', 'Settings'],
+  'user.get': ['Users'],
+  'user.branch_directory': ['Users'],
+  'user.upsert': ['Users', 'AuditLog'],
+  'user.delete': ['Users', 'AuditLog'],
+  'user.reset_password': ['Users', 'AuditLog'],
+  'user.update_profile': ['Users', 'AuditLog'],
+  'user.active_for_role': ['Users'],
+  'user.list_pending': ['Users'],
+  'user.approve_registration': ['Users', 'AuditLog'],
+  'leave.list': ['Leaves', 'Users', 'Settings', 'Holidays'],
+  'leave.get': ['Leaves', 'Users', 'Settings', 'Holidays'],
+  'leave.preview': ['Leaves', 'Users', 'Settings', 'Holidays'],
+  'leave.create': ['Leaves', 'Users', 'Settings', 'Holidays', 'AuditLog'],
+  'leave.update': ['Leaves', 'Users', 'Settings', 'Holidays', 'AuditLog'],
+  'leave.submit': ['Leaves', 'Users', 'Settings', 'AuditLog'],
+  'leave.cancel': ['Leaves', 'Users', 'Settings', 'AuditLog'],
+  'leave.check': ['Leaves', 'Users', 'Settings', 'AuditLog'],
+  'leave.comment': ['Leaves', 'Users', 'Settings', 'AuditLog'],
+  'leave.approve': ['Leaves', 'Users', 'Settings', 'AuditLog'],
+  'leave.delete': ['Leaves', 'Users', 'AuditLog'],
+  'leave.workflow_counts': ['Leaves'],
+  'leave.my_stats': ['Leaves', 'Users', 'Settings', 'Holidays'],
+  'leave.user_stats': ['Leaves', 'Users', 'Settings', 'Holidays'],
+  'leave.all_users_quotas': ['Leaves', 'Users', 'Settings'],
+  'leave.adjust_quota': ['Leaves', 'Users', 'Settings', 'AuditLog'],
+  'schedule.monthly': ['Users', 'Settings', 'Holidays', 'Leaves'],
+  'schedule.save_override': ['Settings', 'AuditLog'],
+  'schedule.update_off_day': ['Users', 'AuditLog'],
+  'calendar.month': ['Leaves', 'Holidays', 'Users', 'Settings'],
+  'mission.list': ['Missions', 'Users', 'Settings'],
+  'mission.get': ['Missions', 'Users', 'Settings'],
+  'mission.create': ['Missions', 'Users', 'Settings', 'AuditLog'],
+  'mission.update': ['Missions', 'Users', 'Settings', 'AuditLog'],
+  'mission.submit': ['Missions', 'Users', 'Settings', 'AuditLog'],
+  'mission.cancel': ['Missions', 'Users', 'Settings', 'AuditLog'],
+  'mission.delete': ['Missions', 'Users', 'AuditLog'],
+  'mission.approve': ['Missions', 'Users', 'Settings', 'AuditLog'],
+  'expense.list': ['Expenses', 'Users', 'Settings'],
+  'expense.get': ['Expenses', 'Users', 'Settings'],
+  'expense.create': ['Expenses', 'Users', 'Settings', 'AuditLog'],
+  'expense.update': ['Expenses', 'Users', 'Settings', 'AuditLog'],
+  'expense.submit': ['Expenses', 'Users', 'Settings', 'AuditLog'],
+  'expense.cancel': ['Expenses', 'Users', 'Settings', 'AuditLog'],
+  'expense.delete': ['Expenses', 'Users', 'AuditLog'],
+  'expense.approve': ['Expenses', 'Users', 'Settings', 'AuditLog'],
+  'expense.set_pending': ['Expenses', 'Users', 'Settings', 'AuditLog'],
+  'report.overview': ['Leaves', 'Expenses', 'Users', 'Settings'],
+  'report.user': ['Leaves', 'Expenses', 'Users', 'Settings'],
+  'report.users_list': ['Users'],
+  'dashboard.data': ['Leaves', 'Expenses', 'Users', 'Settings', 'Missions'],
+  'setting.get': ['Settings'],
+  'setting.update': ['Settings', 'AuditLog'],
+  'line.get_connect_code': ['Settings', 'Users'],
+  'line.disconnect': ['Users', 'AuditLog'],
+  'line.webhook_url': [],
+  'holiday.list': ['Holidays', 'Settings'],
+  'holiday.upsert': ['Holidays', 'AuditLog'],
+  'holiday.delete': ['Holidays', 'AuditLog'],
+  'special_commission.products.list': ['SpecialCommissionProducts'],
+  'special_commission.products.upsert': ['SpecialCommissionProducts', 'AuditLog'],
+  'special_commission.products.delete': ['SpecialCommissionProducts', 'AuditLog'],
+  'special_commission.sales.list': ['SpecialCommissionSales', 'SpecialCommissionProducts', 'Users', 'OfficerMappings'],
+  'special_commission.sales.record': ['SpecialCommissionSales', 'SpecialCommissionProducts', 'Users', 'AuditLog'],
+  'officer_mapping.list': ['OfficerMappings', 'Users'],
+  'officer_mapping.upsert': ['OfficerMappings', 'AuditLog'],
+  'officer_mapping.delete': ['OfficerMappings', 'AuditLog'],
+  'audit.list': ['AuditLog', 'Users'],
+  'r2.get_upload_url': ['Settings'],
+  'r2.upload': ['Settings'],
+  'r2.migrate_legacy_data': ['Users', 'Expenses'],
+  'stock_bill.list': ['StockBills', 'Settings', 'Users'],
+  'stock_bill.get': ['StockBills', 'Users'],
+  'stock_bill.create': ['StockBills', 'Settings', 'Users', 'AuditLog'],
+  'stock_bill.update': ['StockBills', 'Settings', 'Users', 'AuditLog'],
+  'stock_bill.delete': ['StockBills', 'Users', 'AuditLog'],
+  'stock_bill.permissions.get': ['Settings', 'Users'],
+  'stock_bill.permissions.update': ['Settings', 'AuditLog'],
+  'stock_bill.generate_flex': ['StockBills', 'Settings'],
+  'stock_bill.send_line': ['StockBills', 'Settings']
+};
+
+function _getTableFetchParams_(table) {
+  if (table === 'AuditLog') return 'select=id,user_id,action,entity,entity_id,created_at&order=created_at.desc&limit=50';
+  if (table === 'Leaves') return 'select=id,leave_no,requester_id,leave_type,reason,start_date,end_date,days,status,checker_id,supervisor_id,approver_id,written_at,fiscal_year,leave_unit,hours,created_at,updated_at&order=created_at.desc&limit=150';
+  if (table === 'Expenses') return 'select=id,expense_no,mission_id,expense_date,expense_type,description,amount,status,approver_id,approved_amount,created_by,created_at,updated_at&order=created_at.desc&limit=150';
+  if (table === 'Missions') return 'select=id,mission_no,requester_id,title,purpose,destination,start_date,end_date,transport_type,requested_amount,status,approver_id,approved_amount,work_type,created_at,updated_at&order=created_at.desc&limit=100';
+  if (table === 'StockBills') return 'select=id,bill_no,bill_date,supplier_name,branch,category,total_amount,vat_type,vat_amount,net_amount,payment_status,status,image_url,created_by,created_by_name,created_at,updated_at&order=bill_date.desc&limit=100';
+  if (table === 'SpecialCommissionSales') return 'select=id,employee_id,product_id,quantity,sale_date,branch,order_no,created_by,created_at&order=sale_date.desc&limit=300';
+  if (table === 'Users') return 'select=id,username,password_hash,salt,full_name,position,level,department,role,email,phone,is_active,created_at,updated_at,line_user_id,line_connect_code,branch,off_day,avatar&order=full_name.asc&limit=300';
+  if (table === 'Sessions') return 'select=token,user_id,created_at,expires_at&order=created_at.desc&limit=50';
+  if (table === 'Holidays') return 'select=id,holiday_date,name&order=holiday_date.asc&limit=100';
+  if (table === 'Settings') return 'select=key,value&limit=300';
+  return 'select=*&limit=100';
+}
+
+async function DB_warmCache(tables) {
+  var list = Array.isArray(tables) && tables.length ? tables.slice() : ['Users', 'Sessions', 'Settings'];
+  var now = Date.now();
+  var seen = {};
+  list = list.filter(function (t) {
+    if (!t || seen[t]) return false;
+    seen[t] = true;
+    return true;
+  });
+
+  var toFetch = list.filter(function (t) {
+    var ttl = _getTableTtl_(t);
+    return !DB_CACHE[t] || (now - (DB_CACHE_TIME[t] || 0) > ttl);
+  });
+
+  if (toFetch.length > 0) {
+    await Promise.all(toFetch.map(async function (t) {
+      try {
+        var params = _getTableFetchParams_(t);
+        var rows = await sbFetch('GET', t, params);
+        DB_CACHE[t] = rows || [];
+        DB_CACHE_TIME[t] = Date.now();
+      } catch (e) {
+        if (!DB_CACHE[t]) DB_CACHE[t] = [];
+      }
+    }));
+  }
+
+  if (DB_CACHE['Holidays']) {
+    GLOBAL_HOLIDAYS = {};
+    DB_CACHE['Holidays'].forEach(function(r) {
+      if (r.holiday_date) {
+        GLOBAL_HOLIDAYS[String(r.holiday_date).substring(0, 10)] = r.name || 'วันหยุดบริษัท';
+      }
+    });
   }
 }
 
@@ -536,6 +685,7 @@ async function DB_insert(table, data) {
   
   if (!DB_CACHE[table]) DB_CACHE[table] = [];
   DB_CACHE[table].push(inserted || data);
+  DB_CACHE_TIME[table] = Date.now();
   
   return inserted || data;
 }
@@ -555,6 +705,7 @@ async function DB_update(table, id, patch) {
   if (row) {
     Object.assign(row, updated || patch);
   }
+  DB_CACHE_TIME[table] = Date.now();
   
   return updated || patch;
 }
@@ -564,6 +715,7 @@ async function DB_delete(table, id) {
   await sbFetch('DELETE', table, idCol + '=eq.' + encodeURIComponent(id));
   if (DB_CACHE[table]) {
     DB_CACHE[table] = DB_CACHE[table].filter(function(r) { return String(r[idCol]) !== String(id); });
+    DB_CACHE_TIME[table] = Date.now();
   }
   return { ok: true };
 }
@@ -571,6 +723,7 @@ async function DB_delete(table, id) {
 function DB_invalidate(name) {
   if (name && DB_CACHE[name]) {
     delete DB_CACHE[name];
+    delete DB_CACHE_TIME[name];
   }
 }
 
@@ -590,6 +743,20 @@ function Auth_publicUser_(u) {
   };
 }
 
+function Auth_getUserCaps_(u) {
+  if (!u) return [];
+  var baseCaps = (CAPS[u.role] || []).slice();
+  if (StockBills_checkUserAccess_(u)) {
+    if (baseCaps.indexOf('stock_bill.view') < 0) baseCaps.push('stock_bill.view');
+    if (baseCaps.indexOf('stock_bill.create') < 0) baseCaps.push('stock_bill.create');
+    if (u.role === 'admin') {
+      if (baseCaps.indexOf('stock_bill.manage') < 0) baseCaps.push('stock_bill.manage');
+      if (baseCaps.indexOf('stock_bill.delete') < 0) baseCaps.push('stock_bill.delete');
+    }
+  }
+  return baseCaps;
+}
+
 function Auth_requireCap(user, cap) {
   if (!user) throw new Error('ต้องเข้าสู่ระบบก่อน');
   if (!hasCap_(user.role, cap)) throw new Error('คุณไม่มีสิทธิ์ใช้งานฟังก์ชันนี้ (' + cap + ')');
@@ -603,6 +770,14 @@ async function Auth_login(payload) {
   var u = DB_findOne(SHEETS.USERS, function (r) {
     return String(r.username || '').toLowerCase() === username;
   });
+  if (!u) {
+    var uRows = await sbFetch('GET', 'Users', 'username=eq.' + encodeURIComponent(username) + '&limit=1');
+    if (uRows && uRows.length > 0) {
+      u = uRows[0];
+      if (!DB_CACHE['Users']) DB_CACHE['Users'] = [];
+      DB_CACHE['Users'].push(u);
+    }
+  }
   if (!u) throw new Error('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
   if (String(u.is_active || '').toLowerCase().trim() === 'pending') throw new Error('บัญชีของคุณรอการอนุมัติจากผู้ดูแลระบบหรือฝ่ายบุคคล — กรุณารอการแจ้งเตือน');
   if (!_yes_(u.is_active)) throw new Error('บัญชีนี้ถูกปิดการใช้งาน — โปรดติดต่อผู้ดูแลระบบ');
@@ -625,7 +800,7 @@ async function Auth_login(payload) {
   return {
     token: token,
     user: Auth_publicUser_(u),
-    caps: CAPS[u.role] || [],
+    caps: Auth_getUserCaps_(u),
     expires_at: cfg_iso_(expires)
   };
 }
@@ -637,6 +812,14 @@ async function Auth_lineLogin(p) {
   var u = DB_findOne(SHEETS.USERS, function (r) {
     return String(r.line_user_id || '').trim() === lineUserId;
   });
+  if (!u) {
+    var uRows = await sbFetch('GET', 'Users', 'line_user_id=eq.' + encodeURIComponent(lineUserId) + '&limit=1');
+    if (uRows && uRows.length > 0) {
+      u = uRows[0];
+      if (!DB_CACHE['Users']) DB_CACHE['Users'] = [];
+      DB_CACHE['Users'].push(u);
+    }
+  }
   if (!u) throw new Error('ไม่พบบัญชีผู้ใช้ที่เชื่อมต่อกับ LINE นี้');
   if (String(u.is_active || '').toLowerCase().trim() === 'pending') throw new Error('บัญชีของคุณรอการอนุมัติจากผู้ดูแลระบบหรือฝ่ายบุคคล');
   if (!_yes_(u.is_active)) throw new Error('บัญชีนี้ถูกปิดการใช้งาน — โปรดติดต่อผู้ดูแลระบบ');
@@ -658,7 +841,7 @@ async function Auth_lineLogin(p) {
   return {
     token: token,
     user: Auth_publicUser_(u),
-    caps: CAPS[u.role] || [],
+    caps: Auth_getUserCaps_(u),
     expires_at: cfg_iso_(expires)
   };
 }
@@ -684,6 +867,7 @@ async function Auth_logout(token) {
   try {
     var sess = DB_findById(SHEETS.SESSIONS, token);
     if (sess) await DB_delete(SHEETS.SESSIONS, token);
+    else await sbFetch('DELETE', 'Sessions', 'token=eq.' + encodeURIComponent(token));
   } catch (e) {}
   return { ok: true };
 }
@@ -691,6 +875,14 @@ async function Auth_logout(token) {
 async function Auth_verify_(token) {
   if (!token) throw new Error('ต้องเข้าสู่ระบบก่อน');
   var sess = DB_findById(SHEETS.SESSIONS, token);
+  if (!sess) {
+    var sRows = await sbFetch('GET', 'Sessions', 'token=eq.' + encodeURIComponent(token) + '&limit=1');
+    if (sRows && sRows.length > 0) {
+      sess = sRows[0];
+      if (!DB_CACHE['Sessions']) DB_CACHE['Sessions'] = [];
+      DB_CACHE['Sessions'].push(sess);
+    }
+  }
   if (!sess) throw new Error('เซสชันหมดอายุ — กรุณาเข้าสู่ระบบใหม่');
   var exp = new Date(sess.expires_at);
   if (isNaN(exp.getTime()) || exp.getTime() < Date.now()) {
@@ -698,6 +890,14 @@ async function Auth_verify_(token) {
     throw new Error('เซสชันหมดอายุ — กรุณาเข้าสู่ระบบใหม่');
   }
   var u = DB_findById(SHEETS.USERS, sess.user_id);
+  if (!u) {
+    var uRows = await sbFetch('GET', 'Users', 'id=eq.' + encodeURIComponent(sess.user_id) + '&limit=1');
+    if (uRows && uRows.length > 0) {
+      u = uRows[0];
+      if (!DB_CACHE['Users']) DB_CACHE['Users'] = [];
+      DB_CACHE['Users'].push(u);
+    }
+  }
   if (!u) throw new Error('ไม่พบบัญชีผู้ใช้');
   if (!_yes_(u.is_active)) throw new Error('บัญชีถูกปิดการใช้งาน');
   return u;
@@ -791,10 +991,42 @@ async function Auth_bootstrap(token) {
     try {
       var u = await Auth_verify_(token);
       bundle.me = Auth_publicUser_(u);
-      bundle.caps = CAPS[u.role] || [];
+      bundle.caps = Auth_getUserCaps_(u);
     } catch (e) {}
   }
   return bundle;
+}
+
+async function App_badgeCounts(user) {
+  var counts = { pending_users: 0, pending_expenses: 0, pending_leaves: 0 };
+  var promises = [];
+  if (hasCap_(user.role, 'user.manage')) {
+    promises.push(
+      sbFetch('GET', 'Users', 'select=id&is_active=in.(no,pending)&limit=100')
+        .then(function (rows) { counts.pending_users = (rows || []).length; })
+        .catch(function () {})
+    );
+  }
+  if (hasCap_(user.role, 'expense.manage')) {
+    promises.push(
+      sbFetch('GET', 'Expenses', 'select=id&status=eq.pending&limit=100')
+        .then(function (rows) { counts.pending_expenses = (rows || []).length; })
+        .catch(function () {})
+    );
+  }
+  if (hasCap_(user.role, 'leave.check') || hasCap_(user.role, 'leave.comment') || hasCap_(user.role, 'leave.approve')) {
+    var targetStatus = STATUS.REVIEWED;
+    if (hasCap_(user.role, 'leave.check')) targetStatus = STATUS.PENDING;
+    else if (hasCap_(user.role, 'leave.comment')) targetStatus = STATUS.CHECKED;
+
+    promises.push(
+      sbFetch('GET', 'Leaves', 'select=id&status=eq.' + targetStatus + '&limit=100')
+        .then(function (rows) { counts.pending_leaves = (rows || []).length; })
+        .catch(function () {})
+    );
+  }
+  await Promise.all(promises);
+  return counts;
 }
 
 function Users_list(user, p) {
@@ -1120,7 +1352,8 @@ function Schedule_monthly(user, p) {
 async function Schedule_saveOverride(user, p) {
   var isSalesSupervisor = user.role === 'supervisor' && (user.department === 'ฝ่ายขาย' || user.department === 'ฝ่ายปฏิบัติการ' || user.department === 'ฝ่ายขายและการตลาด');
   var isAdmin = user.role === 'admin';
-  if (!isAdmin && !isSalesSupervisor) {
+  var isHR = user.role === 'approver';
+  if (!isAdmin && !isHR && !isSalesSupervisor && !hasCap_(user.role, 'leave.adjust_quota') && !hasCap_(user.role, 'setting.manage')) {
     throw new Error('คุณไม่มีสิทธิ์แก้ไขตารางงานของพนักงาน');
   }
 
@@ -1155,7 +1388,8 @@ async function Schedule_saveOverride(user, p) {
 async function Schedule_updateOffDay(user, p) {
   var isSalesSupervisor = user.role === 'supervisor' && (user.department === 'ฝ่ายขาย' || user.department === 'ฝ่ายปฏิบัติการ' || user.department === 'ฝ่ายขายและการตลาด');
   var isAdmin = user.role === 'admin';
-  if (!isAdmin && !isSalesSupervisor) {
+  var isHR = user.role === 'approver';
+  if (!isAdmin && !isHR && !isSalesSupervisor && !hasCap_(user.role, 'leave.adjust_quota') && !hasCap_(user.role, 'setting.manage')) {
     throw new Error('คุณไม่มีสิทธิ์แก้ไขวันหยุดประจำของพนักงาน');
   }
 
@@ -1575,7 +1809,12 @@ function Leaves_user_stats(user, p) {
 }
 
 function Leaves_all_users_quotas(user, p) {
-  Auth_requireCap(user, 'setting.manage');
+  var isSalesSupervisor = user.role === 'supervisor' && (user.department === 'ฝ่ายขาย' || user.department === 'ฝ่ายปฏิบัติการ' || user.department === 'ฝ่ายขายและการตลาด');
+  var isAdmin = user.role === 'admin';
+  var isHR = user.role === 'approver';
+  if (!isAdmin && !isHR && !isSalesSupervisor && !hasCap_(user.role, 'leave.adjust_quota') && !hasCap_(user.role, 'setting.manage')) {
+    throw new Error('คุณไม่มีสิทธิ์ดูสิทธิ์วันลา');
+  }
   var fy = (p && p.fiscal_year) ? Number(p.fiscal_year) : cfg_fiscalYear_(cfg_now_());
   var users = DB_readAll(SHEETS.USERS).filter(function (u) {
     return String(u.is_active).toLowerCase() === 'yes';
@@ -1594,7 +1833,12 @@ function Leaves_all_users_quotas(user, p) {
 }
 
 async function Leaves_adjust_quota(user, p) {
-  Auth_requireCap(user, 'setting.manage');
+  var isSalesSupervisor = user.role === 'supervisor' && (user.department === 'ฝ่ายขาย' || user.department === 'ฝ่ายปฏิบัติการ' || user.department === 'ฝ่ายขายและการตลาด');
+  var isAdmin = user.role === 'admin';
+  var isHR = user.role === 'approver';
+  if (!isAdmin && !isHR && !isSalesSupervisor && !hasCap_(user.role, 'leave.adjust_quota') && !hasCap_(user.role, 'setting.manage')) {
+    throw new Error('คุณไม่มีสิทธิ์ปรับสิทธิ์วันลา');
+  }
   var targetUserId = String(p.user_id || '').trim();
   var leaveType = String(p.leave_type || '').trim();
   var fy = Number(p.fiscal_year || cfg_fiscalYear_(cfg_now_()));
@@ -1666,11 +1910,12 @@ async function Leaves_create(user, p) {
 
   var isSalesSupervisor = user.role === 'supervisor' && (user.department === 'ฝ่ายขาย' || user.department === 'ฝ่ายปฏิบัติการ' || user.department === 'ฝ่ายขายและการตลาด');
   var isAdmin = user.role === 'admin';
+  var isHR = user.role === 'approver';
   var reqUserId = user.id;
   var targetStatus = data.draft ? STATUS.DRAFT : STATUS.PENDING;
 
   if (data.requester_id && String(data.requester_id) !== String(user.id)) {
-    if (!isAdmin && !isSalesSupervisor) {
+    if (!isAdmin && !isHR && !isSalesSupervisor) {
       throw new Error('คุณไม่มีสิทธิ์สร้างใบลาแทนผู้อื่น');
     }
     var targetUser = DB_findById(SHEETS.USERS, data.requester_id);
@@ -1684,7 +1929,7 @@ async function Leaves_create(user, p) {
     reqUserId = String(data.requester_id);
   }
 
-  if (data.status === STATUS.APPROVED && (isAdmin || isSalesSupervisor)) {
+  if (data.status === STATUS.APPROVED && (isAdmin || isHR || isSalesSupervisor)) {
     targetStatus = STATUS.APPROVED;
   }
 
@@ -1924,11 +2169,12 @@ async function Leaves_approve(user, p) {
 async function Leaves_delete(user, p) {
   var isSalesSupervisor = user.role === 'supervisor' && (user.department === 'ฝ่ายขาย' || user.department === 'ฝ่ายปฏิบัติการ' || user.department === 'ฝ่ายขายและการตลาด');
   var isAdmin = user.role === 'admin';
+  var isHR = user.role === 'approver';
   var lv = DB_findById(SHEETS.LEAVES, p && p.id);
   if (!lv) throw new Error('ไม่พบใบลา');
   
   var allowed = false;
-  if (isAdmin) {
+  if (isAdmin || isHR) {
     allowed = true;
   } else if (isSalesSupervisor) {
     var targetUser = DB_findById(SHEETS.USERS, lv.requester_id);
@@ -2023,10 +2269,20 @@ function Leaves_list(user, p) {
   return { items: slice, total: total, page: page, per_page: per, pages: pages };
 }
 
-function Leaves_get(user, p) {
+async function Leaves_get(user, p) {
   var id = String((p && p.id) || '');
   if (!id) throw new Error('ระบุ id');
   var lv = DB_findById(SHEETS.LEAVES, id);
+  if (!lv || typeof lv.attachment_url === 'undefined') {
+    var fullRows = await sbFetch('GET', 'Leaves', 'id=eq.' + encodeURIComponent(id) + '&limit=1');
+    if (fullRows && fullRows.length) {
+      lv = fullRows[0];
+      if (!DB_CACHE['Leaves']) DB_CACHE['Leaves'] = [];
+      var existingIdx = DB_CACHE['Leaves'].findIndex(function(x) { return String(x.id) === id; });
+      if (existingIdx >= 0) DB_CACHE['Leaves'][existingIdx] = lv;
+      else DB_CACHE['Leaves'].push(lv);
+    }
+  }
   if (!lv) throw new Error('ไม่พบใบลา');
   var users = DB_buildIndex(SHEETS.USERS);
   if (String(lv.requester_id) !== String(user.id)) {
@@ -2825,10 +3081,20 @@ function Expense_list(user, p) {
   return { items: items, total: items.length };
 }
 
-function Expense_get(user, p) {
+async function Expense_get(user, p) {
   var id = String((p && p.id) || '').trim();
   if (!id) throw new Error('ระบุ id');
   var ex = DB_findById(SHEETS.EXPENSES, id);
+  if (!ex || typeof ex.receipt_url === 'undefined') {
+    var fullRows = await sbFetch('GET', 'Expenses', 'id=eq.' + encodeURIComponent(id) + '&limit=1');
+    if (fullRows && fullRows.length) {
+      ex = fullRows[0];
+      if (!DB_CACHE['Expenses']) DB_CACHE['Expenses'] = [];
+      var existingIdx = DB_CACHE['Expenses'].findIndex(function(x) { return String(x.id) === id; });
+      if (existingIdx >= 0) DB_CACHE['Expenses'][existingIdx] = ex;
+      else DB_CACHE['Expenses'].push(ex);
+    }
+  }
   if (!ex) throw new Error('ไม่พบรายการ');
   
   var scope = _wf_expenseScopeFor_(user);
@@ -3370,10 +3636,13 @@ async function api(req) {
     var token = req.token || '';
     var p = req.payload || {};
 
-    await DB_warmCache();
-    
-    GLOBAL_SETTINGS = _settingsMap_();
-    await Settings_ensureDefaults_();
+    var neededTables = (ACTION_TABLES_MAP[action] || ['Users', 'Sessions', 'Settings']).slice();
+    if (token) {
+      if (neededTables.indexOf('Sessions') < 0) neededTables.push('Sessions');
+      if (neededTables.indexOf('Users') < 0) neededTables.push('Users');
+    }
+
+    await DB_warmCache(neededTables);
     
     GLOBAL_SETTINGS = _settingsMap_();
     if (GLOBAL_SETTINGS.web_url && !REQUEST_ORIGIN.includes("localhost") && !REQUEST_ORIGIN.includes("127.0.0.1")) {
@@ -3381,24 +3650,15 @@ async function api(req) {
       if (!wurl.endsWith('/')) wurl += '/';
       REQUEST_ORIGIN = wurl;
     }
-    
-    await Seed_ensureHolidays_();
-    await Seed_ensureSpecialCommissionProducts_();
 
-    var holidaysRows = DB_readAll('Holidays');
-    GLOBAL_HOLIDAYS = {};
-    holidaysRows.forEach(function(r) {
-      if (r.holiday_date) {
-        GLOBAL_HOLIDAYS[String(r.holiday_date).substring(0, 10)] = r.name || 'วันหยุดบริษัท';
+    if (action === 'app.bootstrap') {
+      var users = DB_readAll('Users');
+      if (users.length === 0) {
+        await Settings_ensureDefaults_();
+        await Seed_ensureUsers_();
+        await Seed_ensureHolidays_();
+        await Seed_ensureSpecialCommissionProducts_();
       }
-    });
-
-    var users = DB_readAll('Users');
-    if (users.length === 0) {
-      await Seed_ensureUsers_();
-      await Seed_ensureHolidays_();
-      await Seed_demoLeaves_();
-      await Seed_demoMissions_();
     }
 
     if (action === 'app.bootstrap')   return _ok(await Auth_bootstrap(token));
@@ -3411,8 +3671,9 @@ async function api(req) {
     var user = await Auth_verify_(token);
 
     switch (action) {
+      case 'app.badge_counts':        return _ok(App_badgeCounts(user));
       case 'auth.change_password':    return _ok(await Auth_changePassword(user, p));
-      case 'auth.me':                 return _ok({ user: Auth_publicUser_(user), caps: CAPS[user.role] || [] });
+      case 'auth.me':                 return _ok({ user: Auth_publicUser_(user), caps: Auth_getUserCaps_(user) });
 
       case 'user.list':               return _ok(Users_list(user, p));
       case 'user.get':                return _ok(Users_get(user, p));
@@ -3478,27 +3739,9 @@ async function api(req) {
       case 'line.webhook_url':        return _ok(LINE_getWebhookUrl());
       case 'auth.link_line':          return _ok(await Auth_linkLine(user, p));
 
-      case 'checkin.get_today':       return _ok(Checkins_getToday(user));
-      case 'checkin.clock_in':        return _ok(await Checkins_clockIn(user, p));
-      case 'checkin.clock_out':       return _ok(await Checkins_clockOut(user, p));
-      case 'checkin.list':            return _ok(Checkins_list(user, p));
-
       case 'holiday.list':            return _ok(Holidays_list(user, p));
       case 'holiday.upsert':          return _ok(await Holidays_upsert(user, p));
       case 'holiday.delete':          return _ok(await Holidays_delete(user, p));
-
-      case 'course.list':             return _ok(Courses_list(user, p));
-      case 'course.get':              return _ok(Courses_get(user, p));
-      case 'course.create':           return _ok(await Courses_create(user, p));
-      case 'course.update':           return _ok(await Courses_update(user, p));
-      case 'course.delete':           return _ok(await Courses_delete(user, p));
-      case 'quiz.get_questions':      return _ok(Quizzes_getQuestions(user, p));
-      case 'quiz.submit':             return _ok(await Quizzes_submit(user, p));
-      case 'course.progress_list':    return _ok(Courses_progressList(user, p));
-      case 'ai.website_extract':      return _ok(await AI_websiteExtract(user, p));
-      case 'ai.course_generate':      return _ok(await AI_courseGenerate(user, p));
-      case 'ai.course_index':         return _ok(await AI_courseIndex(user, p));
-      case 'ai.tutor_ask':            return _ok(await AI_tutorAsk(user, p));
 
       case 'special_commission.products.list':   return _ok(SpecialCommission_productsList(user, p));
       case 'special_commission.products.upsert': return _ok(await SpecialCommission_productsUpsert(user, p));
@@ -3514,819 +3757,21 @@ async function api(req) {
       case 'r2.get_upload_url':       return _ok(await R2_getUploadUrl(user, p));
       case 'r2.upload':               return _ok(await R2_upload(user, p));
       case 'r2.migrate_legacy_data':  return _ok(await R2_migrateLegacyData(user));
+
+      case 'stock_bill.list':               return _ok(StockBills_list(user, p));
+      case 'stock_bill.get':                return _ok(StockBills_get(user, p));
+      case 'stock_bill.create':             return _ok(await StockBills_create(user, p));
+      case 'stock_bill.update':             return _ok(await StockBills_update(user, p));
+      case 'stock_bill.delete':             return _ok(await StockBills_delete(user, p));
+      case 'stock_bill.permissions.get':    return _ok(StockBills_permissionsGet(user, p));
+      case 'stock_bill.permissions.update': return _ok(await StockBills_permissionsUpdate(user, p));
+      case 'stock_bill.generate_flex':      return _ok(StockBills_generateFlex(user, p));
+      case 'stock_bill.send_line':          return _ok(await StockBills_sendLine(user, p));
     }
     throw new Error('ไม่พบ action: ' + action);
   } catch (e) {
     return _err(e);
   }
-}
-
-// === CHECKIN LOGIC ===
-function Checkins_list(user, p) {
-  var data = p || {};
-  var items = DB_readAll('Checkins');
-  
-  if (user.role !== 'admin' && user.role !== 'approver' && user.role !== 'supervisor') {
-    items = items.filter(function (r) { return r.user_id === user.id; });
-  } else if (data.user_id) {
-    items = items.filter(function (r) { return r.user_id === data.user_id; });
-  }
-  
-  items.sort(function(a, b) {
-    return new Date(b.check_in_at).getTime() - new Date(a.check_in_at).getTime();
-  });
-
-  var usersMap = DB_buildIndex('Users');
-  var enriched = items.map(function (item) {
-    var u = usersMap[item.user_id] || {};
-    return Object.assign({}, item, {
-      full_name: u.full_name || 'ไม่ระบุชื่อ',
-      department: u.department || 'ไม่ระบุแผนก'
-    });
-  });
-
-  var page = Number(data.page || 1);
-  var per = Number(data.per_page || 50);
-  var total = enriched.length;
-  var slice = enriched.slice((page-1)*per, page*per);
-
-  return { items: slice, total: total, page: page, per_page: per, pages: Math.ceil(total/per) };
-}
-
-function Checkins_getToday(user) {
-  var now = new Date();
-  var localTime = now.getTime() + (7 * 60 * 60 * 1000);
-  var todayDateStr = new Date(localTime).toISOString().substring(0, 10);
-  
-  var rows = DB_readAll('Checkins');
-  var todayRecord = rows.find(function (r) {
-    if (r.user_id !== user.id) return false;
-    var checkInLocal = new Date(new Date(r.check_in_at).getTime() + (7 * 60 * 60 * 1000)).toISOString().substring(0, 10);
-    return checkInLocal === todayDateStr;
-  });
-  
-  return todayRecord || null;
-}
-
-async function Checkins_clockIn(user, p) {
-  var data = p || {};
-  
-  var todayRecord = Checkins_getToday(user);
-  if (todayRecord) {
-    throw new Error('คุณได้เช็คอินเข้างานของวันนี้ไปแล้ว');
-  }
-
-  var now = new Date();
-  var record = await DB_insert('Checkins', {
-    user_id: user.id,
-    check_in_at: cfg_iso_(now),
-    check_out_at: null,
-    check_in_lat: data.latitude ? Number(data.latitude) : null,
-    check_in_lng: data.longitude ? Number(data.longitude) : null,
-    check_out_lat: null,
-    check_out_lng: null,
-    check_in_loc: String(data.location || '').trim() || 'พิกัด GPS',
-    check_out_loc: '',
-    status: 'normal',
-    check_in_img: String(data.image || '').trim() || null,
-    check_out_img: null
-  });
-
-  await Audit_log_(user, 'checkin.clock_in', 'checkin', record.id, { check_in_at: record.check_in_at });
-  return record;
-}
-
-async function Checkins_clockOut(user, p) {
-  var data = p || {};
-  
-  var todayRecord = Checkins_getToday(user);
-  if (!todayRecord) {
-    throw new Error('ไม่พบประวัติการเช็คอินเข้างานของวันนี้ กรุณาเช็คอินเข้างานก่อน');
-  }
-  if (todayRecord.check_out_at) {
-    throw new Error('คุณได้เช็คเอาท์ออกงานของวันนี้ไปแล้ว');
-  }
-
-  var now = new Date();
-  var record = await DB_update('Checkins', todayRecord.id, {
-    check_out_at: cfg_iso_(now),
-    check_out_lat: data.latitude ? Number(data.latitude) : null,
-    check_out_lng: data.longitude ? Number(data.longitude) : null,
-    check_out_loc: String(data.location || '').trim() || 'พิกัด GPS',
-    check_out_img: String(data.image || '').trim() || null
-  });
-
-  await Audit_log_(user, 'checkin.clock_out', 'checkin', todayRecord.id, { check_out_at: record.check_out_at });
-  return record;
-}
-
-// === TRAINING & QUIZ LOGIC ===
-function Courses_list(user, p) {
-  var data = p || {};
-  var list = DB_readAll(SHEETS.COURSES);
-  var progress = DB_readAll(SHEETS.PROGRESS).filter(function (x) { return String(x.user_id) === String(user.id); });
-  var progressMap = {};
-  progress.forEach(function (x) { progressMap[String(x.course_id)] = x; });
-
-  if (user.role !== 'admin' && user.role !== 'approver') {
-    list = list.filter(function (c) { return c.status === 'active'; });
-  }
-
-  var result = list.map(function (c) {
-    var prog = progressMap[String(c.id)] || null;
-    return {
-      id: c.id,
-      title: c.title,
-      description: c.description,
-      thumbnail_url: c.thumbnail_url,
-      category: c.category,
-      duration_hours: c.duration_hours,
-      pass_score: c.pass_score,
-      instructor: c.instructor,
-      status: c.status,
-      created_at: c.created_at,
-      progress: prog ? { quiz_score: Number(prog.quiz_score), quiz_total: Number(prog.quiz_total), is_passed: prog.is_passed } : null
-    };
-  });
-
-  return { items: result };
-}
-
-function Courses_get(user, p) {
-  var id = String((p && p.id) || '').trim();
-  if (!id) throw new Error('ระบุ id');
-  var c = DB_findById(SHEETS.COURSES, id);
-  if (!c) throw new Error('ไม่พบคอร์สเรียน');
-  
-  var progress = DB_findOne(SHEETS.PROGRESS, function (x) {
-    return String(x.user_id) === String(user.id) && String(x.course_id) === String(id);
-  });
-
-  return {
-    course: c,
-    progress: progress ? { quiz_score: Number(progress.quiz_score), quiz_total: Number(progress.quiz_total), is_passed: progress.is_passed } : null
-  };
-}
-
-async function Courses_create(user, p) {
-  Auth_requireCap(user, 'setting.manage');
-  var data = p || {};
-  var title = String(data.title || '').trim();
-  var content = String(data.content || '').trim();
-  if (!title) throw new Error('กรุณาระบุชื่อคอร์สเรียน');
-  if (!content) throw new Error('กรุณาระบุเนื้อหาบทเรียน');
-
-  var course = await DB_insert(SHEETS.COURSES, {
-    title: title,
-    description: String(data.description || '').trim(),
-    thumbnail_url: String(data.thumbnail_url || '').trim(),
-    content: content,
-    video_url: String(data.video_url || '').trim(),
-    category: String(data.category || '').trim(),
-    duration_hours: data.duration_hours ? Number(data.duration_hours) : 0,
-    pass_score: data.pass_score ? Number(data.pass_score) : 80,
-    instructor: String(data.instructor || '').trim(),
-    ai_summary: String(data.ai_summary || '').trim(),
-    ai_modules: String(data.ai_modules || '').trim(),
-    ai_quiz: String(data.ai_quiz || '').trim(),
-    ai_flashcards: String(data.ai_flashcards || '').trim(),
-    ai_key_points: String(data.ai_key_points || '').trim(),
-    ai_checklist: String(data.ai_checklist || '').trim(),
-    status: String(data.status || 'active').trim()
-  });
-
-  if (Array.isArray(data.questions)) {
-    for (var i = 0; i < data.questions.length; i++) {
-      var q = data.questions[i];
-      if (q.question && Array.isArray(q.options)) {
-        await DB_insert(SHEETS.QUIZZES, {
-          course_id: course.id,
-          question: String(q.question).trim(),
-          options: JSON.stringify(q.options),
-          correct_option: Number(q.correct_option || 0)
-        });
-      }
-    }
-  }
-
-  await Audit_log_(user, 'course.create', 'course', course.id, {});
-  return course;
-}
-
-async function Courses_update(user, p) {
-  Auth_requireCap(user, 'setting.manage');
-  var data = p || {};
-  var id = String(data.id || '').trim();
-  if (!id) throw new Error('ระบุ id');
-  var c = DB_findById(SHEETS.COURSES, id);
-  if (!c) throw new Error('ไม่พบคอร์สเรียน');
-
-  var patch = {};
-  if ('title' in data) patch.title = String(data.title || '').trim();
-  if ('description' in data) patch.description = String(data.description || '').trim();
-  if ('thumbnail_url' in data) patch.thumbnail_url = String(data.thumbnail_url || '').trim();
-  if ('content' in data) patch.content = String(data.content || '').trim();
-  if ('video_url' in data) patch.video_url = String(data.video_url || '').trim();
-  if ('category' in data) patch.category = String(data.category || '').trim();
-  if ('duration_hours' in data) patch.duration_hours = data.duration_hours ? Number(data.duration_hours) : 0;
-  if ('pass_score' in data) patch.pass_score = data.pass_score ? Number(data.pass_score) : 80;
-  if ('instructor' in data) patch.instructor = String(data.instructor || '').trim();
-  if ('ai_summary' in data) patch.ai_summary = String(data.ai_summary || '').trim();
-  if ('ai_modules' in data) patch.ai_modules = String(data.ai_modules || '').trim();
-  if ('ai_quiz' in data) patch.ai_quiz = String(data.ai_quiz || '').trim();
-  if ('ai_flashcards' in data) patch.ai_flashcards = String(data.ai_flashcards || '').trim();
-  if ('ai_key_points' in data) patch.ai_key_points = String(data.ai_key_points || '').trim();
-  if ('ai_checklist' in data) patch.ai_checklist = String(data.ai_checklist || '').trim();
-  if ('status' in data) patch.status = String(data.status || 'active').trim();
-
-  var updated = await DB_update(SHEETS.COURSES, id, patch);
-
-  if (Array.isArray(data.questions)) {
-    var existing = DB_readAll(SHEETS.QUIZZES).filter(function (q) { return String(q.course_id) === String(id); });
-    for (var i = 0; i < existing.length; i++) {
-      await DB_delete(SHEETS.QUIZZES, existing[i].id);
-    }
-    for (var i = 0; i < data.questions.length; i++) {
-      var q = data.questions[i];
-      if (q.question && Array.isArray(q.options)) {
-        await DB_insert(SHEETS.QUIZZES, {
-          course_id: id,
-          question: String(q.question).trim(),
-          options: JSON.stringify(q.options),
-          correct_option: Number(q.correct_option || 0)
-        });
-      }
-    }
-  }
-
-  await Audit_log_(user, 'course.update', 'course', id, {});
-  return updated;
-}
-
-async function Courses_delete(user, p) {
-  Auth_requireCap(user, 'setting.manage');
-  var id = String((p && p.id) || '').trim();
-  if (!id) throw new Error('ระบุ id');
-  var c = DB_findById(SHEETS.COURSES, id);
-  if (!c) throw new Error('ไม่พบคอร์สเรียน');
-
-  await DB_delete(SHEETS.COURSES, id);
-  await Audit_log_(user, 'course.delete', 'course', id, {});
-  return { success: true };
-}
-
-function Quizzes_getQuestions(user, p) {
-  var courseId = String((p && p.course_id) || '').trim();
-  if (!courseId) throw new Error('ระบุ course_id');
-  var quizzes = DB_readAll(SHEETS.QUIZZES).filter(function (q) { return String(q.course_id) === String(courseId); });
-  var isAdmin = user.role === 'admin' || user.role === 'approver';
-
-  return {
-    items: quizzes.map(function (q) {
-      var opts = [];
-      try {
-        opts = JSON.parse(q.options);
-      } catch(e) {
-        opts = [];
-      }
-      var item = {
-        id: q.id,
-        question: q.question,
-        options: opts
-      };
-      if (isAdmin) {
-        item.correct_option = Number(q.correct_option);
-      }
-      return item;
-    })
-  };
-}
-
-async function Quizzes_submit(user, p) {
-  var data = p || {};
-  var courseId = String(data.course_id || '').trim();
-  if (!courseId) throw new Error('ระบุ course_id');
-  var answers = data.answers || {};
-
-  var quizzes = DB_readAll(SHEETS.QUIZZES).filter(function (q) { return String(q.course_id) === String(courseId); });
-  if (quizzes.length === 0) throw new Error('ไม่พบข้อมูลข้อสอบในคอร์สเรียนนี้');
-
-  var score = 0;
-  var total = quizzes.length;
-
-  quizzes.forEach(function (q) {
-    var submittedAns = answers[String(q.id)];
-    if (submittedAns != null && Number(submittedAns) === Number(q.correct_option)) {
-      score++;
-    }
-  });
-
-  var pct = Math.round(score * 100 / total);
-  var isPassed = pct >= 80 ? 'yes' : 'no';
-
-  var progress = DB_findOne(SHEETS.PROGRESS, function (x) {
-    return String(x.user_id) === String(user.id) && String(x.course_id) === String(courseId);
-  });
-
-  var result;
-  if (progress) {
-    var finalPass = (progress.is_passed === 'yes' || isPassed === 'yes') ? 'yes' : 'no';
-    var finalScore = Math.max(Number(progress.quiz_score || 0), score);
-    result = await DB_update(SHEETS.PROGRESS, progress.id, {
-      quiz_score: finalScore,
-      quiz_total: total,
-      is_passed: finalPass,
-      updated_at: cfg_iso_(cfg_now_())
-    });
-  } else {
-    result = await DB_insert(SHEETS.PROGRESS, {
-      user_id: user.id,
-      course_id: courseId,
-      quiz_score: score,
-      quiz_total: total,
-      is_passed: isPassed
-    });
-  }
-
-  await Audit_log_(user, 'quiz.submit', 'course', courseId, { score: score, total: total, is_passed: isPassed });
-  return {
-    score: score,
-    total: total,
-    percentage: pct,
-    is_passed: isPassed === 'yes'
-  };
-}
-
-function Courses_progressList(user, p) {
-  Auth_requireCap(user, 'setting.manage');
-  var data = p || {};
-  var courseId = String(data.course_id || '').trim();
-  if (!courseId) throw new Error('ระบุ course_id');
-
-  var progress = DB_readAll(SHEETS.PROGRESS).filter(function (x) { return String(x.course_id) === String(courseId); });
-  var users = DB_buildIndex(SHEETS.USERS);
-
-  var items = progress.map(function (pg) {
-    var u = users[pg.user_id] || {};
-    return {
-      user_id: pg.user_id,
-      full_name: u.full_name || '-',
-      department: u.department || '-',
-      position: u.position || '-',
-      quiz_score: Number(pg.quiz_score),
-      quiz_total: Number(pg.quiz_total),
-      is_passed: pg.is_passed,
-      updated_at: pg.updated_at || pg.created_at
-    };
-  });
-
-  return { items: items };
-}
-
-function AI_decodeHtml_(text) {
-  return String(text || '')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&#(\d+);/g, function (_, n) {
-      try { return String.fromCharCode(Number(n)); } catch (e) { return ''; }
-    })
-    .replace(/&#x([0-9a-f]+);/gi, function (_, n) {
-      try { return String.fromCharCode(parseInt(n, 16)); } catch (e) { return ''; }
-    });
-}
-
-function AI_cleanText_(text) {
-  return AI_decodeHtml_(text).replace(/\s+/g, ' ').replace(/\u0000/g, '').trim();
-}
-
-function AI_attr_(tag, name) {
-  var re = new RegExp(name + "\\s*=\\s*([\"'])(.*?)\\1", "i");
-  var m = String(tag || '').match(re);
-  return m ? AI_cleanText_(m[2]) : '';
-}
-
-function AI_meta_(html, key, attrName) {
-  attrName = attrName || 'property';
-  var re = /<meta\b[^>]*>/gi;
-  var m;
-  while ((m = re.exec(html))) {
-    var tag = m[0];
-    var prop = AI_attr_(tag, attrName) || AI_attr_(tag, attrName === 'property' ? 'name' : 'property');
-    if (String(prop).toLowerCase() === String(key).toLowerCase()) return AI_attr_(tag, 'content');
-  }
-  return '';
-}
-
-function AI_extractHeadings_(html) {
-  var items = [];
-  var re = /<h([1-3])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
-  var m;
-  while ((m = re.exec(html)) && items.length < 18) {
-    var text = AI_cleanText_(String(m[2]).replace(/<[^>]+>/g, ' '));
-    if (text && items.indexOf(text) < 0) items.push(text);
-  }
-  return items;
-}
-
-function AI_extractPageText_(html) {
-  var body = String(html || '')
-    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, ' ');
-  body = body.replace(/<(br|p|div|li|tr|td|section|article)\b[^>]*>/gi, '\n');
-  body = body.replace(/<[^>]+>/g, ' ');
-  var lines = AI_decodeHtml_(body).split(/\n+/).map(AI_cleanText_).filter(function (x) {
-    return x && x.length > 25 && !/^Skip|^Menu|^Copyright/i.test(x);
-  });
-  var unique = [];
-  lines.forEach(function (line) {
-    if (unique.length < 80 && unique.indexOf(line) < 0) unique.push(line);
-  });
-  return unique.join('\n').substring(0, 12000);
-}
-
-function AI_assertFetchableUrl_(rawUrl) {
-  var url = String(rawUrl || '').trim();
-  if (!url) throw new Error('กรุณาระบุ Website URL');
-  var u;
-  try { u = new URL(url); } catch (e) { throw new Error('รูปแบบ Website URL ไม่ถูกต้อง'); }
-  if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new Error('รองรับเฉพาะ http/https');
-  var host = u.hostname.toLowerCase();
-  if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host.endsWith('.local')) throw new Error('ไม่อนุญาตให้ดึง URL ภายในระบบ');
-  if (/^(10|127|169\.254|172\.(1[6-9]|2\d|3[0-1])|192\.168)\./.test(host)) throw new Error('ไม่อนุญาตให้ดึง private network URL');
-  return u.toString();
-}
-
-async function AI_websiteExtract(user, p) {
-  Auth_requireCap(user, 'setting.manage');
-  var url = AI_assertFetchableUrl_((p && p.url) || '');
-  var controller = new AbortController();
-  var timer = setTimeout(function () { try { controller.abort(); } catch (e) {} }, 15000);
-  try {
-    var res = await fetch(url, {
-      method: 'GET',
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: {
-        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'user-agent': 'Mozilla/5.0 (compatible; AvarinLMS/1.1; +https://averintshop.com)'
-      }
-    });
-    if (!res.ok) throw new Error('ดึง Website ไม่สำเร็จ (HTTP ' + res.status + ')');
-    var ct = String(res.headers.get('content-type') || '');
-    if (ct && ct.indexOf('text/html') < 0 && ct.indexOf('application/xhtml') < 0) throw new Error('URL นี้ไม่ใช่หน้า HTML ที่อ่านได้');
-    var html = await res.text();
-    var titleMatch = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
-    var title = titleMatch ? AI_cleanText_(titleMatch[1]) : '';
-    var ogTitle = AI_meta_(html, 'og:title');
-    var description = AI_meta_(html, 'description', 'name') || AI_meta_(html, 'og:description');
-    var image = AI_meta_(html, 'og:image');
-    var headings = AI_extractHeadings_(html);
-    var text = AI_extractPageText_(html);
-    if (!title && !description && headings.length === 0 && !text) throw new Error('อ่านเนื้อหาจาก Website ไม่ได้');
-    return {
-      url: url,
-      title: ogTitle || title,
-      description: description,
-      image: image,
-      headings: headings,
-      text: text,
-      text_sample: text.substring(0, 1800)
-    };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function AI_extractJson_(text) {
-  var raw = String(text || '').trim();
-  if (raw.indexOf('```') === 0) raw = raw.replace(/^```(?:json)?\s*|```\s*$/g, '').trim();
-  var first = raw.indexOf('{');
-  var last = raw.lastIndexOf('}');
-  if (first >= 0 && last > first) raw = raw.substring(first, last + 1);
-  return JSON.parse(raw);
-}
-
-function AI_courseFallback_(title, sourceText) {
-  var clean = AI_cleanText_(sourceText).substring(0, 900);
-  return {
-    course_title: title || 'คอร์สฝึกอบรมจากเอกสาร',
-    objectives: ['เข้าใจเนื้อหาหลักจากเอกสาร', 'นำความรู้ไปใช้ในงานจริง', 'ผ่านการประเมินหลังเรียน'],
-    difficulty: 'Beginner',
-    duration_minutes: 60,
-    passing_score: 80,
-    lessons: [
-      {
-        title: 'บทที่ 1 ภาพรวมจากเอกสาร',
-        summary: clean || 'สรุปเนื้อหาจากเอกสารที่แนบ',
-        key_points: ['อ่านและเข้าใจเนื้อหาหลัก', 'จับประเด็นสำคัญ', 'เตรียมตอบคำถามหลังเรียน'],
-        checklist: ['อ่านบทเรียนครบ', 'ทบทวน Key Point', 'ทำ Quiz']
-      }
-    ],
-    flashcards: [
-      { front: 'คอร์สนี้สร้างจากอะไร?', back: 'สร้างจากเอกสารหรือเว็บไซต์ที่ผู้ใช้แนบ' }
-    ],
-    quiz: [],
-    final_exam: [],
-    answer_key: [],
-    certificate_requirement: 'เรียนครบทุกบทและสอบผ่านอย่างน้อย 80%',
-    ai_tutor_seed: clean
-  };
-}
-
-function AI_courseJsonSchema_() {
-  return {
-    type: 'object',
-    additionalProperties: true,
-    required: ['course_title','objectives','difficulty','duration_minutes','lessons','flashcards','quiz','final_exam','answer_key','passing_score','certificate_requirement','ai_tutor_seed'],
-    properties: {
-      course_title: { type: 'string' },
-      objectives: { type: 'array', items: { type: 'string' } },
-      difficulty: { type: 'string' },
-      duration_minutes: { type: 'number' },
-      lessons: {
-        type: 'array',
-        items: {
-          type: 'object',
-          additionalProperties: true,
-          properties: {
-            title: { type: 'string' },
-            summary: { type: 'string' },
-            key_points: { type: 'array', items: { type: 'string' } },
-            checklist: { type: 'array', items: { type: 'string' } }
-          }
-        }
-      },
-      flashcards: { type: 'array', items: { type: 'object', additionalProperties: true, properties: { front: { type: 'string' }, back: { type: 'string' } } } },
-      quiz: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      final_exam: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      answer_key: { type: 'array', items: { type: 'object', additionalProperties: true } },
-      passing_score: { type: 'number' },
-      certificate_requirement: { type: 'string' },
-      ai_tutor_seed: { type: 'string' }
-    }
-  };
-}
-
-function AI_chunkText_(text, maxLen) {
-  maxLen = maxLen || 1800;
-  var src = String(text || '').replace(/\r/g, '').trim();
-  var parts = src.split(/\n{2,}/);
-  var chunks = [];
-  var buf = '';
-  parts.forEach(function (p) {
-    p = AI_cleanText_(p);
-    if (!p) return;
-    if ((buf + '\n' + p).length > maxLen && buf) {
-      chunks.push(buf);
-      buf = p;
-    } else {
-      buf = buf ? (buf + '\n' + p) : p;
-    }
-  });
-  if (buf) chunks.push(buf);
-  if (chunks.length === 0 && src) {
-    for (var i = 0; i < src.length; i += maxLen) chunks.push(src.substring(i, i + maxLen));
-  }
-  return chunks.slice(0, 80);
-}
-
-async function AI_openaiEmbedding_(apiKey, model, input) {
-  var res = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + apiKey,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ model: model || 'text-embedding-3-small', input: input })
-  });
-  if (!res.ok) {
-    var errText = await res.text();
-    throw new Error('OpenAI Embeddings HTTP ' + res.status + ': ' + errText.substring(0, 500));
-  }
-  var json = await res.json();
-  if (!json.data || !json.data[0] || !json.data[0].embedding) throw new Error('OpenAI ไม่ส่ง embedding กลับมา');
-  return json.data[0].embedding;
-}
-
-async function AI_courseIndex(user, p) {
-  Auth_requireCap(user, 'setting.manage');
-  var courseId = String((p && p.course_id) || '').trim();
-  if (!courseId) throw new Error('ระบุ course_id');
-  var c = DB_findById(SHEETS.COURSES, courseId);
-  if (!c) throw new Error('ไม่พบคอร์สเรียน');
-  var openaiKey = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.openai_api_key) || '').trim();
-  if (!openaiKey) throw new Error('กรุณาระบุ OpenAI API Key ก่อนสร้าง RAG index');
-  var embModel = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.openai_embedding_model) || 'text-embedding-3-small').trim();
-  var source = [
-    c.title || '',
-    c.description || '',
-    c.content || '',
-    c.ai_summary || '',
-    c.ai_key_points || '',
-    c.ai_flashcards || '',
-    c.ai_checklist || '',
-    c.ai_modules || '',
-    c.ai_quiz || ''
-  ].join('\n\n');
-  var chunks = AI_chunkText_(source, 1800);
-  var existing = DB_readAll(SHEETS.COURSE_CHUNKS).filter(function (x) { return String(x.course_id) === String(courseId); });
-  for (var i = 0; i < existing.length; i++) await DB_delete(SHEETS.COURSE_CHUNKS, existing[i].id);
-  for (var j = 0; j < chunks.length; j++) {
-    var emb = await AI_openaiEmbedding_(openaiKey, embModel, chunks[j]);
-    await DB_insert(SHEETS.COURSE_CHUNKS, {
-      course_id: courseId,
-      chunk_index: j,
-      content: chunks[j],
-      metadata: JSON.stringify({ title: c.title || '', model: embModel }),
-      embedding: '[' + emb.join(',') + ']'
-    });
-  }
-  await Audit_log_(user, 'ai.course_index', 'course', courseId, { chunks: chunks.length });
-  return { course_id: courseId, chunks: chunks.length, embedding_model: embModel };
-}
-
-async function AI_tutorAsk(user, p) {
-  var courseId = String((p && p.course_id) || '').trim();
-  var question = String((p && p.question) || '').trim();
-  if (!courseId) throw new Error('ระบุ course_id');
-  if (!question) throw new Error('กรุณาระบุคำถาม');
-  var c = DB_findById(SHEETS.COURSES, courseId);
-  if (!c) throw new Error('ไม่พบคอร์สเรียน');
-  var openaiKey = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.openai_api_key) || '').trim();
-  if (!openaiKey) throw new Error('กรุณาระบุ OpenAI API Key ก่อนใช้ AI Tutor');
-  var embModel = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.openai_embedding_model) || 'text-embedding-3-small').trim();
-  var generationModel = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.openai_generation_model) || 'gpt-5.5').trim();
-  var qEmb = await AI_openaiEmbedding_(openaiKey, embModel, question);
-  var rows = await sbRpc('match_course_chunks', {
-    query_embedding: '[' + qEmb.join(',') + ']',
-    match_course_id: courseId,
-    match_count: 6
-  });
-  var context = (rows || []).map(function (r, i) { return '[' + (i + 1) + '] ' + r.content; }).join('\n\n');
-  if (!context) context = [c.content || '', c.ai_summary || '', c.ai_key_points || ''].join('\n\n').substring(0, 5000);
-  var prompt = 'ตอบคำถามผู้เรียนโดยอ้างอิงเฉพาะบริบทของคอร์สนี้ ถ้าไม่มีข้อมูลให้บอกว่าไม่มีข้อมูลในเอกสารคอร์ส\n'
-    + 'คอร์ส: ' + (c.title || '') + '\n'
-    + 'คำถาม: ' + question + '\n\n'
-    + 'บริบท:\n' + context;
-  var res = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + openaiKey,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: generationModel,
-      input: [
-        { role: 'system', content: 'You are an LMS AI Tutor. Answer in Thai, grounded only in the provided course context.' },
-        { role: 'user', content: prompt }
-      ]
-    })
-  });
-  if (!res.ok) {
-    var errText = await res.text();
-    throw new Error('OpenAI Tutor HTTP ' + res.status + ': ' + errText.substring(0, 500));
-  }
-  var json = await res.json();
-  var answer = json.output_text || '';
-  if (!answer && Array.isArray(json.output)) {
-    json.output.forEach(function (item) {
-      if (Array.isArray(item.content)) item.content.forEach(function (x) { if (x.text) answer += x.text; });
-    });
-  }
-  return { answer: answer, sources: rows || [] };
-}
-
-async function AI_openaiResponsesJson_(apiKey, model, prompt) {
-  var res = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + apiKey,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: model || 'gpt-5.5',
-      input: [
-        { role: 'system', content: 'You are an expert instructional designer. Return only valid JSON.' },
-        { role: 'user', content: prompt }
-      ],
-      text: {
-        format: {
-          type: 'json_schema',
-          name: 'lms_course',
-          strict: false,
-          schema: AI_courseJsonSchema_()
-        }
-      }
-    })
-  });
-  if (!res.ok) {
-    var errText = await res.text();
-    throw new Error('OpenAI HTTP ' + res.status + ': ' + errText.substring(0, 500));
-  }
-  var json = await res.json();
-  var text = '';
-  if (json.output_text) {
-    text = json.output_text;
-  } else if (Array.isArray(json.output)) {
-    json.output.forEach(function (item) {
-      if (Array.isArray(item.content)) {
-        item.content.forEach(function (c) {
-          if (c.text) text += c.text;
-        });
-      }
-    });
-  }
-  if (!text) throw new Error('OpenAI ไม่ส่ง JSON text กลับมา');
-  return AI_extractJson_(text);
-}
-
-async function AI_courseGenerate(user, p) {
-  Auth_requireCap(user, 'setting.manage');
-  var data = p || {};
-  var title = String(data.title || '').trim();
-  var sourceText = String(data.source_text || '').trim();
-  var sourceName = String(data.source_name || '').trim();
-  if (!sourceText || sourceText.length < 80) throw new Error('เนื้อหาจากเอกสาร/เว็บไซต์น้อยเกินไปสำหรับสร้างคอร์ส');
-
-  var prompt = 'คุณคือผู้เชี่ยวชาญด้าน Instructional Design\n'
-    + 'สร้างคอร์สฝึกอบรมจากเอกสารนี้\n'
-    + 'ตอบเป็น JSON object เท่านั้น ห้ามใส่ markdown หรือคำอธิบายนอก JSON\n'
-    + 'ผลลัพธ์ต้องมี keys ต่อไปนี้:\n'
-    + 'course_title, objectives, difficulty, duration_minutes, lessons, flashcards, quiz, final_exam, answer_key, passing_score, certificate_requirement, ai_tutor_seed\n'
-    + 'ข้อกำหนด:\n'
-    + '1. ชื่อคอร์ส\n'
-    + '2. วัตถุประสงค์\n'
-    + '3. ระดับความยาก\n'
-    + '4. ระยะเวลาเรียน\n'
-    + '5. แบ่งเป็นบท\n'
-    + '6. สรุปแต่ละบท\n'
-    + '7. Key Point\n'
-    + '8. Checklist\n'
-    + '9. Flash Card\n'
-    + '10. Quiz 10 ข้อ\n'
-    + '11. Final Exam 30 ข้อ\n'
-    + '12. เฉลยพร้อมเหตุผล\n'
-    + '13. เกณฑ์ผ่าน\n'
-    + '14. Certificate Requirement\n'
-    + 'โครงสร้าง lessons เป็น array ของ {title, summary, key_points, checklist}\n'
-    + 'flashcards เป็น array ของ {front, back}\n'
-    + 'quiz และ final_exam เป็น array ของ {type, question, options, answer, explanation}\n'
-    + 'answer_key รวมเฉลยทั้งหมดพร้อมเหตุผล\n'
-    + 'ถ้าเอกสารเป็นสินค้า ให้เน้น training สำหรับพนักงานขายหน้าร้าน\n\n'
-    + 'หัวข้อที่ผู้ใช้กรอก: ' + title + '\n'
-    + 'แหล่งข้อมูล: ' + sourceName + '\n'
-    + 'เอกสาร:\n' + sourceText.substring(0, 50000);
-
-  var openaiKey = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.openai_api_key) || '').trim();
-  if (openaiKey) {
-    var openaiModel = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.openai_generation_model) || 'gpt-5.5').trim();
-    var openaiCourse = await AI_openaiResponsesJson_(openaiKey, openaiModel, prompt);
-    if (!openaiCourse.course_title) openaiCourse.course_title = title || 'คอร์สฝึกอบรมจากเอกสาร';
-    return { provider: 'openai', model: openaiModel, course: openaiCourse, raw: JSON.stringify(openaiCourse) };
-  }
-
-  var apiKey = String((GLOBAL_SETTINGS && GLOBAL_SETTINGS.google_gemini_api_key) || '').trim();
-  if (!apiKey) throw new Error('กรุณาระบุ OpenAI API Key หรือ Google Gemini API Key ในหน้าตั้งค่าระบบก่อนใช้งาน AI Generate');
-
-  var models = [
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey,
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey,
-    'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=' + apiKey
-  ];
-  var lastErr = null;
-  for (var i = 0; i < models.length; i++) {
-    try {
-      var payload = {
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: models[i].indexOf('/v1beta/') >= 0
-          ? { response_mime_type: 'application/json', temperature: 0.3 }
-          : { responseMimeType: 'application/json', temperature: 0.3 }
-      };
-      var res = await fetch(models[i], {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        var errText = await res.text();
-        throw new Error('Gemini HTTP ' + res.status + ': ' + errText.substring(0, 300));
-      }
-      var json = await res.json();
-      var text = json && json.candidates && json.candidates[0] && json.candidates[0].content && json.candidates[0].content.parts && json.candidates[0].content.parts[0] && json.candidates[0].content.parts[0].text;
-      if (!text) throw new Error('Gemini ไม่ส่งข้อความ JSON กลับมา');
-      var course = AI_extractJson_(text);
-      if (!course.course_title) course.course_title = title || 'คอร์สฝึกอบรมจากเอกสาร';
-      return { course: course, raw: text };
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  throw lastErr || new Error('สร้างคอร์สด้วย AI ไม่สำเร็จ');
 }
 
 // === CLOUDFLARE R2 INTEGRATION ===
@@ -5037,8 +4482,7 @@ async function SpecialCommission_salesRecord(user, p) {
 }
 
 async function OfficerMapping_list(user, p) {
-  var list = await sbFetch('GET', 'OfficerMappings', 'select=*&limit=10000').catch(function(){ return []; });
-  DB_CACHE['OfficerMappings'] = list || [];
+  var list = DB_readAll(SHEETS.OFFICER_MAPPINGS || 'OfficerMappings');
   var dbUsers = DB_readAll(SHEETS.USERS).filter(function (u) {
     return String(u.is_active).toLowerCase() === 'yes';
   });
@@ -5085,6 +4529,691 @@ async function OfficerMapping_delete(user, p) {
   return { success: true };
 }
 
+// === STOCK BILLS / INWARD GOODS RECEIPT SYSTEM ===
+
+function StockBills_checkUserAccess_(user) {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  
+  var allowedRolesStr = String(_settingsRaw_('stock_bill_allowed_roles') || 'admin,approver,supervisor');
+  var allowedRoles = allowedRolesStr.split(',').map(function(r){ return r.trim().toLowerCase(); }).filter(Boolean);
+  if (allowedRoles.indexOf(String(user.role).toLowerCase()) >= 0) {
+    return true;
+  }
+  
+  var allowedUsersStr = String(_settingsRaw_('stock_bill_allowed_users') || '');
+  var allowedUsers = allowedUsersStr.split(',').map(function(u){ return u.trim(); }).filter(Boolean);
+  if (allowedUsers.indexOf(String(user.id)) >= 0 || allowedUsers.indexOf(String(user.username)) >= 0) {
+    return true;
+  }
+  
+  return false;
+}
+
+function StockBills_requireAccess_(user, actionType) {
+  if (!user) throw new Error('กรุณาเข้าสู่ระบบก่อนใช้งาน');
+  if (user.role === 'admin') return true;
+  if (!StockBills_checkUserAccess_(user)) {
+    throw new Error('คุณไม่มีสิทธิ์เข้าถึงระบบบันทึกเอกสารบิลสินค้าเข้า กรุณาติดต่อผู้ดูแลระบบ (Admin)');
+  }
+  if (actionType === 'manage' || actionType === 'permissions') {
+    throw new Error('เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถตั้งค่าสิทธิ์ได้');
+  }
+  return true;
+}
+
+function StockBills_list(user, p) {
+  StockBills_requireAccess_(user, 'view');
+  var data = p || {};
+  var items = DB_readAll(SHEETS.STOCK_BILLS || 'StockBills') || [];
+  
+  var q = String(data.q || '').toLowerCase().trim();
+  var supplier = String(data.supplier || '').toLowerCase().trim();
+  var branch = String(data.branch || '').trim();
+  var category = String(data.category || '').trim();
+  var status = String(data.status || '').trim();
+  var startDate = String(data.start_date || '').trim();
+  var endDate = String(data.end_date || '').trim();
+  var month = String(data.month || '').trim();
+
+  if (month) {
+    items = items.filter(function(b) {
+      return String(b.bill_date || '').substring(0, 7) === month;
+    });
+  }
+
+  if (startDate) {
+    items = items.filter(function(b) {
+      return String(b.bill_date || '') >= startDate;
+    });
+  }
+
+  if (endDate) {
+    items = items.filter(function(b) {
+      return String(b.bill_date || '') <= endDate;
+    });
+  }
+
+  if (branch && branch !== 'all') {
+    items = items.filter(function(b) {
+      return String(b.branch || '').trim() === branch;
+    });
+  }
+
+  if (category && category !== 'all') {
+    items = items.filter(function(b) {
+      return String(b.category || '').trim() === category;
+    });
+  }
+
+  if (status && status !== 'all') {
+    items = items.filter(function(b) {
+      return String(b.status || '').trim() === status;
+    });
+  }
+
+  if (supplier) {
+    items = items.filter(function(b) {
+      return String(b.supplier_name || '').toLowerCase().indexOf(supplier) >= 0;
+    });
+  }
+
+  if (q) {
+    items = items.filter(function(b) {
+      var fullStr = [
+        b.bill_no,
+        b.supplier_name,
+        b.branch,
+        b.category,
+        b.notes,
+        b.created_by_name,
+        b.total_amount
+      ].join(' ').toLowerCase();
+      return fullStr.indexOf(q) >= 0;
+    });
+  }
+
+  // Sort: bill_date DESC, created_at DESC
+  items.sort(function(a, b) {
+    var da = String(a.bill_date || '') + ' ' + String(a.created_at || '');
+    var db = String(b.bill_date || '') + ' ' + String(b.created_at || '');
+    return db.localeCompare(da);
+  });
+
+  // Calculate stats
+  var totalAmount = 0;
+  var nowMonth = new Date().toISOString().substring(0, 7);
+  var thisMonthCount = 0;
+  var thisMonthAmount = 0;
+  var supplierCounts = {};
+  var branchCounts = {};
+  var pendingCount = 0;
+
+  var allRaw = DB_readAll(SHEETS.STOCK_BILLS || 'StockBills') || [];
+  allRaw.forEach(function(b) {
+    var amt = Number(b.total_amount || 0);
+    var bMonth = String(b.bill_date || '').substring(0, 7);
+    if (bMonth === nowMonth) {
+      thisMonthCount++;
+      thisMonthAmount += amt;
+    }
+    if (b.status === 'pending') {
+      pendingCount++;
+    }
+  });
+
+  items.forEach(function(b) {
+    var amt = Number(b.total_amount || 0);
+    totalAmount += amt;
+    var s = String(b.supplier_name || 'ไม่ระบุ').trim();
+    supplierCounts[s] = (supplierCounts[s] || 0) + 1;
+    var br = String(b.branch || 'ส่วนกลาง/คลังหลัก').trim();
+    branchCounts[br] = (branchCounts[br] || 0) + 1;
+  });
+
+  var page = Number(data.page || 1);
+  var perPage = Number(data.per_page || 50);
+  var total = items.length;
+  var paged = items.slice((page - 1) * perPage, page * perPage);
+
+  return {
+    items: paged,
+    total: total,
+    page: page,
+    per_page: perPage,
+    stats: {
+      filtered_count: total,
+      filtered_amount: totalAmount,
+      this_month_count: thisMonthCount,
+      this_month_amount: thisMonthAmount,
+      pending_count: pendingCount,
+      supplier_counts: supplierCounts,
+      branch_counts: branchCounts
+    }
+  };
+}
+
+async function StockBills_get(user, p) {
+  StockBills_requireAccess_(user, 'view');
+  var id = String(p && p.id || '').trim();
+  if (!id) throw new Error('กรุณาระบุรหัสเอกสาร (ID)');
+  var bill = DB_findById(SHEETS.STOCK_BILLS || 'StockBills', id);
+  if (!bill || typeof bill.images === 'undefined' || typeof bill.items_detail === 'undefined') {
+    var fullRows = await sbFetch('GET', 'StockBills', 'id=eq.' + encodeURIComponent(id) + '&limit=1');
+    if (fullRows && fullRows.length) {
+      bill = fullRows[0];
+      if (!DB_CACHE['StockBills']) DB_CACHE['StockBills'] = [];
+      var existingIdx = DB_CACHE['StockBills'].findIndex(function(x) { return String(x.id) === id; });
+      if (existingIdx >= 0) DB_CACHE['StockBills'][existingIdx] = bill;
+      else DB_CACHE['StockBills'].push(bill);
+    }
+  }
+  if (!bill) throw new Error('ไม่พบเอกสารบิลสินค้าเข้า');
+  return { item: bill };
+}
+
+async function StockBills_create(user, p) {
+  StockBills_requireAccess_(user, 'create');
+  var data = p || {};
+  var billNo = String(data.bill_no || '').trim();
+  var billDate = String(data.bill_date || cfg_dateOnly_(new Date())).trim();
+  var supplierName = String(data.supplier_name || '').trim();
+
+  if (!billNo) throw new Error('กรุณาระบุเลขที่เอกสาร / เลขที่บิล');
+  if (!supplierName) throw new Error('กรุณาระบุชื่อผู้จำหน่าย (Supplier)');
+
+  var totalAmount = Number(data.total_amount || 0);
+  var vatAmount = Number(data.vat_amount || 0);
+  var netAmount = Number(data.net_amount || (totalAmount + vatAmount));
+
+  var images = Array.isArray(data.images) ? data.images : (data.images ? [data.images] : []);
+  var mainImageUrl = String(data.image_url || (images.length > 0 ? images[0] : '')).trim();
+
+  var itemsDetail = Array.isArray(data.items_detail) ? data.items_detail : [];
+
+  var stamp = Date.now();
+  var rand = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+  var id = 'sb-' + stamp + '-' + rand;
+
+  var record = {
+    id: id,
+    bill_no: billNo,
+    bill_date: billDate,
+    supplier_name: supplierName,
+    branch: String(data.branch || user.branch || '').trim(),
+    category: String(data.category || 'สินค้าขาย (Stock)').trim(),
+    total_amount: totalAmount,
+    vat_type: String(data.vat_type || 'none').trim(),
+    vat_amount: vatAmount,
+    net_amount: netAmount,
+    payment_status: String(data.payment_status || 'paid').trim(),
+    status: String(data.status || 'completed').trim(),
+    image_url: mainImageUrl,
+    images: typeof data.images === 'string' ? data.images : JSON.stringify(images),
+    items_detail: typeof data.items_detail === 'string' ? data.items_detail : JSON.stringify(itemsDetail),
+    notes: String(data.notes || '').trim(),
+    created_by: user.id,
+    created_by_name: String(user.full_name || user.username || '').trim(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
+  var inserted = await DB_insert(SHEETS.STOCK_BILLS || 'StockBills', record);
+  DB_invalidate(SHEETS.STOCK_BILLS || 'StockBills');
+
+  await Audit_log_(user, 'stock_bill.create', 'stock_bill', id, {
+    bill_no: billNo,
+    supplier_name: supplierName,
+    total_amount: totalAmount,
+    image_count: images.length
+  });
+
+  // Check if target notify is requested
+  if (data.send_line) {
+    try {
+      var targetId = String(data.line_target_id || _settingsRaw_('stock_bill_notify_target') || user.line_user_id || '').trim();
+      if (targetId) {
+        var flexObj = StockBills_buildFlexMessage_(inserted);
+        await LINE_sendPushMessage_(targetId, [flexObj]);
+      }
+    } catch (lineErr) {
+      console.warn('LINE notification on bill creation skipped/failed:', lineErr.message);
+    }
+  }
+
+  return { success: true, item: inserted };
+}
+
+async function StockBills_update(user, p) {
+  StockBills_requireAccess_(user, 'create');
+  var data = p || {};
+  var id = String(data.id || '').trim();
+  if (!id) throw new Error('กรุณาระบุรหัสเอกสารที่ต้องการแก้ไข');
+
+  var existing = DB_findById(SHEETS.STOCK_BILLS || 'StockBills', id);
+  if (!existing) throw new Error('ไม่พบเอกสารบิลสินค้าเข้า');
+
+  // Non-admin can only edit their own bill
+  if (user.role !== 'admin' && existing.created_by !== user.id) {
+    throw new Error('คุณสามารถแก้ไขได้เฉพาะเอกสารที่คุณบันทึกเองเท่านั้น');
+  }
+
+  var patch: any = {
+    updated_at: new Date().toISOString()
+  };
+
+  if ('bill_no' in data) patch.bill_no = String(data.bill_no).trim();
+  if ('bill_date' in data) patch.bill_date = String(data.bill_date).trim();
+  if ('supplier_name' in data) patch.supplier_name = String(data.supplier_name).trim();
+  if ('branch' in data) patch.branch = String(data.branch).trim();
+  if ('category' in data) patch.category = String(data.category).trim();
+  if ('total_amount' in data) patch.total_amount = Number(data.total_amount || 0);
+  if ('vat_type' in data) patch.vat_type = String(data.vat_type).trim();
+  if ('vat_amount' in data) patch.vat_amount = Number(data.vat_amount || 0);
+  if ('net_amount' in data) patch.net_amount = Number(data.net_amount || 0);
+  if ('payment_status' in data) patch.payment_status = String(data.payment_status).trim();
+  if ('status' in data) patch.status = String(data.status).trim();
+  if ('notes' in data) patch.notes = String(data.notes).trim();
+
+  if ('image_url' in data) patch.image_url = String(data.image_url || '').trim();
+  if ('images' in data) {
+    patch.images = typeof data.images === 'string' ? data.images : JSON.stringify(data.images);
+    if (!patch.image_url && Array.isArray(data.images) && data.images.length > 0) {
+      patch.image_url = data.images[0];
+    }
+  }
+  if ('items_detail' in data) {
+    patch.items_detail = typeof data.items_detail === 'string' ? data.items_detail : JSON.stringify(data.items_detail);
+  }
+
+  var updated = await DB_update(SHEETS.STOCK_BILLS || 'StockBills', id, patch);
+  DB_invalidate(SHEETS.STOCK_BILLS || 'StockBills');
+
+  await Audit_log_(user, 'stock_bill.update', 'stock_bill', id, {
+    bill_no: patch.bill_no || existing.bill_no,
+    updated_fields: Object.keys(patch)
+  });
+
+  return { success: true, item: updated };
+}
+
+async function StockBills_delete(user, p) {
+  StockBills_requireAccess_(user, 'delete');
+  var data = p || {};
+  var id = String(data.id || '').trim();
+  if (!id) throw new Error('กรุณาระบุรหัสเอกสารที่ต้องการลบ');
+
+  var existing = DB_findById(SHEETS.STOCK_BILLS || 'StockBills', id);
+  if (!existing) throw new Error('ไม่พบเอกสารบิล');
+
+  if (user.role !== 'admin' && existing.created_by !== user.id) {
+    throw new Error('คุณสามารถลบได้เฉพาะเอกสารที่คุณบันทึกเอง หรือติดต่อ Admin');
+  }
+
+  await DB_delete(SHEETS.STOCK_BILLS || 'StockBills', id);
+  DB_invalidate(SHEETS.STOCK_BILLS || 'StockBills');
+
+  await Audit_log_(user, 'stock_bill.delete', 'stock_bill', id, {
+    bill_no: existing.bill_no,
+    supplier_name: existing.supplier_name
+  });
+
+  return { success: true };
+}
+
+function StockBills_permissionsGet(user, p) {
+  if (user.role !== 'admin') {
+    throw new Error('เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถดูการตั้งค่าสิทธิ์ได้');
+  }
+  var allowedRolesStr = String(_settingsRaw_('stock_bill_allowed_roles') || 'admin,approver,supervisor');
+  var allowedRoles = allowedRolesStr.split(',').map(function(r){ return r.trim(); }).filter(Boolean);
+
+  var allowedUsersStr = String(_settingsRaw_('stock_bill_allowed_users') || '');
+  var allowedUsers = allowedUsersStr.split(',').map(function(u){ return u.trim(); }).filter(Boolean);
+
+  var notifyTarget = String(_settingsRaw_('stock_bill_notify_target') || '');
+
+  var allUsers = DB_readAll(SHEETS.USERS).filter(function(u) {
+    return String(u.is_active || '').toLowerCase() === 'yes';
+  }).map(Auth_publicUser_);
+
+  return {
+    allowed_roles: allowedRoles,
+    allowed_users: allowedUsers,
+    notify_target: notifyTarget,
+    all_users: allUsers,
+    available_roles: [
+      { id: 'admin', label: 'ผู้ดูแลระบบ (Admin)' },
+      { id: 'approver', label: 'ผู้อำนวยการ / ผู้บริหาร (Approver)' },
+      { id: 'supervisor', label: 'หัวหน้างาน (Supervisor)' },
+      { id: 'checker', label: 'เจ้าหน้าที่ตรวจสอบ (Checker)' },
+      { id: 'employee', label: 'พนักงานทั่วไป (Employee)' }
+    ]
+  };
+}
+
+async function StockBills_permissionsUpdate(user, p) {
+  if (user.role !== 'admin') {
+    throw new Error('เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถแก้ไขสิทธิ์ได้');
+  }
+  var data = p || {};
+  var roles = Array.isArray(data.allowed_roles) ? data.allowed_roles.join(',') : String(data.allowed_roles || 'admin');
+  var users = Array.isArray(data.allowed_users) ? data.allowed_users.join(',') : String(data.allowed_users || '');
+  var notifyTarget = String(data.notify_target || '').trim();
+
+  await Settings_update(user, {
+    stock_bill_allowed_roles: roles,
+    stock_bill_allowed_users: users,
+    stock_bill_notify_target: notifyTarget
+  });
+
+  await Audit_log_(user, 'stock_bill.permissions_update', 'settings', 'stock_bill_permissions', {
+    allowed_roles: roles,
+    allowed_users: users,
+    notify_target: notifyTarget
+  });
+
+  return {
+    success: true,
+    allowed_roles: roles.split(',').filter(Boolean),
+    allowed_users: users.split(',').filter(Boolean),
+    notify_target: notifyTarget
+  };
+}
+
+function StockBills_buildFlexMessage_(bill) {
+  var bNo = String(bill.bill_no || 'ไม่ระบุเลขที่');
+  var bDate = String(bill.bill_date || '-');
+  var supp = String(bill.supplier_name || 'ไม่ระบุซัพพลายเออร์');
+  var branch = String(bill.branch || 'สำนักงานใหญ่ / คลังกลาง');
+  var totalAmt = Number(bill.total_amount || 0);
+  var netAmt = Number(bill.net_amount || totalAmt);
+  var cat = String(bill.category || 'สินค้าขาย (Stock)');
+  var status = String(bill.status || 'completed');
+  var statusText = status === 'completed' ? '✓ ตรวจรับเข้าคลังแล้ว' : (status === 'pending' ? '⏳ รอตรวจสอบ' : '📝 บันทึกแบบร่าง');
+  var statusColor = status === 'completed' ? '#10b981' : (status === 'pending' ? '#f59e0b' : '#64748b');
+  var creator = String(bill.created_by_name || 'เจ้าหน้าที่');
+  var notes = String(bill.notes || '').trim();
+  var imgUrl = String(bill.image_url || '').trim();
+
+  var items = [];
+  try {
+    if (typeof bill.items_detail === 'string') {
+      items = JSON.parse(bill.items_detail || '[]');
+    } else if (Array.isArray(bill.items_detail)) {
+      items = bill.items_detail;
+    }
+  } catch(e) { items = []; }
+
+  var itemsBoxContents = [];
+  if (items && items.length > 0) {
+    itemsBoxContents.push({
+      "type": "text",
+      "text": "📋 รายการสินค้า (" + items.length + " รายการ):",
+      "weight": "bold",
+      "size": "xs",
+      "color": "#334155",
+      "margin": "md"
+    });
+
+    var showItems = items.slice(0, 4);
+    showItems.forEach(function(it, idx) {
+      var name = String(it.name || it.title || ('รายการ ' + (idx + 1)));
+      var qty = Number(it.qty || it.quantity || 1);
+      var unit = String(it.unit || 'ชิ้น');
+      var price = Number(it.total_price || it.amount || (qty * Number(it.unit_price || 0)));
+
+      itemsBoxContents.push({
+        "type": "box",
+        "layout": "horizontal",
+        "margin": "xs",
+        "contents": [
+          { "type": "text", "text": "• " + name, "size": "xxs", "color": "#475569", "flex": 3, "wrap": true },
+          { "type": "text", "text": qty + " " + unit + (price > 0 ? " (฿" + price.toLocaleString() + ")" : ""), "size": "xxs", "color": "#0f172a", "align": "end", "flex": 2, "weight": "bold" }
+        ]
+      });
+    });
+
+    if (items.length > 4) {
+      itemsBoxContents.push({
+        "type": "text",
+        "text": "... และรายการอื่นๆ อีก " + (items.length - 4) + " รายการ",
+        "size": "xxs",
+        "color": "#94a3b8",
+        "margin": "xs"
+      });
+    }
+  }
+
+  var bubble: any = {
+    "type": "bubble",
+    "size": "giga",
+    "header": {
+      "type": "box",
+      "layout": "vertical",
+      "backgroundColor": "#0f172a",
+      "paddingAll": "16px",
+      "contents": [
+        {
+          "type": "box",
+          "layout": "horizontal",
+          "contents": [
+            { "type": "text", "text": "📦 เอกสารบิลสินค้าเข้า", "weight": "bold", "color": "#38bdf8", "size": "md", "flex": 3 },
+            { "type": "text", "text": statusText, "weight": "bold", "color": statusColor, "size": "xs", "align": "end", "flex": 2 }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "เลขที่บิล: " + bNo,
+          "color": "#ffffff",
+          "size": "sm",
+          "weight": "bold",
+          "margin": "xs"
+        },
+        {
+          "type": "text",
+          "text": "วันที่: " + bDate + " · สาขา: " + branch,
+          "color": "#94a3b8",
+          "size": "xxs",
+          "margin": "xs"
+        }
+      ]
+    },
+    "body": {
+      "type": "box",
+      "layout": "vertical",
+      "paddingAll": "16px",
+      "contents": [
+        {
+          "type": "box",
+          "layout": "vertical",
+          "backgroundColor": "#f8fafc",
+          "paddingAll": "12px",
+          "cornerRadius": "10px",
+          "contents": [
+            {
+              "type": "box",
+              "layout": "horizontal",
+              "contents": [
+                { "type": "text", "text": "ผู้จำหน่าย:", "size": "xs", "color": "#64748b", "flex": 2 },
+                { "type": "text", "text": supp, "size": "xs", "color": "#0f172a", "weight": "bold", "flex": 3, "wrap": true }
+              ]
+            },
+            {
+              "type": "box",
+              "layout": "horizontal",
+              "margin": "xs",
+              "contents": [
+                { "type": "text", "text": "หมวดหมู่:", "size": "xs", "color": "#64748b", "flex": 2 },
+                { "type": "text", "text": cat, "size": "xs", "color": "#0f172a", "flex": 3 }
+              ]
+            },
+            {
+              "type": "box",
+              "layout": "horizontal",
+              "margin": "xs",
+              "contents": [
+                { "type": "text", "text": "การชำระเงิน:", "size": "xs", "color": "#64748b", "flex": 2 },
+                { "type": "text", "text": bill.payment_status === 'paid' ? 'ชำระเงินแล้ว' : (bill.payment_status === 'credit' ? 'เครดิต' : 'รอชำระ'), "size": "xs", "color": "#0f172a", "weight": "bold", "flex": 3 }
+              ]
+            }
+          ]
+        },
+        ...itemsBoxContents,
+        {
+          "type": "box",
+          "layout": "horizontal",
+          "margin": "md",
+          "paddingAll": "12px",
+          "backgroundColor": "#ecfdf5",
+          "cornerRadius": "10px",
+          "contents": [
+            { "type": "text", "text": "💰 ยอดรวมบิล", "weight": "bold", "size": "sm", "color": "#065f46", "flex": 2 },
+            { "type": "text", "text": "฿" + totalAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}), "weight": "bold", "size": "md", "color": "#059669", "align": "end", "flex": 3 }
+          ]
+        },
+        (notes ? {
+          "type": "box",
+          "layout": "vertical",
+          "margin": "sm",
+          "contents": [
+            { "type": "text", "text": "📝 หมายเหตุ: " + notes, "size": "xxs", "color": "#64748b", "wrap": true }
+          ]
+        } : {
+          "type": "box",
+          "layout": "vertical",
+          "contents": []
+        }),
+        {
+          "type": "box",
+          "layout": "horizontal",
+          "margin": "sm",
+          "contents": [
+            { "type": "text", "text": "👤 บันทึกโดย: " + creator, "size": "xxs", "color": "#94a3b8", "flex": 1 }
+          ]
+        }
+      ]
+    },
+    "footer": {
+      "type": "box",
+      "layout": "vertical",
+      "spacing": "sm",
+      "paddingAll": "12px",
+      "contents": []
+    }
+  };
+
+  if (imgUrl) {
+    bubble.hero = {
+      "type": "image",
+      "url": imgUrl,
+      "size": "full",
+      "aspectRatio": "16:9",
+      "aspectMode": "cover",
+      "action": {
+        "type": "uri",
+        "label": "ดูรูปบิลเต็ม",
+        "uri": imgUrl
+      }
+    };
+    bubble.footer.contents.push({
+      "type": "button",
+      "style": "primary",
+      "color": "#0284c7",
+      "height": "sm",
+      "action": {
+        "type": "uri",
+        "label": "🔍 ดูรูปบิลต้นฉบับ (R2)",
+        "uri": imgUrl
+      }
+    });
+  }
+
+  bubble.footer.contents.push({
+    "type": "button",
+    "style": "secondary",
+    "height": "sm",
+    "action": {
+      "type": "uri",
+      "label": "📄 เปิดดูในระบบ LMS",
+      "uri": (REQUEST_ORIGIN || "https://mairokjiz-ops.github.io/AvarinLMS/") + "#/stock-bills"
+    }
+  });
+
+  return {
+    "type": "flex",
+    "altText": "📦 เอกสารบิลสินค้าเข้า: " + bNo + " (" + supp + ") ยอด ฿" + totalAmt.toLocaleString(),
+    "contents": bubble
+  };
+}
+
+function StockBills_generateFlex(user, p) {
+  StockBills_requireAccess_(user, 'view');
+  var data = p || {};
+  var bill = data.bill;
+  if (!bill && data.id) {
+    bill = DB_findById(SHEETS.STOCK_BILLS || 'StockBills', data.id);
+  }
+  if (!bill) throw new Error('ไม่พบข้อมูลเอกสารบิล');
+  var flex = StockBills_buildFlexMessage_(bill);
+  return { flex: flex, bill: bill };
+}
+
+async function StockBills_sendLine(user, p) {
+  StockBills_requireAccess_(user, 'view');
+  var data = p || {};
+  var bill = data.bill;
+  if (!bill && data.id) {
+    bill = DB_findById(SHEETS.STOCK_BILLS || 'StockBills', data.id);
+  }
+  if (!bill) throw new Error('ไม่พบข้อมูลเอกสารบิล');
+
+  var targetId = String(data.target_id || _settingsRaw_('stock_bill_notify_target') || user.line_user_id || '').trim();
+  if (!targetId) {
+    throw new Error('ไม่พบปลายทาง LINE ที่จะส่ง กรุณาระบุ LINE User ID / Group ID หรือตั้งค่าในระบบ');
+  }
+
+  var flexObj = StockBills_buildFlexMessage_(bill);
+  var res = await LINE_sendPushMessage_(targetId, [flexObj]);
+
+  await Audit_log_(user, 'stock_bill.send_line', 'stock_bill', bill.id, {
+    bill_no: bill.bill_no,
+    target_id: targetId
+  });
+
+  return { success: true, result: res };
+}
+
+async function LINE_sendPushMessage_(to, messages) {
+  var channelAccessToken = (Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') || _settingsRaw_('line_channel_access_token') || '').trim();
+  if (!channelAccessToken) {
+    throw new Error('ยังไม่ได้ตั้งค่า LINE Channel Access Token ในระบบ');
+  }
+  if (!to) {
+    throw new Error('ยังไม่ได้ระบุผู้รับ (LINE User ID / Group ID)');
+  }
+
+  var url = 'https://api.line.me/v2/bot/message/push';
+  var res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + channelAccessToken,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      to: to,
+      messages: messages
+    })
+  });
+
+  if (!res.ok) {
+    var errText = await res.text();
+    console.error('LINE Push API Error:', res.status, errText);
+    throw new Error('LINE Push error (' + res.status + '): ' + errText);
+  }
+  return await res.json().catch(function(){ return { ok: true }; });
+}
+
 // === SERVE HANDLER ===
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -5093,9 +5222,6 @@ serve(async (req) => {
 
   try {
     const reqBody = await req.json();
-    
-    // Clear and reset cache to prevent cross-request leakage
-    DB_CACHE = {};
     
     const originHeader = req.headers.get("origin") || req.headers.get("referer");
     let requestOrigin = "";
@@ -5115,13 +5241,18 @@ serve(async (req) => {
     if (requestOrigin && !requestOrigin.endsWith("/")) {
       requestOrigin += "/";
     }
-    REQUEST_ORIGIN = requestOrigin || "http://localhost:8000/";
-
     const result = await api(reqBody);
+    const action = reqBody && reqBody.action;
+    let cacheControl = 'no-cache, no-store, must-revalidate';
+    if (action === 'app.bootstrap' || action === 'setting.get' || action === 'holiday.list' || action === 'special_commission.products.list') {
+      cacheControl = 'public, max-age=60, stale-while-revalidate=120';
+    }
+
     return new Response(JSON.stringify(result), {
       status: 200,
       headers: {
         ...corsHeaders,
+        'Cache-Control': cacheControl,
         'Content-Type': 'application/json'
       }
     });
