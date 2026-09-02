@@ -289,15 +289,56 @@
     const getSelectedBranch = () => CONFIG.BRANCHES.find(b => b.id === Store.selectedBranchId) || CONFIG.BRANCHES[0];
     const timeOnly = (v) => v ? new Date(v).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '-';
 
+    const _LIFF_CACHE = {};
+    const _LIFF_CACHE_TIME = {};
+    const _LIFF_INFLIGHT = {};
+    const _LIFF_CACHEABLE = {
+      'setting.get': 10 * 60 * 1000,
+      'dashboard.data': 1 * 60 * 1000,
+      'leave.list': 1 * 60 * 1000,
+      'expense.list': 1 * 60 * 1000
+    };
+
+    function invalidateLiffCache(pattern) {
+      if (!pattern) { Object.keys(_LIFF_CACHE).forEach(k => delete _LIFF_CACHE[k]); return; }
+      Object.keys(_LIFF_CACHE).forEach(k => { if (k.includes(pattern)) delete _LIFF_CACHE[k]; });
+    }
+
     async function api(action, payload = {}, token = Store.token) {
-      const res = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/api', {
-        method: 'POST',
-        headers: { apikey: CONFIG.SUPABASE_KEY, Authorization: 'Bearer ' + CONFIG.SUPABASE_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, token, payload })
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.ok) throw new Error(json.error || 'API error');
-      return json.data;
+      const cacheKey = action + '::' + JSON.stringify(payload || {}) + '::' + (token || '');
+      const ttl = _LIFF_CACHEABLE[action];
+      const now = Date.now();
+      if (ttl && _LIFF_CACHE[cacheKey] && (now - (_LIFF_CACHE_TIME[cacheKey] || 0) < ttl)) {
+        return _LIFF_CACHE[cacheKey];
+      }
+      if (_LIFF_INFLIGHT[cacheKey]) return _LIFF_INFLIGHT[cacheKey];
+
+      const fetchPromise = (async () => {
+        try {
+          const res = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/api', {
+            method: 'POST',
+            headers: { apikey: CONFIG.SUPABASE_KEY, Authorization: 'Bearer ' + CONFIG.SUPABASE_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, token, payload })
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok || !json.ok) throw new Error(json.error || 'API error');
+          if (ttl) {
+            _LIFF_CACHE[cacheKey] = json.data;
+            _LIFF_CACHE_TIME[cacheKey] = Date.now();
+          }
+          if (action.includes('.create') || action.includes('.update') || action.includes('.approve') || action.includes('.cancel') || action.includes('.check')) {
+            if (action.includes('leave.')) invalidateLiffCache('leave.');
+            if (action.includes('expense.')) invalidateLiffCache('expense.');
+            invalidateLiffCache('dashboard.');
+          }
+          return json.data;
+        } finally {
+          delete _LIFF_INFLIGHT[cacheKey];
+        }
+      })();
+
+      _LIFF_INFLIGHT[cacheKey] = fetchPromise;
+      return fetchPromise;
     }
 
     function show(id) {

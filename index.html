@@ -5127,10 +5127,21 @@ async function api(req) {
     'officer_mapping.list': 10 * 60 * 1000,
     'stock_bill.permissions.get': 5 * 60 * 1000,
     'user.branch_directory': 5 * 60 * 1000,
+    'report.overview': 5 * 60 * 1000,
+    'report.users_list': 5 * 60 * 1000,
     'user.list': 3 * 60 * 1000,
+    'calendar.month': 2 * 60 * 1000,
     'schedule.monthly': 2 * 60 * 1000,
+    'leave.all_users_quotas': 2 * 60 * 1000,
+    'leave.my_stats': 2 * 60 * 1000,
+    'auth.me': 2 * 60 * 1000,
     'dashboard.data': 1 * 60 * 1000,
-    'auth.me': 2 * 60 * 1000
+    'leave.list': 1 * 60 * 1000,
+    'leave.workflow_counts': 1 * 60 * 1000,
+    'expense.list': 1 * 60 * 1000,
+    'mission.list': 1 * 60 * 1000,
+    'stock_bill.list': 1 * 60 * 1000,
+    'app.badge_counts': 30 * 1000
   };
 
   function invalidateClientCache(pattern) {
