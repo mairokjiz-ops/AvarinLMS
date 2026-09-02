@@ -3636,12 +3636,7 @@ async function api(req) {
     var token = req.token || '';
     var p = req.payload || {};
 
-    var neededTables = (ACTION_TABLES_MAP[action] || ['Users', 'Sessions', 'Settings']).slice();
-    if (token) {
-      if (neededTables.indexOf('Sessions') < 0) neededTables.push('Sessions');
-      if (neededTables.indexOf('Users') < 0) neededTables.push('Users');
-    }
-
+    var neededTables = (ACTION_TABLES_MAP[action] || ['Settings']).slice();
     await DB_warmCache(neededTables);
     
     GLOBAL_SETTINGS = _settingsMap_();
@@ -3671,7 +3666,7 @@ async function api(req) {
     var user = await Auth_verify_(token);
 
     switch (action) {
-      case 'app.badge_counts':        return _ok(App_badgeCounts(user));
+      case 'app.badge_counts':        return _ok(await App_badgeCounts(user));
       case 'auth.change_password':    return _ok(await Auth_changePassword(user, p));
       case 'auth.me':                 return _ok({ user: Auth_publicUser_(user), caps: Auth_getUserCaps_(user) });
 
@@ -3687,7 +3682,7 @@ async function api(req) {
       case 'user.approve_registration': return _ok(await Users_approveRegistration(user, p));
 
       case 'leave.list':              return _ok(Leaves_list(user, p));
-      case 'leave.get':               return _ok(Leaves_get(user, p));
+      case 'leave.get':               return _ok(await Leaves_get(user, p));
       case 'leave.preview':           return _ok(Leaves_preview(user, p));
       case 'leave.create':            return _ok(await Leaves_create(user, p));
       case 'leave.update':            return _ok(await Leaves_update(user, p));
@@ -3717,7 +3712,7 @@ async function api(req) {
       case 'mission.approve':         return _ok(await Mission_approve(user, p));
 
       case 'expense.list':            return _ok(Expense_list(user, p));
-      case 'expense.get':             return _ok(Expense_get(user, p));
+      case 'expense.get':             return _ok(await Expense_get(user, p));
       case 'expense.create':          return _ok(await Expense_create(user, p));
       case 'expense.update':          return _ok(await Expense_update(user, p));
       case 'expense.submit':          return _ok(await Expense_submit(user, p));
@@ -3759,7 +3754,7 @@ async function api(req) {
       case 'r2.migrate_legacy_data':  return _ok(await R2_migrateLegacyData(user));
 
       case 'stock_bill.list':               return _ok(StockBills_list(user, p));
-      case 'stock_bill.get':                return _ok(StockBills_get(user, p));
+      case 'stock_bill.get':                return _ok(await StockBills_get(user, p));
       case 'stock_bill.create':             return _ok(await StockBills_create(user, p));
       case 'stock_bill.update':             return _ok(await StockBills_update(user, p));
       case 'stock_bill.delete':             return _ok(await StockBills_delete(user, p));

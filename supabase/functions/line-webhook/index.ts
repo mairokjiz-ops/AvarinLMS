@@ -517,6 +517,7 @@ async function sbFetch(method, table, params, body) {
       'apikey': SUPABASE_KEY,
       'Authorization': 'Bearer ' + SUPABASE_KEY,
       'Content-Type': 'application/json',
+      'Accept-Encoding': 'gzip, deflate, br',
       'Prefer': method === 'POST' ? 'return=representation' : (method === 'PATCH' ? 'return=representation' : '')
     }
   };
@@ -540,28 +541,31 @@ var DB_CACHE_TIME = {};
 
 function _getTableTtl_(table) {
   if (table === 'Settings' || table === 'Holidays' || table === 'SpecialCommissionProducts' || table === 'OfficerMappings') {
-    return 5 * 60 * 1000; // 5 minutes
+    return 10 * 60 * 1000; // 10 minutes
   }
   if (table === 'Users' || table === 'Sessions') {
-    return 2 * 60 * 1000; // 2 minutes
+    return 5 * 60 * 1000; // 5 minutes
   }
-  return 30 * 1000; // 30s for transactional tables
+  return 60 * 1000; // 1 minute for transactional tables
 }
 
 function _getTableFetchParams_(table) {
-  if (table === 'AuditLog') return 'select=id,user_id,action,entity,entity_id,created_at&order=created_at.desc&limit=100';
-  if (table === 'Leaves') return 'select=*&order=created_at.desc&limit=300';
-  if (table === 'Expenses') return 'select=*&order=created_at.desc&limit=300';
-  if (table === 'Missions') return 'select=*&order=created_at.desc&limit=200';
-  if (table === 'StockBills') return 'select=*&order=bill_date.desc&limit=300';
-  if (table === 'SpecialCommissionSales') return 'select=*&order=sale_date.desc&limit=500';
-  if (table === 'Sessions') return 'select=*&order=created_at.desc&limit=100';
-  return 'select=*&limit=500';
+  if (table === 'AuditLog') return 'select=id,user_id,action,entity,entity_id,created_at&order=created_at.desc&limit=50';
+  if (table === 'Leaves') return 'select=id,leave_no,requester_id,leave_type,reason,start_date,end_date,days,status,checker_id,supervisor_id,approver_id,written_at,fiscal_year,leave_unit,hours,created_at,updated_at&order=created_at.desc&limit=150';
+  if (table === 'Expenses') return 'select=id,expense_no,mission_id,expense_date,expense_type,description,amount,status,approver_id,approved_amount,created_by,created_at,updated_at&order=created_at.desc&limit=150';
+  if (table === 'Missions') return 'select=id,mission_no,requester_id,title,purpose,destination,start_date,end_date,transport_type,requested_amount,status,approver_id,approved_amount,work_type,created_at,updated_at&order=created_at.desc&limit=100';
+  if (table === 'StockBills') return 'select=id,bill_no,bill_date,supplier_name,branch,category,total_amount,vat_type,vat_amount,net_amount,payment_status,status,image_url,created_by,created_by_name,created_at,updated_at&order=bill_date.desc&limit=100';
+  if (table === 'SpecialCommissionSales') return 'select=id,employee_id,product_id,quantity,sale_date,branch,order_no,created_by,created_at&order=sale_date.desc&limit=300';
+  if (table === 'Users') return 'select=id,username,password_hash,salt,full_name,position,level,department,role,email,phone,is_active,created_at,updated_at,line_user_id,line_connect_code,branch,off_day,avatar&order=full_name.asc&limit=300';
+  if (table === 'Sessions') return 'select=token,user_id,created_at,expires_at&order=created_at.desc&limit=50';
+  if (table === 'Holidays') return 'select=id,holiday_date,name&order=holiday_date.asc&limit=100';
+  if (table === 'Settings') return 'select=key,value&limit=300';
+  return 'select=*&limit=100';
 }
 
 // Warm only the database tables that are needed for the current request.
 async function DB_warmCache(tables) {
-  var defaultTables = ['Users', 'Leaves', 'Sessions', 'Settings', 'Holidays'];
+  var defaultTables = ['Users', 'Settings'];
   var list = Array.isArray(tables) && tables.length ? tables.slice() : defaultTables.slice();
   var now = Date.now();
   var seen = {};
@@ -803,6 +807,14 @@ async function Auth_login(payload) {
   var u = DB_findOne(SHEETS.USERS, function (r) {
     return String(r.username || '').toLowerCase() === username;
   });
+  if (!u) {
+    var uRows = await sbFetch('GET', 'Users', 'username=eq.' + encodeURIComponent(username) + '&limit=1');
+    if (uRows && uRows.length > 0) {
+      u = uRows[0];
+      if (!DB_CACHE['Users']) DB_CACHE['Users'] = [];
+      DB_CACHE['Users'].push(u);
+    }
+  }
   if (!u) throw new Error('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
   if (String(u.is_active || '').toLowerCase().trim() === 'pending') throw new Error('บัญชีของคุณรอการอนุมัติจากผู้ดูแลระบบหรือฝ่ายบุคคล — กรุณารอการแจ้งเตือน');
   if (!_yes_(u.is_active)) throw new Error('บัญชีนี้ถูกปิดการใช้งาน — โปรดติดต่อผู้ดูแลระบบ');
@@ -835,6 +847,7 @@ async function Auth_logout(token) {
   try {
     var sess = DB_findById(SHEETS.SESSIONS, token);
     if (sess) await DB_delete(SHEETS.SESSIONS, token);
+    else await sbFetch('DELETE', 'Sessions', 'token=eq.' + encodeURIComponent(token));
   } catch (e) {}
   return { ok: true };
 }
@@ -842,6 +855,14 @@ async function Auth_logout(token) {
 async function Auth_verify_(token) {
   if (!token) throw new Error('ต้องเข้าสู่ระบบก่อน');
   var sess = DB_findById(SHEETS.SESSIONS, token);
+  if (!sess) {
+    var sRows = await sbFetch('GET', 'Sessions', 'token=eq.' + encodeURIComponent(token) + '&limit=1');
+    if (sRows && sRows.length > 0) {
+      sess = sRows[0];
+      if (!DB_CACHE['Sessions']) DB_CACHE['Sessions'] = [];
+      DB_CACHE['Sessions'].push(sess);
+    }
+  }
   if (!sess) throw new Error('เซสชันหมดอายุ — กรุณาเข้าสู่ระบบใหม่');
   var exp = new Date(sess.expires_at);
   if (isNaN(exp.getTime()) || exp.getTime() < Date.now()) {
@@ -849,6 +870,14 @@ async function Auth_verify_(token) {
     throw new Error('เซสชันหมดอายุ — กรุณาเข้าสู่ระบบใหม่');
   }
   var u = DB_findById(SHEETS.USERS, sess.user_id);
+  if (!u) {
+    var uRows = await sbFetch('GET', 'Users', 'id=eq.' + encodeURIComponent(sess.user_id) + '&limit=1');
+    if (uRows && uRows.length > 0) {
+      u = uRows[0];
+      if (!DB_CACHE['Users']) DB_CACHE['Users'] = [];
+      DB_CACHE['Users'].push(u);
+    }
+  }
   if (!u) throw new Error('ไม่พบบัญชีผู้ใช้');
   if (!_yes_(u.is_active)) throw new Error('บัญชีถูกปิดการใช้งาน');
   return u;
