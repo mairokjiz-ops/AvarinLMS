@@ -5128,6 +5128,8 @@ async function api(req) {
     'stock_bill.permissions.get': 5 * 60 * 1000,
     'user.branch_directory': 5 * 60 * 1000,
     'user.list': 3 * 60 * 1000,
+    'schedule.monthly': 2 * 60 * 1000,
+    'dashboard.data': 1 * 60 * 1000,
     'auth.me': 2 * 60 * 1000
   };
 
@@ -5204,15 +5206,16 @@ async function api(req) {
               _CLIENT_CACHE_TIME[cacheKey] = Date.now();
             }
             // Auto invalidate on mutations
-            if (action.indexOf('.create') >= 0 || action.indexOf('.update') >= 0 || action.indexOf('.delete') >= 0 || action.indexOf('.upsert') >= 0 || action.indexOf('.submit') >= 0 || action.indexOf('.approve') >= 0 || action.indexOf('.cancel') >= 0 || action.indexOf('.check') >= 0) {
-              if (action.indexOf('leave.') >= 0) { invalidateClientCache('leave.'); _lastBadgesRefresh = 0; }
-              if (action.indexOf('expense.') >= 0) { invalidateClientCache('expense.'); _lastBadgesRefresh = 0; }
-              if (action.indexOf('user.') >= 0) { invalidateClientCache('user.'); invalidateClientCache('auth.me'); _lastBadgesRefresh = 0; }
+            if (action.indexOf('.create') >= 0 || action.indexOf('.update') >= 0 || action.indexOf('.delete') >= 0 || action.indexOf('.upsert') >= 0 || action.indexOf('.submit') >= 0 || action.indexOf('.approve') >= 0 || action.indexOf('.cancel') >= 0 || action.indexOf('.check') >= 0 || action.indexOf('schedule.') >= 0) {
+              if (action.indexOf('leave.') >= 0) { invalidateClientCache('leave.'); invalidateClientCache('schedule.'); invalidateClientCache('dashboard.'); _lastBadgesRefresh = 0; }
+              if (action.indexOf('schedule.') >= 0) { invalidateClientCache('schedule.'); invalidateClientCache('dashboard.'); }
+              if (action.indexOf('expense.') >= 0) { invalidateClientCache('expense.'); invalidateClientCache('dashboard.'); _lastBadgesRefresh = 0; }
+              if (action.indexOf('user.') >= 0) { invalidateClientCache('user.'); invalidateClientCache('auth.me'); invalidateClientCache('schedule.'); _lastBadgesRefresh = 0; }
               if (action.indexOf('stock_bill.') >= 0) { invalidateClientCache('stock_bill.'); }
               if (action.indexOf('special_commission.') >= 0) { invalidateClientCache('special_commission.'); }
               if (action.indexOf('officer_mapping.') >= 0) { invalidateClientCache('officer_mapping.'); }
-              if (action.indexOf('holiday.') >= 0) { invalidateClientCache('holiday.'); }
-              if (action.indexOf('setting.') >= 0) { invalidateClientCache('setting.'); }
+              if (action.indexOf('holiday.') >= 0) { invalidateClientCache('holiday.'); invalidateClientCache('schedule.'); }
+              if (action.indexOf('setting.') >= 0) { invalidateClientCache('setting.'); invalidateClientCache('schedule.'); }
             }
             return resolve(res.data);
           }
