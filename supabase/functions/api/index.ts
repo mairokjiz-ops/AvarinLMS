@@ -969,7 +969,6 @@ async function Auth_forgotPassword(p) {
 
 async function Auth_bootstrap(token) {
   var settings = Settings_get_public_();
-  var users_count = DB_readAll(SHEETS.USERS).length;
   var bundle = {
     app: {
       name: APP.NAME, short: APP.SHORT, title: APP.TITLE,
@@ -984,7 +983,7 @@ async function Auth_bootstrap(token) {
     status_tones: STATUS_TONE,
     leave_types: cfg_activeLeaveLabels_(),
     holidays: cfg_getHolidaysMap_(),
-    has_users: users_count > 0,
+    has_users: true,
     me: null, caps: []
   };
   if (token) {
@@ -3644,16 +3643,6 @@ async function api(req) {
       var wurl = GLOBAL_SETTINGS.web_url;
       if (!wurl.endsWith('/')) wurl += '/';
       REQUEST_ORIGIN = wurl;
-    }
-
-    if (action === 'app.bootstrap') {
-      var users = DB_readAll('Users');
-      if (users.length === 0) {
-        await Settings_ensureDefaults_();
-        await Seed_ensureUsers_();
-        await Seed_ensureHolidays_();
-        await Seed_ensureSpecialCommissionProducts_();
-      }
     }
 
     if (action === 'app.bootstrap')   return _ok(await Auth_bootstrap(token));
