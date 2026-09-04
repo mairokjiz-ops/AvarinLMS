@@ -1001,7 +1001,7 @@ async function App_badgeCounts(user) {
   var promises = [];
   if (hasCap_(user.role, 'user.manage')) {
     promises.push(
-      sbFetch('GET', 'Users', 'select=id&is_active=in.(no,pending)&limit=100')
+      sbFetch('GET', 'Users', 'select=id&is_active=eq.pending&limit=100')
         .then(function (rows) { counts.pending_users = (rows || []).length; })
         .catch(function () {})
     );

@@ -5218,10 +5218,10 @@ async function api(req) {
             }
             // Auto invalidate on mutations
             if (action.indexOf('.create') >= 0 || action.indexOf('.update') >= 0 || action.indexOf('.delete') >= 0 || action.indexOf('.upsert') >= 0 || action.indexOf('.submit') >= 0 || action.indexOf('.approve') >= 0 || action.indexOf('.cancel') >= 0 || action.indexOf('.check') >= 0 || action.indexOf('schedule.') >= 0) {
-              if (action.indexOf('leave.') >= 0) { invalidateClientCache('leave.'); invalidateClientCache('schedule.'); invalidateClientCache('dashboard.'); _lastBadgesRefresh = 0; }
+              if (action.indexOf('leave.') >= 0) { invalidateClientCache('leave.'); invalidateClientCache('schedule.'); invalidateClientCache('dashboard.'); invalidateClientCache('app.badge_counts'); _lastBadgesRefresh = 0; }
               if (action.indexOf('schedule.') >= 0) { invalidateClientCache('schedule.'); invalidateClientCache('dashboard.'); }
-              if (action.indexOf('expense.') >= 0) { invalidateClientCache('expense.'); invalidateClientCache('dashboard.'); _lastBadgesRefresh = 0; }
-              if (action.indexOf('user.') >= 0) { invalidateClientCache('user.'); invalidateClientCache('auth.me'); invalidateClientCache('schedule.'); _lastBadgesRefresh = 0; }
+              if (action.indexOf('expense.') >= 0) { invalidateClientCache('expense.'); invalidateClientCache('dashboard.'); invalidateClientCache('app.badge_counts'); _lastBadgesRefresh = 0; }
+              if (action.indexOf('user.') >= 0) { invalidateClientCache('user.'); invalidateClientCache('auth.me'); invalidateClientCache('schedule.'); invalidateClientCache('app.badge_counts'); _lastBadgesRefresh = 0; }
               if (action.indexOf('stock_bill.') >= 0) { invalidateClientCache('stock_bill.'); }
               if (action.indexOf('special_commission.') >= 0) { invalidateClientCache('special_commission.'); }
               if (action.indexOf('officer_mapping.') >= 0) { invalidateClientCache('officer_mapping.'); }
@@ -5746,9 +5746,8 @@ async function api(req) {
         ]
       },
       {
-        title: 'ค่าใช้จ่าย & สต็อก',
+        title: 'ค่าใช้จ่าย',
         items: [
-          { hash: '#/stock-bills',      icon: 'receipt-cutoff', label: 'บิลสินค้าเข้า (R2 & LINE)', cap: 'stock_bill.view' },
           { hash: '#/expenses/new',     icon: 'cash-coin',     label: 'เบิกค่าใช้จ่าย',     cap: 'expense.create_own' },
           { hash: '#/expenses/pending', icon: 'check2-square', label: 'ใบเบิกรอดำเนินการ', cap: 'expense.manage', badge: 'expenses_pending' },
           { hash: '#/expenses/all',     icon: 'inbox-fill',     label: 'ใบเบิกทั้งหมด',     cap: 'expense.create_own|expense.manage' }
@@ -10830,7 +10829,11 @@ async function api(req) {
       Spinner.show('กำลังโหลด...');
       call('user.list_pending', {}).then(function (r) {
         Spinner.hide();
-        if (!r.items || r.items.length === 0) {
+        var items = r.items || [];
+        Store._pendingCount = items.length;
+        var nav = $('.sb-nav');
+        if (nav) nav.innerHTML = sidebarNavHtml();
+        if (items.length === 0) {
           $('#pending-list').innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8">'
             + '<i class="bi bi-check-circle-fill" style="font-size:36px;color:#10b981;display:block;margin-bottom:10px"></i>'
             + '<strong>ไม่มีคำขอสมัครสมาชิกที่รอการอนุมัติ</strong>'
