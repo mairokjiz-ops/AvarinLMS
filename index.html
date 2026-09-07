@@ -4989,6 +4989,47 @@ async function api(req) {
     }
     return '<span style="font-weight:600;color:#0f172a;"><i class="bi bi-credit-card-2-front" style="color:#2563eb;margin-right:4px;"></i>' + esc(bankAccountStr) + '</span>';
   }
+
+  const THAI_BANKS = [
+    { code: 'KBANK', name: 'ธนาคารกสิกรไทย', color: '#00a950', bg: '#e6f7ef', icon: 'bi-bank' },
+    { code: 'SCB',   name: 'ธนาคารไทยพาณิชย์', color: '#4e2a84', bg: '#f3eef9', icon: 'bi-bank' },
+    { code: 'BBL',   name: 'ธนาคารกรุงเทพ', color: '#1e4598', bg: '#eef3fc', icon: 'bi-bank' },
+    { code: 'KTB',   name: 'ธนาคารกรุงไทย', color: '#00a3e0', bg: '#e6f6fc', icon: 'bi-bank' },
+    { code: 'TTB',   name: 'ธนาคารทหารไทยธนชาต', color: '#002d62', bg: '#e6eff8', icon: 'bi-bank' },
+    { code: 'BAY',   name: 'ธนาคารกรุงศรีอยุธยา', color: '#d99700', bg: '#fef9e8', icon: 'bi-bank' },
+    { code: 'GSB',   name: 'ธนาคารออมสิน', color: '#eb1985', bg: '#fde8f3', icon: 'bi-bank' },
+    { code: 'UOB',   name: 'ธนาคารยูโอบี', color: '#0b3979', bg: '#e7eef7', icon: 'bi-bank' },
+    { code: 'CIMBT', name: 'ธนาคารซีไอเอ็มบีไทย', color: '#7d0000', bg: '#faeaea', icon: 'bi-bank' },
+    { code: 'LHBANK', name: 'ธนาคารแลนด์ แอนด์ เฮ้าส์', color: '#4b5563', bg: '#f0f1f3', icon: 'bi-bank' },
+    { code: 'BAAC',  name: 'ธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร', color: '#006c35', bg: '#e6f4ec', icon: 'bi-bank' },
+    { code: 'GHB',   name: 'ธนาคารอาคารสงเคราะห์', color: '#e65100', bg: '#fef2e9', icon: 'bi-bank' },
+    { code: 'PROMPTPAY', name: 'พร้อมเพย์', color: '#003d6d', bg: '#e6f0f8', icon: 'bi-qr-code-scan' },
+    { code: 'OTHER', name: 'อื่นๆ', color: '#475569', bg: '#f1f5f9', icon: 'bi-credit-card-2-front' }
+  ];
+
+  function getBankMeta(bankName) {
+    if (!bankName) return { code: 'OTHER', name: 'ธนาคาร', color: '#475569', bg: '#f1f5f9', icon: 'bi-bank' };
+    var clean = String(bankName).trim();
+    for (var i = 0; i < THAI_BANKS.length; i++) {
+      if (THAI_BANKS[i].name === clean || clean.indexOf(THAI_BANKS[i].name) >= 0 || (THAI_BANKS[i].code !== 'OTHER' && clean.toUpperCase().indexOf(THAI_BANKS[i].code) >= 0)) {
+        return THAI_BANKS[i];
+      }
+    }
+    return { code: 'OTHER', name: clean, color: '#475569', bg: '#f1f5f9', icon: 'bi-bank' };
+  }
+
+  function parseUserBankAccounts(raw) {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    var str = String(raw).trim();
+    if (!str) return [];
+    try {
+      var parsed = JSON.parse(str);
+      if (Array.isArray(parsed)) return parsed;
+      if (typeof parsed === 'object' && parsed !== null) return [parsed];
+    } catch(e) {}
+    return [];
+  }
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
   function dataURLtoBlob(dataurl) {
     try {
@@ -6581,6 +6622,9 @@ async function api(req) {
     hasCap: hasCap, call: call,
     formatBankAccount: formatBankAccount,
     formatBankAccountHtml: formatBankAccountHtml,
+    THAI_BANKS: THAI_BANKS,
+    getBankMeta: getBankMeta,
+    parseUserBankAccounts: parseUserBankAccounts,
     toast: toast, alertSuccess: alertSuccess, alertError: alertError, alertInfo: alertInfo, confirmModal: confirmModal,
     Spinner: Spinner, Modal: Modal,
     dispatch: dispatch, renderLogin: renderLogin, renderShell: renderShell, refreshShell: refreshShell,
@@ -6599,6 +6643,7 @@ async function api(req) {
   var Routes = LMS.Routes;
   var alertSuccess = LMS.alertSuccess, alertError = LMS.alertError, confirmModal = LMS.confirmModal;
   var formatBankAccount = LMS.formatBankAccount, formatBankAccountHtml = LMS.formatBankAccountHtml;
+  var THAI_BANKS = LMS.THAI_BANKS, getBankMeta = LMS.getBankMeta, parseUserBankAccounts = LMS.parseUserBankAccounts;
   function page() { return $('#page'); }
   function setPage(html) { var p = page(); if (p) p.innerHTML = html; }
   function skBlocks(n, h) {
@@ -8463,6 +8508,22 @@ async function api(req) {
       + '<button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> บันทึก</button>'
       + '</div>'
       + '</form></div></div>'
+      + '<div class="card" style="margin-top:14px" id="pf-bank-card">'
+      + '<div class="card-head" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
+      + '  <div style="display:flex;align-items:center;gap:8px;">'
+      + '    <i class="bi bi-bank2" style="color:#2563eb;font-size:18px;"></i>'
+      + '    <span class="card-title">บัญชีธนาคารสำหรับเบิกค่าใช้จ่าย</span>'
+      + '  </div>'
+      + '  <button type="button" class="btn btn-primary" id="btn-pf-add-bank" style="padding:6px 14px;font-size:13px;display:inline-flex;align-items:center;gap:6px;">'
+      + '    <i class="bi bi-plus-circle-fill"></i> เพิ่มบัญชีธนาคาร'
+      + '  </button>'
+      + '</div>'
+      + '<div class="card-body" style="padding:16px 20px;">'
+      + '  <div style="font-size:13px;color:#64748b;margin-bottom:14px;">'
+      + '    บันทึกบัญชีธนาคารไว้ เพื่อให้ระบบเลือกบัญชีรับเงินให้อัตโนมัติเมื่อทำการยื่นใบเบิกค่าใช้จ่าย'
+      + '  </div>'
+      + '  <div id="pf-bank-list-wrap"></div>'
+      + '</div></div>'
       + '<div class="card" style="margin-top:14px">'
       + '<div class="card-head"><i class="bi bi-key-fill"></i> <span class="card-title">เปลี่ยนรหัสผ่าน</span></div>'
       + '<div class="card-body"><form id="pf-cp-form">'
@@ -8650,7 +8711,202 @@ async function api(req) {
       });
     }
 
-    loadLINEStatus();
+    // ── Profile Bank Accounts Management ──
+    function renderProfileBankAccounts() {
+      var wrap = $('#pf-bank-list-wrap');
+      if (!wrap) return;
+      var curUser = LMS.Store.user || {};
+      var accounts = parseUserBankAccounts(curUser.bank_accounts);
+      if (!accounts || accounts.length === 0) {
+        wrap.innerHTML = '<div style="text-align:center;padding:26px 16px;background:#f8fafc;border-radius:12px;border:1.5px dashed #cbd5e1;">'
+          + '<i class="bi bi-credit-card-2-front" style="font-size:32px;color:#94a3b8;display:block;margin-bottom:8px;"></i>'
+          + '<div style="font-weight:700;color:#334155;font-size:14.5px;">ยังไม่มีบัญชีธนาคารที่บันทึกไว้</div>'
+          + '<div style="font-size:12.5px;color:#64748b;margin-top:4px;max-width:440px;margin-left:auto;margin-right:auto;">เพิ่มบัญชีธนาคารของคุณไว้ที่นี่ เพื่อให้ระบบเลือกบัญชีรับเงินให้อัตโนมัติเมื่อยื่นใบเบิกค่าใช้จ่าย</div>'
+          + '<button type="button" class="btn btn-primary" id="btn-pf-add-bank-empty" style="margin-top:12px;padding:7px 16px;font-size:13px;"><i class="bi bi-plus-lg"></i> เพิ่มบัญชีแรก</button>'
+          + '</div>';
+        var emptyBtn = $('#btn-pf-add-bank-empty');
+        if (emptyBtn) emptyBtn.onclick = function () { openBankModal(); };
+        return;
+      }
+
+      var itemsHtml = '<div style="display:flex;flex-direction:column;gap:10px;">';
+      accounts.forEach(function (acc, idx) {
+        var meta = getBankMeta(acc.bank);
+        itemsHtml += '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.03);flex-wrap:wrap;gap:12px;' + (acc.is_default ? 'border-left:4px solid #2563eb;' : '') + '">'
+          + '  <div style="display:flex;align-items:center;gap:14px;min-width:240px;">'
+          + '    <div style="width:42px;height:42px;border-radius:10px;background:' + meta.bg + ';color:' + meta.color + ';display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">'
+          + '      <i class="bi ' + meta.icon + '"></i>'
+          + '    </div>'
+          + '    <div>'
+          + '      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+          + '        <span style="font-weight:700;color:#0f172a;font-size:14.5px;">' + esc(acc.bank || 'ธนาคาร') + '</span>'
+          + (acc.is_default ? '        <span style="background:#dbeafe;color:#1d4ed8;font-size:11px;padding:2px 8px;border-radius:6px;font-weight:700;"><i class="bi bi-star-fill" style="color:#2563eb;margin-right:2px;"></i> บัญชีหลัก</span>' : '')
+          + '      </div>'
+          + '      <div style="font-size:13.5px;color:#334155;margin-top:2px;">เลขบัญชี: <span style="font-family:monospace,sans-serif;font-weight:700;letter-spacing:.02em;color:#0f172a;">' + esc(acc.number || '-') + '</span></div>'
+          + '      <div style="font-size:12px;color:#64748b;margin-top:2px;">ชื่อบัญชี: <span style="font-weight:600;color:#475569;">' + esc(acc.name || '-') + '</span>' + (acc.label ? ' · <span style="color:#64748b;">(' + esc(acc.label) + ')</span>' : '') + '</div>'
+          + '    </div>'
+          + '  </div>'
+          + '  <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">'
+          + (!acc.is_default ? '    <button type="button" class="btn btn-ghost" data-bank-act="set-default" data-bank-idx="' + idx + '" style="font-size:12px;padding:5px 10px;border:1px solid #cbd5e1;border-radius:6px;color:#475569;" title="ตั้งเป็นบัญชีหลัก"><i class="bi bi-star"></i> ตั้งเป็นหลัก</button>' : '')
+          + '    <button type="button" class="btn btn-ghost" data-bank-act="edit" data-bank-idx="' + idx + '" style="font-size:12px;padding:5px 10px;border:1px solid #cbd5e1;border-radius:6px;color:#2563eb;" title="แก้ไข"><i class="bi bi-pencil"></i> แก้ไข</button>'
+          + '    <button type="button" class="btn btn-ghost" data-bank-act="delete" data-bank-idx="' + idx + '" style="font-size:12px;padding:5px 10px;border:1px solid #fecaca;border-radius:6px;color:#ef4444;" title="ลบ"><i class="bi bi-trash"></i></button>'
+          + '  </div>'
+          + '</div>';
+      });
+      itemsHtml += '</div>';
+      wrap.innerHTML = itemsHtml;
+
+      wrap.querySelectorAll('[data-bank-act="set-default"]').forEach(function (btn) {
+        btn.onclick = function () {
+          var idx = parseInt(btn.getAttribute('data-bank-idx'), 10);
+          saveDefaultAccount(idx);
+        };
+      });
+      wrap.querySelectorAll('[data-bank-act="edit"]').forEach(function (btn) {
+        btn.onclick = function () {
+          var idx = parseInt(btn.getAttribute('data-bank-idx'), 10);
+          openBankModal(idx);
+        };
+      });
+      wrap.querySelectorAll('[data-bank-act="delete"]').forEach(function (btn) {
+        btn.onclick = function () {
+          var idx = parseInt(btn.getAttribute('data-bank-idx'), 10);
+          deleteAccount(idx);
+        };
+      });
+    }
+
+    function persistUserBankAccounts(accounts) {
+      Spinner.show('กำลังบันทึกบัญชี...');
+      var payloadStr = JSON.stringify(accounts);
+      call('user.update_profile', { bank_accounts: payloadStr }).then(function (updatedUser) {
+        Spinner.hide();
+        LMS.Store.user = updatedUser;
+        toast('บันทึกข้อมูลเรียบร้อย', 'success');
+        renderProfileBankAccounts();
+      }).catch(function (err) {
+        Spinner.hide();
+        alertError('ผิดพลาด', err.message);
+      });
+    }
+
+    function saveDefaultAccount(idx) {
+      var curUser = LMS.Store.user || {};
+      var accounts = parseUserBankAccounts(curUser.bank_accounts);
+      if (!accounts[idx]) return;
+      accounts.forEach(function (a, i) {
+        a.is_default = (i === idx);
+      });
+      persistUserBankAccounts(accounts);
+    }
+
+    function deleteAccount(idx) {
+      var curUser = LMS.Store.user || {};
+      var accounts = parseUserBankAccounts(curUser.bank_accounts);
+      if (!accounts[idx]) return;
+      var target = accounts[idx];
+      confirmModal('ลบบัญชีธนาคาร', 'คุณต้องการลบบัญชี ' + (target.bank || '') + ' ' + (target.number || '') + ' หรือไม่?', 'danger', 'ลบบัญชี').then(function (ok) {
+        if (!ok) return;
+        var wasDefault = accounts[idx].is_default;
+        accounts.splice(idx, 1);
+        if (wasDefault && accounts.length > 0) {
+          accounts[0].is_default = true;
+        }
+        persistUserBankAccounts(accounts);
+      });
+    }
+
+    function openBankModal(editIdx) {
+      var curUser = LMS.Store.user || {};
+      var accounts = parseUserBankAccounts(curUser.bank_accounts);
+      var isEdit = typeof editIdx === 'number' && accounts[editIdx];
+      var target = isEdit ? accounts[editIdx] : { bank: '', number: '', name: curUser.full_name || '', is_default: accounts.length === 0 };
+
+      var bankSelectOpts = '<option value="">-- เลือกธนาคาร --</option>' + THAI_BANKS.map(function(b) {
+        return '<option value="' + esc(b.name) + '"' + (target.bank === b.name ? ' selected' : '') + '>' + esc(b.name) + (b.code && b.code !== 'OTHER' ? ' (' + b.code + ')' : '') + '</option>';
+      }).join('');
+
+      var modalHtml = '<div style="text-align:left;display:flex;flex-direction:column;gap:14px;">'
+        + '  <div>'
+        + '    <label style="display:block;font-size:12.5px;font-weight:700;color:#334155;margin-bottom:5px;">ธนาคาร <span style="color:#ef4444;">*</span></label>'
+        + '    <select id="swal-bank-name" class="input" style="width:100%;height:42px;">' + bankSelectOpts + '</select>'
+        + '  </div>'
+        + '  <div>'
+        + '    <label style="display:block;font-size:12.5px;font-weight:700;color:#334155;margin-bottom:5px;">เลขที่บัญชี / เบอร์พร้อมเพย์ <span style="color:#ef4444;">*</span></label>'
+        + '    <input id="swal-bank-number" class="input" style="width:100%;" placeholder="เช่น 123-4-56789-0 หรือ เบอร์โทรศัพท์" value="' + esc(target.number || '') + '">'
+        + '  </div>'
+        + '  <div>'
+        + '    <label style="display:block;font-size:12.5px;font-weight:700;color:#334155;margin-bottom:5px;">ชื่อบัญชี <span style="color:#ef4444;">*</span></label>'
+        + '    <input id="swal-bank-holder" class="input" style="width:100%;" placeholder="เช่น นายสมชาย ใจดี" value="' + esc(target.name || curUser.full_name || '') + '">'
+        + '  </div>'
+        + '  <div>'
+        + '    <label style="display:block;font-size:12.5px;font-weight:700;color:#334155;margin-bottom:5px;">บันทึกช่วยจำ (ไม่บังคับ)</label>'
+        + '    <input id="swal-bank-label" class="input" style="width:100%;" placeholder="เช่น บัญชีเงินเดือน, บัญชีกสิกรส่วนตัว" value="' + esc(target.label || '') + '">'
+        + '  </div>'
+        + '  <div style="margin-top:4px;">'
+        + '    <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#1e293b;cursor:pointer;">'
+        + '      <input type="checkbox" id="swal-bank-default" ' + (target.is_default || accounts.length === 0 ? 'checked' : '') + ' style="width:17px;height:17px;cursor:pointer;accent-color:#2563eb;">'
+        + '      <span>ตั้งเป็นบัญชีหลัก (ระบบจะเลือกบัญชีนี้ให้อัตโนมัติเมื่อเบิกค่าใช้จ่าย)</span>'
+        + '    </label>'
+        + '  </div>'
+        + '</div>';
+
+      Swal.fire({
+        title: isEdit ? 'แก้ไขบัญชีธนาคาร' : 'เพิ่มบัญชีธนาคาร',
+        html: modalHtml,
+        width: '500px',
+        showCancelButton: true,
+        confirmButtonText: 'บันทึก',
+        cancelButtonText: 'ยกเลิก',
+        focusConfirm: false,
+        preConfirm: function () {
+          var bName = (document.getElementById('swal-bank-name').value || '').trim();
+          var bNum = (document.getElementById('swal-bank-number').value || '').trim();
+          var bHolder = (document.getElementById('swal-bank-holder').value || '').trim();
+          var bLabel = (document.getElementById('swal-bank-label').value || '').trim();
+          var bDef = document.getElementById('swal-bank-default').checked;
+
+          if (!bName) {
+            Swal.showValidationMessage('กรุณาเลือกหรือระบุธนาคาร');
+            return false;
+          }
+          if (!bNum) {
+            Swal.showValidationMessage('กรุณาระบุเลขที่บัญชี');
+            return false;
+          }
+          if (!bHolder) {
+            Swal.showValidationMessage('กรุณาระบุชื่อบัญชี');
+            return false;
+          }
+          return {
+            bank: bName,
+            number: bNum,
+            name: bHolder,
+            label: bLabel,
+            is_default: bDef
+          };
+        }
+      }).then(function (result) {
+        if (!result.isConfirmed || !result.value) return;
+        var data = result.value;
+        if (data.is_default) {
+          accounts.forEach(function (a) { a.is_default = false; });
+        }
+        if (isEdit) {
+          accounts[editIdx] = Object.assign({}, accounts[editIdx], data);
+        } else {
+          if (accounts.length === 0) data.is_default = true;
+          accounts.push(data);
+        }
+        persistUserBankAccounts(accounts);
+      });
+    }
+
+    var addBankBtn = $('#btn-pf-add-bank');
+    if (addBankBtn) {
+      addBankBtn.onclick = function () { openBankModal(); };
+    }
+    renderProfileBankAccounts();
 
     $('#pf-form').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -8658,11 +8914,15 @@ async function api(req) {
       var data = {};
       ['full_name','position','level','department','branch','email','phone'].forEach(function (k) { data[k] = f[k].value; });
       data.avatar = chosenAvatarBase64;
+      if (LMS.Store.user && LMS.Store.user.bank_accounts) {
+        data.bank_accounts = LMS.Store.user.bank_accounts;
+      }
       Spinner.show('กำลังบันทึก...');
       call('user.update_profile', data).then(function (u) {
         Spinner.hide();
         LMS.Store.user = u;
         toast('บันทึกแล้ว', 'success');
+        renderProfileBankAccounts();
 
         // Update sidebar and navbar avatars dynamically
         var newInitial = (u.full_name || u.username || '?').substring(0, 1).toUpperCase();
@@ -11896,6 +12156,15 @@ async function api(req) {
             '</button>' +
           '</div>' +
           '<div id="fe-bank-input-wrap" style="display:' + (preset.bank_account ? 'block' : 'none') + ';margin-top:14px;border-top:1px solid #f1f5f9;padding-top:14px;">' +
+            '<div id="fe-bank-preset-picker-wrap" style="margin-bottom:14px;background:#f8fafc;padding:12px 14px;border-radius:10px;border:1px solid #e2e8f0;">' +
+              '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
+                '<label class="ef-label" style="margin:0;"><i class="bi bi-wallet2" style="color:#2563eb;margin-right:4px;"></i> เลือกจากบัญชีที่ตั้งไว้ในโปรไฟล์</label>' +
+                '<a href="#/profile" target="_blank" style="font-size:11.5px;color:#2563eb;text-decoration:none;font-weight:600;"><i class="bi bi-gear"></i> จัดการบัญชีในโปรไฟล์</a>' +
+              '</div>' +
+              '<select id="fe-bank-saved-select" class="ef-input" style="height:40px;background:#fff;font-weight:500;">' +
+                '<option value="">-- เลือกบัญชีที่ตั้งไว้ --</option>' +
+              '</select>' +
+            '</div>' +
             '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;">' +
               '<div class="ef-field">' +
                 '<label class="ef-label">ธนาคาร <span class="ef-req">*</span></label>' +
@@ -11913,12 +12182,13 @@ async function api(req) {
                   '<option value="ธนาคารแลนด์ แอนด์ เฮ้าส์">ธนาคารแลนด์ แอนด์ เฮ้าส์ (LH Bank)</option>' +
                   '<option value="ธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร">ธ.ก.ส. (BAAC)</option>' +
                   '<option value="ธนาคารอาคารสงเคราะห์">ธอส. (GHB)</option>' +
+                  '<option value="พร้อมเพย์">พร้อมเพย์ (PromptPay)</option>' +
                   '<option value="อื่นๆ">อื่นๆ</option>' +
                 '</select>' +
               '</div>' +
               '<div class="ef-field">' +
-                '<label class="ef-label">เลขที่บัญชี <span class="ef-req">*</span></label>' +
-                '<input id="fe-bank-number" class="ef-input" placeholder="เช่น 123-4-56789-0" value="">' +
+                '<label class="ef-label">เลขที่บัญชี / เบอร์พร้อมเพย์ <span class="ef-req">*</span></label>' +
+                '<input id="fe-bank-number" class="ef-input" placeholder="เช่น 123-4-56789-0 หรือ เบอร์โทรศัพท์" value="">' +
               '</div>' +
               '<div class="ef-field">' +
                 '<label class="ef-label">ชื่อบัญชี <span class="ef-req">*</span></label>' +
@@ -12265,7 +12535,47 @@ async function api(req) {
       var bankNameInput = document.getElementById('fe-bank-name');
       var bankNumberInput = document.getElementById('fe-bank-number');
       var bankHolderInput = document.getElementById('fe-bank-holder');
+      var savedSelect = document.getElementById('fe-bank-saved-select');
+      var pickerWrap = document.getElementById('fe-bank-preset-picker-wrap');
       if (!bankToggle || !bankInputWrap || !bankNameInput || !bankNumberInput || !bankHolderInput) return;
+
+      var curUser = (LMS && LMS.Store && LMS.Store.user) || {};
+      var savedAccounts = parseUserBankAccounts(curUser.bank_accounts);
+
+      function ensureOption(selectEl, val) {
+        if (!val) return;
+        var found = false;
+        for (var i = 0; i < selectEl.options.length; i++) {
+          if (selectEl.options[i].value === val) { found = true; break; }
+        }
+        if (!found) {
+          var opt = document.createElement('option');
+          opt.value = val;
+          opt.textContent = val;
+          selectEl.appendChild(opt);
+        }
+      }
+
+      if (savedSelect && pickerWrap) {
+        if (savedAccounts.length > 0) {
+          var opts = '<option value="">-- เลือกบัญชีธนาคารที่ตั้งไว้ --</option>';
+          savedAccounts.forEach(function (acc, idx) {
+            opts += '<option value="' + idx + '">' +
+              esc(acc.bank) + ' · ' + esc(acc.number) + ' (' + esc(acc.name) + ')' +
+              (acc.is_default ? ' ★ บัญชีหลัก' : '') +
+            '</option>';
+          });
+          opts += '<option value="__custom__">✏️ กรอกบัญชีอื่น / กำหนดเอง...</option>';
+          savedSelect.innerHTML = opts;
+          pickerWrap.style.display = 'block';
+        } else {
+          pickerWrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#64748b;">'
+            + '<span><i class="bi bi-info-circle"></i> ยังไม่มีบัญชีที่ตั้งไว้ในโปรไฟล์</span>'
+            + '<a href="#/profile" target="_blank" style="color:#2563eb;font-weight:600;text-decoration:none;"><i class="bi bi-plus-circle"></i> ไปตั้งค่าบัญชีในโปรไฟล์</a>'
+            + '</div>';
+          pickerWrap.style.display = 'block';
+        }
+      }
 
       if (bankAccount) {
         bankToggle.textContent = 'ลบเลขบัญชี';
@@ -12290,17 +12600,80 @@ async function api(req) {
           bankVal = bankAccountStr;
         }
 
+        ensureOption(bankNameInput, bankVal);
         bankNameInput.value = bankVal;
         bankNumberInput.value = numVal;
         bankHolderInput.value = nameVal;
+
+        if (savedSelect && savedAccounts.length > 0) {
+          var matchIdx = -1;
+          for (var i = 0; i < savedAccounts.length; i++) {
+            var s = savedAccounts[i];
+            if (s.number && s.number.replace(/\D/g, '') === String(numVal).replace(/\D/g, '')) {
+              matchIdx = i;
+              break;
+            }
+          }
+          if (matchIdx >= 0) {
+            savedSelect.value = String(matchIdx);
+          } else {
+            savedSelect.value = '__custom__';
+          }
+        }
       } else {
-        bankToggle.textContent = 'เพิ่มเลขบัญชี';
-        bankToggle.style.borderColor = '#cbd5e1';
-        bankToggle.style.color = '#475569';
-        bankInputWrap.style.display = 'none';
-        bankNameInput.value = '';
-        bankNumberInput.value = '';
-        bankHolderInput.value = '';
+        var defaultIdx = -1;
+        if (savedAccounts.length > 0) {
+          defaultIdx = savedAccounts.findIndex(function (a) { return a.is_default; });
+          if (defaultIdx < 0) defaultIdx = 0;
+        }
+
+        if (defaultIdx >= 0) {
+          var defAcc = savedAccounts[defaultIdx];
+          bankToggle.textContent = 'ลบเลขบัญชี';
+          bankToggle.style.borderColor = '#fca5a5';
+          bankToggle.style.color = '#ef4444';
+          bankInputWrap.style.display = 'block';
+
+          ensureOption(bankNameInput, defAcc.bank);
+          bankNameInput.value = defAcc.bank || '';
+          bankNumberInput.value = defAcc.number || '';
+          bankHolderInput.value = defAcc.name || '';
+          if (savedSelect) savedSelect.value = String(defaultIdx);
+        } else {
+          bankToggle.textContent = 'เพิ่มเลขบัญชี';
+          bankToggle.style.borderColor = '#cbd5e1';
+          bankToggle.style.color = '#475569';
+          bankInputWrap.style.display = 'none';
+          bankNameInput.value = '';
+          bankNumberInput.value = '';
+          bankHolderInput.value = '';
+          if (savedSelect) savedSelect.value = '';
+        }
+      }
+
+      if (savedSelect) {
+        savedSelect.addEventListener('change', function () {
+          var val = savedSelect.value;
+          if (val === '__custom__') {
+            bankNameInput.value = '';
+            bankNumberInput.value = '';
+            bankHolderInput.value = (curUser.full_name || '');
+            bankNameInput.focus();
+          } else if (val === '') {
+            bankNameInput.value = '';
+            bankNumberInput.value = '';
+            bankHolderInput.value = '';
+          } else {
+            var idx = parseInt(val, 10);
+            var acc = savedAccounts[idx];
+            if (acc) {
+              ensureOption(bankNameInput, acc.bank);
+              bankNameInput.value = acc.bank || '';
+              bankNumberInput.value = acc.number || '';
+              bankHolderInput.value = acc.name || '';
+            }
+          }
+        });
       }
 
       bankToggle.addEventListener('click', function() {
@@ -12309,12 +12682,24 @@ async function api(req) {
           bankToggle.textContent = 'ลบเลขบัญชี';
           bankToggle.style.borderColor = '#fca5a5';
           bankToggle.style.color = '#ef4444';
-          bankNameInput.focus();
+          if (savedAccounts.length > 0 && !bankNumberInput.value) {
+            var defIdx = savedAccounts.findIndex(function (a) { return a.is_default; });
+            if (defIdx < 0) defIdx = 0;
+            var acc = savedAccounts[defIdx];
+            ensureOption(bankNameInput, acc.bank);
+            bankNameInput.value = acc.bank || '';
+            bankNumberInput.value = acc.number || '';
+            bankHolderInput.value = acc.name || '';
+            if (savedSelect) savedSelect.value = String(defIdx);
+          } else {
+            bankNameInput.focus();
+          }
         } else {
           bankInputWrap.style.display = 'none';
           bankNameInput.value = '';
           bankNumberInput.value = '';
           bankHolderInput.value = '';
+          if (savedSelect) savedSelect.value = '';
           bankToggle.textContent = 'เพิ่มเลขบัญชี';
           bankToggle.style.borderColor = '#cbd5e1';
           bankToggle.style.color = '#475569';

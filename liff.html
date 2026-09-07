@@ -288,6 +288,16 @@
     const distanceTone = (m, radius) => { const r = radius || CONFIG.COMPANY_RADIUS_M; return !Number.isFinite(m) ? '' : (m <= r ? 'distance-ok' : m <= r * 2 ? 'distance-warn' : 'distance-bad'); };
     const getSelectedBranch = () => CONFIG.BRANCHES.find(b => b.id === Store.selectedBranchId) || CONFIG.BRANCHES[0];
     const timeOnly = (v) => v ? new Date(v).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '-';
+    const parseUserBankAccounts = (raw) => {
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw;
+      try {
+        const p = JSON.parse(String(raw).trim());
+        if (Array.isArray(p)) return p;
+        if (typeof p === 'object' && p !== null) return [p];
+      } catch (e) {}
+      return [];
+    };
 
     const _LIFF_CACHE = {};
     const _LIFF_CACHE_TIME = {};
@@ -511,6 +521,7 @@
     async function expenses() {
       const list = await api('expense.list', { per_page: 20 }).catch(() => ({ items: [] }));
       Store.expenseReceipts = [];
+      const savedAccounts = parseUserBankAccounts(Store.user?.bank_accounts);
       $('#view').innerHTML = `
         <div class="panel">
           <div class="section-title">เบิกค่าใช้จ่าย</div>
@@ -521,6 +532,14 @@
             </div>
             <div class="field"><label>ประเภท</label><select name="expense_type"><option>ค่าเดินทาง</option><option>ค่าอาหาร</option><option>ค่าที่พัก</option><option>ค่าวัสดุ/อุปกรณ์</option><option>อื่นๆ</option></select></div>
             <div class="field"><label>รายละเอียด</label><textarea name="description" required placeholder="ระบุรายละเอียดค่าใช้จ่าย"></textarea></div>
+            <div class="field">
+              <label>บัญชีธนาคารรับเงิน (ตัวเลือก)</label>
+              <select name="bank_account_choice" id="liffBankChoice">
+                ${savedAccounts.length
+                  ? savedAccounts.map((a, i) => `<option value="${i}" ${a.is_default ? 'selected' : ''}>${esc(a.bank)} · ${esc(a.number)} (${esc(a.name)})${a.is_default ? ' ★ บัญชีหลัก' : ''}</option>`).join('') + '<option value="__none__">ไม่ระบุบัญชี</option>'
+                  : '<option value="__none__">ไม่มีบัญชีที่บันทึกไว้ในโปรไฟล์</option>'}
+              </select>
+            </div>
             <div class="field">
               <label>แนบไฟล์ใบเสร็จ (ถ้ามี)</label>
               <label class="file-drop" id="receiptDrop">
@@ -753,6 +772,14 @@
         const form = new FormData(e.currentTarget);
         const payload = Object.fromEntries(form.entries());
         delete payload.receipt_file;
+        if (payload.bank_account_choice && payload.bank_account_choice !== '__none__') {
+          const savedAccounts = parseUserBankAccounts(Store.user?.bank_accounts);
+          const chosen = savedAccounts[Number(payload.bank_account_choice)];
+          if (chosen) {
+            payload.bank_account = JSON.stringify({ bank: chosen.bank, number: chosen.number, name: chosen.name });
+          }
+        }
+        delete payload.bank_account_choice;
         payload.receipt_url = (Store.expenseReceipts && Store.expenseReceipts.length)
           ? JSON.stringify(Store.expenseReceipts)
           : '';
@@ -836,6 +863,10 @@
 
     async function profile() {
       const u = Store.user || {};
+      const savedAccounts = parseUserBankAccounts(u.bank_accounts);
+      const bankDisplay = savedAccounts.length
+        ? savedAccounts.map(a => `${esc(a.bank)}: ${esc(a.number)} (${esc(a.name)})${a.is_default ? ' [หลัก]' : ''}`).join('<br>')
+        : '-';
       $('#view').innerHTML = `
         <div class="panel">
           <div class="section-title">ข้อมูลผู้ใช้</div>
@@ -847,6 +878,7 @@
             ${profileRow('สิทธิ์', u.role)}
             ${profileRow('อีเมล', u.email)}
             ${profileRow('โทร', u.phone)}
+            ${profileRow('บัญชีธนาคาร', bankDisplay)}
             ${profileRow('LINE', Store.liffProfile?.displayName || '-')}
           </div>
         </div>
