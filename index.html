@@ -8778,8 +8778,12 @@ async function api(req) {
 
     function persistUserBankAccounts(accounts) {
       Spinner.show('กำลังบันทึกบัญชี...');
+      var curUser = LMS.Store.user || {};
       var payloadStr = JSON.stringify(accounts);
-      call('user.update_profile', { bank_accounts: payloadStr }).then(function (updatedUser) {
+      call('user.update_profile', {
+        full_name: (curUser.full_name || '').trim(),
+        bank_accounts: payloadStr
+      }).then(function (updatedUser) {
         Spinner.hide();
         LMS.Store.user = updatedUser;
         toast('บันทึกข้อมูลเรียบร้อย', 'success');

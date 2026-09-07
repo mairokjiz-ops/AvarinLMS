@@ -1516,20 +1516,19 @@ async function Users_resetPassword(user, p) {
 async function Users_updateProfile(user, p) {
   Auth_requireCap(user, 'leave.create_own');
   var data = p || {};
-  var patch = {
-    full_name: String(data.full_name || '').trim(),
-    position: String(data.position || '').trim(),
-    level: String(data.level || '').trim(),
-    department: String(data.department || '').trim(),
-    email: String(data.email || '').trim(),
-    phone: String(data.phone || '').trim(),
-    avatar: String(data.avatar || '').trim(),
-    branch: String(data.branch || '').trim()
-  };
+  var patch = {};
+  ['full_name', 'position', 'level', 'department', 'email', 'phone', 'avatar', 'branch'].forEach(function (k) {
+    if (typeof data[k] !== 'undefined') {
+      patch[k] = String(data[k] || '').trim();
+    }
+  });
+  if (typeof patch.full_name !== 'undefined' && !patch.full_name) {
+    throw new Error('กรุณากรอกชื่อ-สกุล');
+  }
   if (typeof data.bank_accounts !== 'undefined') {
     patch.bank_accounts = typeof data.bank_accounts === 'string' ? data.bank_accounts : JSON.stringify(data.bank_accounts);
   }
-  if (!patch.full_name) throw new Error('กรุณากรอกชื่อ-สกุล');
+  if (Object.keys(patch).length === 0) return Auth_publicUser_(user);
   var updated = await DB_update(SHEETS.USERS, user.id, patch);
   await Audit_log_(user, 'user.update_profile', 'user', user.id, {});
   return Auth_publicUser_(updated);
