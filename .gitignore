@@ -1,0 +1,3 @@
+﻿*.sql
+storage_backup/
+import_to_target_supabase.py

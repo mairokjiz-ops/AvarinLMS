@@ -503,8 +503,8 @@ function cfg_leaveDuration_(data) {
 
 
 // === SUPABASE DB LAYER (MEMORY-CACHED SYNCHRONOUS READS) ===
-var SUPABASE_URL = 'https://djcvqxjwakiorahdiwwk.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqY3ZxeGp3YWtpb3JhaGRpd3drIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NDk4MjUsImV4cCI6MjA5NzQyNTgyNX0.efr2QuUfbk8WNK8I9A-ga4OKzJal7w_dNKoICXX1nPQ';
+var SUPABASE_URL = 'https://sxtstlhjdqsgcjqxagou.supabase.co';
+var SUPABASE_KEY = 'sb_publishable_5VjDs9qWJHpShciVttpNDQ_hbZOm5Ov';
 
 var DB_CACHE = {};
 
