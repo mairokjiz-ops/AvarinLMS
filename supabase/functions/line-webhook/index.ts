@@ -633,6 +633,8 @@ function DB_buildIndex(table) {
 }
 
 // Asynchronous Writes!
+var NUMERIC_COLS = ['days', 'hours', 'last_leave_days', 'amount', 'approved_amount', 'requested_amount', 'total_amount', 'vat_amount', 'net_amount', 'fiscal_year'];
+
 async function DB_insert(table, data) {
   var schema = SCHEMAS[table] || [];
   if (schema.indexOf('id') >= 0 && !data.id) {
@@ -643,6 +645,11 @@ async function DB_insert(table, data) {
   }
   if (schema.indexOf('updated_at') >= 0 && !data.updated_at) {
     data.updated_at = new Date().toISOString();
+  }
+  if (data) {
+    NUMERIC_COLS.forEach(function(col) {
+      if (data[col] === '') data[col] = null;
+    });
   }
   
   // Call Supabase API
@@ -660,6 +667,11 @@ async function DB_update(table, id, patch) {
   var schema = SCHEMAS[table] || [];
   if (schema.indexOf('updated_at') >= 0) {
     patch.updated_at = new Date().toISOString();
+  }
+  if (patch) {
+    NUMERIC_COLS.forEach(function(col) {
+      if (patch[col] === '') patch[col] = null;
+    });
   }
   var idCol = _dbIdCol_(table);
   
@@ -1566,10 +1578,10 @@ async function Leaves_create(user, p) {
     hours: duration.hours,
     contact_address: String(data.contact_address || '').trim(),
     contact_phone: String(data.contact_phone || user.phone || '').trim(),
-    last_leave_type: last ? last.leave_type : '',
-    last_leave_start: last ? last.start_date : '',
-    last_leave_end: last ? last.end_date : '',
-    last_leave_days: last ? Number(last.days || 0) : '',
+    last_leave_type: last ? last.leave_type : null,
+    last_leave_start: last ? last.start_date : null,
+    last_leave_end: last ? last.end_date : null,
+    last_leave_days: (last && last.days != null && last.days !== '') ? Number(last.days) : null,
     status: status,
     written_at: writtenAt,
     written_place: String(data.written_place || '').trim(),

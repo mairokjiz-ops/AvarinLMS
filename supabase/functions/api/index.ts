@@ -668,6 +668,8 @@ function DB_buildIndex(table) {
   return idx;
 }
 
+var NUMERIC_COLS = ['days', 'hours', 'last_leave_days', 'amount', 'approved_amount', 'requested_amount', 'total_amount', 'vat_amount', 'net_amount', 'fiscal_year'];
+
 async function DB_insert(table, data) {
   var schema = SCHEMAS[table] || [];
   if (schema.indexOf('id') >= 0 && !data.id) {
@@ -678,6 +680,11 @@ async function DB_insert(table, data) {
   }
   if (schema.indexOf('updated_at') >= 0 && !data.updated_at) {
     data.updated_at = new Date().toISOString();
+  }
+  if (data) {
+    NUMERIC_COLS.forEach(function(col) {
+      if (data[col] === '') data[col] = null;
+    });
   }
   
   var rows = await sbFetch('POST', table, '', data);
@@ -694,6 +701,11 @@ async function DB_update(table, id, patch) {
   var schema = SCHEMAS[table] || [];
   if (schema.indexOf('updated_at') >= 0) {
     patch.updated_at = new Date().toISOString();
+  }
+  if (patch) {
+    NUMERIC_COLS.forEach(function(col) {
+      if (patch[col] === '') patch[col] = null;
+    });
   }
   var idCol = _dbIdCol_(table);
   
