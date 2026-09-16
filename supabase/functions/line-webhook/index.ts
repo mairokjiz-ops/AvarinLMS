@@ -633,7 +633,13 @@ function DB_buildIndex(table) {
 }
 
 // Asynchronous Writes!
-var NUMERIC_COLS = ['days', 'hours', 'last_leave_days', 'amount', 'approved_amount', 'requested_amount', 'total_amount', 'vat_amount', 'net_amount', 'fiscal_year'];
+var NUMERIC_COLS = [
+  'days', 'hours', 'last_leave_days', 'fiscal_year',
+  'amount', 'approved_amount', 'requested_amount', 'total_amount', 'vat_amount', 'net_amount',
+  'bonus_amount', 'bonus_min_qty', 'commission_rate', 'quantity',
+  'check_in_lat', 'check_in_lng', 'check_out_lat', 'check_out_lng',
+  'duration_hours', 'pass_score', 'chunk_index', 'correct_option', 'quiz_score', 'quiz_total', 'shift_label'
+];
 
 async function DB_insert(table, data) {
   var schema = SCHEMAS[table] || [];
@@ -648,7 +654,9 @@ async function DB_insert(table, data) {
   }
   if (data) {
     NUMERIC_COLS.forEach(function(col) {
-      if (data[col] === '') data[col] = null;
+      if (data[col] === '' || (typeof data[col] === 'string' && data[col].trim() === '')) {
+        data[col] = null;
+      }
     });
   }
   
@@ -670,7 +678,9 @@ async function DB_update(table, id, patch) {
   }
   if (patch) {
     NUMERIC_COLS.forEach(function(col) {
-      if (patch[col] === '') patch[col] = null;
+      if (patch[col] === '' || (typeof patch[col] === 'string' && patch[col].trim() === '')) {
+        patch[col] = null;
+      }
     });
   }
   var idCol = _dbIdCol_(table);
@@ -2224,10 +2234,10 @@ async function Seed_demoLeaves_() {
         days: s.days,
         contact_address: '123/45 ซอยตัวอย่าง ถนนตัวอย่าง แขวงตัวอย่าง เขตตัวอย่าง กรุงเทพมหานคร 10000',
         contact_phone: t.phone,
-        last_leave_type: '',
-        last_leave_start: '',
-        last_leave_end: '',
-        last_leave_days: '',
+        last_leave_type: null,
+        last_leave_start: null,
+        last_leave_end: null,
+        last_leave_days: null,
         status: status,
         written_at: startISO,
         written_place: 'บริษัท เอวริณทร์ อินเตอร์กรุ๊ป จำกัด',
