@@ -5740,6 +5740,7 @@ async function api(req) {
     '#/calendar':     { title: 'ปฏิทินลา',           sub: 'แสดงวันลาทั้งบริษัท',                 icon: 'calendar3' },
     '#/expenses':     { title: 'ใบเบิกค่าใช้จ่าย',       sub: 'จัดการและติดตามคำขอเบิกเงินสะสม/ค่าเดินทาง',      icon: 'cash-coin' },
     '#/expenses/new':   { title: 'เบิกค่าใช้จ่าย',       sub: 'กรอกรายละเอียดเพื่อขออนุมัติค่าใช้จ่าย',    icon: 'cash-coin' },
+    '#/expenses/overtime': { title: 'เบิกค่าทำงานล่วงเวลา', sub: 'ขออนุมัติทำงานล่วงเวลา (OT แบบกลุ่ม) และพิมพ์แบบฟอร์ม', icon: 'clock-history' },
     '#/expenses/pending': { title: 'ใบเบิกรอดำเนินการ',   sub: 'รายการใบเบิกค่าใช้จ่ายที่อยู่ระหว่างรอการอนุมัติ', icon: 'check2-square' },
     '#/expenses/all':     { title: 'ใบเบิกทั้งหมด',       sub: 'รายการใบเบิกค่าใช้จ่ายทั้งหมดในระบบ',      icon: 'inbox-fill' },
     '#/expenses/view': { title: 'รายละเอียดการเบิก',   sub: 'ดูข้อมูลและอนุมัติการเบิกจ่าย',         icon: 'receipt-cutoff' },
@@ -5790,6 +5791,7 @@ async function api(req) {
         title: 'ค่าใช้จ่าย',
         items: [
           { hash: '#/expenses/new',     icon: 'cash-coin',     label: 'เบิกค่าใช้จ่าย',     cap: 'expense.create_own' },
+          { hash: '#/expenses/overtime', icon: 'clock-history', label: 'เบิกค่าทำงานล่วงเวลา', cap: '*' },
           { hash: '#/expenses/pending', icon: 'check2-square', label: 'ใบเบิกรอดำเนินการ', cap: 'expense.manage', badge: 'expenses_pending' },
           { hash: '#/expenses/all',     icon: 'inbox-fill',     label: 'ใบเบิกทั้งหมด',     cap: 'expense.create_own|expense.manage' }
         ]
@@ -7153,6 +7155,7 @@ async function api(req) {
       { hash: '#/leaves/inbox', icon: 'check2-square',          label: 'รอดำเนินการ',grad: '#f59e0b,#d97706', cap: 'leave.check|leave.comment|leave.approve' },
       { hash: '#/leaves/all',   icon: 'inbox-fill',             label: 'ใบลาทั้งหมด',grad: '#296ef9,#024ad8', cap: 'leave.view_all' },
       { hash: '#/expenses/new',   icon: 'cash-coin',             label: 'เบิกค่าใช้จ่าย', grad: '#0ea5e9,#0284c7', cap: 'expense.create_own|expense.manage' },
+      { hash: '#/expenses/overtime', icon: 'clock-history',          label: 'เบิกค่าทำงานล่วงเวลา', grad: '#f97316,#ea580c', cap: '*' },
       { hash: '#/reports',      icon: 'graph-up',               label: 'รายงาน',     grad: '#ec4899,#db2777', cap: 'report.view_own' },
       { hash: '#/users',        icon: 'people-fill',            label: 'ผู้ใช้',      grad: '#f43f5e,#e11d48', cap: 'user.manage' },
       { hash: '#/attendance',   icon: 'clock-history',          label: 'เข้างาน',     grad: '#f59e0b,#d97706', cap: 'user.manage|leave.approve|leave.comment' },
@@ -13494,7 +13497,971 @@ async function api(req) {
     }
   }
 
-  // ── Rentals & Expiries Module (#/rentals) ──────────────────────────
+    // ── Overtime Expense Module (#/expenses/overtime) ───────────────────
+  var AVARIN_LOGO_B64 = "data:image/png;base64,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";
+
+  function getOtCurrentUser() {
+    var s = (window.LMS && window.LMS.Store) || window.Store || {};
+    return s.user || {};
+  }
+
+  function getInitialOvertimeData() {
+    var raw = localStorage.getItem('avarin_ot_requests');
+    if (raw) {
+      try { return JSON.parse(raw); } catch (e) {}
+    }
+    // Default preset data
+    var initial = [
+      {
+        id: 'OT-202610-001',
+        doc_date: '2026-10-30',
+        department: 'ฝ่ายคลังสินค้าและการจัดส่ง',
+        dept_code: 'WH-01',
+        start_time: '18:00',
+        end_time: '21:30',
+        total_hours: 3.5,
+        description: 'ตรวจนับสต็อกสินค้าสิ้นเดือนและจัดแพ็คสินค้าแคมเปญ 11.11 เพื่อเตรียมส่งมอบ',
+        status: 'pending',
+        created_by: 'ผู้จัดการฝ่ายคลังสินค้า',
+        created_at: '2026-10-30T10:00:00Z',
+        approver_name: '',
+        approver_role: '',
+        approved_at: '',
+        approver_comment: '',
+        employees: [
+          {
+            id: 'OT-EMP-1',
+            full_name: 'สมชาย มั่นคง',
+            position: 'หัวหน้าทีมจัดส่ง',
+            department: 'ฝ่ายคลังสินค้า',
+            start_time: '18:00',
+            end_time: '21:30',
+            duration_hours: 3.5,
+            task_desc: 'ตรวจนับสต็อกสินค้ากลุ่มรองเท้าและอุปกรณ์วิ่ง'
+          },
+          {
+            id: 'OT-EMP-2',
+            full_name: 'วิภาวี สุขใจ',
+            position: 'พนักงานแพ็คสินค้า',
+            department: 'ฝ่ายคลังสินค้า',
+            start_time: '18:00',
+            end_time: '21:30',
+            duration_hours: 3.5,
+            task_desc: 'แพ็คสินค้าแคมเปญและจัดเตรียมบาร์โค้ด'
+          },
+          {
+            id: 'OT-EMP-3',
+            full_name: 'กิตติศักดิ์ เจริญพร',
+            position: 'เจ้าหน้าที่บันทึกข้อมูล',
+            department: 'ฝ่ายคลังสินค้า',
+            start_time: '18:00',
+            end_time: '21:00',
+            duration_hours: 3.0,
+            task_desc: 'ตัดสต็อกสินค้าในระบบ ERP และพิมพ์ใบส่งของ'
+          }
+        ]
+      },
+      {
+        id: 'OT-202610-002',
+        doc_date: '2026-10-28',
+        department: 'ฝ่ายปฏิบัติการหน้าร้าน (สาขาราชพฤกษ์)',
+        dept_code: 'STORE-RP',
+        start_time: '20:00',
+        end_time: '23:00',
+        total_hours: 3.0,
+        description: 'จัดเรียงและปรับเปลี่ยน Display สินค้าใหม่ต้อนรับคอลเลกชันใหม่',
+        status: 'approved',
+        created_by: 'ผู้จัดการสาขา',
+        created_at: '2026-10-28T09:30:00Z',
+        approver_name: 'คุณนพดล (HR & Admin Manager)',
+        approver_role: 'ผู้จัดการฝ่ายบุคคลและธุรการ',
+        approved_at: '2026-10-28T14:15:00Z',
+        approver_comment: 'อนุมัติตามระเบียบการจัดแสดงหน้าร้าน',
+        employees: [
+          {
+            id: 'OT-EMP-4',
+            full_name: 'ชลธิชา แก้วใส',
+            position: 'พนักงานขายหน้าร้าน',
+            department: 'สาขาราชพฤกษ์',
+            start_time: '20:00',
+            end_time: '23:00',
+            duration_hours: 3.0,
+            task_desc: 'เปลี่ยน Visual Merchandising โซนรองเท้าวิ่งเทรล'
+          },
+          {
+            id: 'OT-EMP-5',
+            full_name: 'ธนวัฒน์ ปรีชา',
+            position: 'พนักงานขายหน้าร้าน',
+            department: 'สาขาราชพฤกษ์',
+            start_time: '20:00',
+            end_time: '23:00',
+            duration_hours: 3.0,
+            task_desc: 'เปลี่ยนป้ายราคา โปรโมชั่น และจัดชั้นวางสินค้า'
+          }
+        ]
+      }
+    ];
+    saveOvertimeData(initial);
+    return initial;
+  }
+
+  function saveOvertimeData(items) {
+    localStorage.setItem('avarin_ot_requests', JSON.stringify(items));
+  }
+
+  // Format thai date string (เช่น 30 ตุลาคม 2569)
+  function formatThaiFullDate(dateStr) {
+    if (!dateStr) return '';
+    var d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    var months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+                  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+    var day = d.getDate();
+    var month = months[d.getMonth()];
+    var year = d.getFullYear() + 543;
+    return day + ' ' + month + ' ' + year;
+  }
+
+  // Calculate duration between 2 time strings (e.g. 18:00, 21:30 -> 3.5)
+  function calculateHours(startTime, endTime) {
+    if (!startTime || !endTime) return 0;
+    var p1 = startTime.split(':');
+    var p2 = endTime.split(':');
+    var m1 = parseInt(p1[0], 10) * 60 + parseInt(p1[1] || '0', 10);
+    var m2 = parseInt(p2[0], 10) * 60 + parseInt(p2[1] || '0', 10);
+    if (m2 < m1) m2 += 24 * 60; // Cross midnight
+    var diffMinutes = m2 - m1;
+    return Math.round((diffMinutes / 60) * 10) / 10;
+  }
+
+  // ── Open Print Window for Official Form ─────────────────────────
+  function printOvertimeOfficialForm(ot) {
+    var w = window.open('', '_blank');
+    if (!w) {
+      if (typeof toast === 'function') toast('กรุณาอนุญาตป๊อปอัปเพื่อสั่งพิมพ์เอกสาร', 'warning');
+      return;
+    }
+
+    var employees = ot.employees || [];
+    var minRows = 10;
+    var rowsHtml = '';
+    
+    // Fill employee rows with compact sizing
+    for (var i = 0; i < Math.max(employees.length, minRows); i++) {
+      var emp = employees[i];
+      var rowNum = i + 1;
+      if (emp) {
+        var durationText = (emp.duration_hours || 0) + ' ชม.';
+        rowsHtml += '<tr style="height:24px;">'
+          + '<td style="text-align:center;padding:2px 4px;">' + rowNum + '</td>'
+          + '<td style="padding:2px 6px;font-weight:600;">' + esc(emp.full_name) + '</td>'
+          + '<td style="text-align:center;padding:2px 4px;font-size:9pt;color:#555;">' + (emp.signed ? '✓ ลงนามแล้ว' : '') + '</td>'
+          + '<td style="text-align:center;padding:2px 4px;">' + esc(emp.start_time || '') + '</td>'
+          + '<td style="text-align:center;padding:2px 4px;">' + esc(emp.end_time || '') + '</td>'
+          + '<td style="text-align:center;padding:2px 4px;font-weight:600;">' + durationText + '</td>'
+          + '<td style="padding:2px 6px;text-align:left;">' + esc(emp.task_desc || ot.description || '') + '</td>'
+          + '</tr>';
+      } else {
+        // Empty filler rows
+        rowsHtml += '<tr style="height:22px;">'
+          + '<td style="text-align:center;padding:2px 4px;color:#888;">' + rowNum + '</td>'
+          + '<td></td><td></td><td></td><td></td><td></td><td></td>'
+          + '</tr>';
+      }
+    }
+
+    var approverNameDisplay = ot.status === 'approved' ? esc(ot.approver_name || 'อนุมัติแล้ว') : '';
+    var approverDateDisplay = ot.status === 'approved' ? (formatThaiFullDate(ot.approved_at) || '') : '';
+
+    var html = '<!DOCTYPE html>'
+      + '<html lang="th">'
+      + '<head>'
+      + '<meta charset="utf-8">'
+      + '<title>แบบขออนุมัติทำงานล่วงเวลา - ' + esc(ot.id) + '</title>'
+      + '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">'
+      + '<style>'
+      + '  * { box-sizing: border-box; }'
+      + '  @page { size: A4 landscape; margin: 4mm 8mm; }'
+      + '  html, body {'
+      + '    margin: 0 !important; padding: 0 !important;'
+      + '    font-family: "Sarabun", "TH Sarabun New", sans-serif;'
+      + '    color: #000; background: #fff;'
+      + '    font-size: 11pt; line-height: 1.25;'
+      + '    -webkit-print-color-adjust: exact; print-color-adjust: exact;'
+      + '  }'
+      + '  .print-page {'
+      + '    width: 100%; max-width: 1020px; margin: 0 auto;'
+      + '    padding: 4px 10px; background: #fff;'
+      + '    page-break-inside: avoid !important;'
+      + '    break-inside: avoid !important;'
+      + '  }'
+      + '  .header-wrap {'
+      + '    display: flex; justify-content: space-between; align-items: flex-end;'
+      + '    margin-bottom: 8px;'
+      + '  }'
+      + '  .logo-box img { height: 38px; object-fit: contain; }'
+      + '  .title-box { text-align: center; flex: 1; padding: 0 10px; }'
+      + '  .title-box h1 { font-size: 16pt; font-weight: 700; margin: 0; line-height: 1.5; letter-spacing: 0.5px; }'
+      + '  .date-box { min-width: 200px; text-align: right; font-size: 11pt; padding-bottom: 3px; }'
+      + '  .dept-line { margin: 6px 0 6px; font-size: 11pt; clear: both; }'
+      + '  .dotted-line { display: inline-block; border-bottom: 1px dotted #000; padding: 0 6px; font-weight: 600; }'
+      + '  table.ot-table {'
+      + '    width: 100%; border-collapse: collapse; margin-top: 4px;'
+      + '    border: 1.2px solid #000;'
+      + '  }'
+      + '  table.ot-table th, table.ot-table td {'
+      + '    border: 1px solid #000; vertical-align: middle;'
+      + '  }'
+      + '  table.ot-table th {'
+      + '    background-color: #d8d8d8; font-weight: 700;'
+      + '    text-align: center; padding: 3px 2px;'
+      + '    font-size: 10pt; line-height: 1.2;'
+      + '  }'
+      + '  table.ot-table td { font-size: 10pt; }'
+      + '  .footer-signatures { margin-top: 10px; }'
+      + '  .approver-section {'
+      + '    display: flex; justify-content: flex-end;'
+      + '    margin-bottom: 8px;'
+      + '  }'
+      + '  .approver-box { width: 330px; text-align: center; font-size: 10.5pt; }'
+      + '  .hr-divider { border: none; border-top: 1.2px solid #000; margin: 8px 0 6px 0; }'
+      + '  .hr-section { padding: 0 4px; }'
+      + '  .hr-title { font-weight: 700; margin-bottom: 6px; font-size: 10.5pt; }'
+      + '  .hr-signatures {'
+      + '    display: flex; justify-content: space-between; align-items: center;'
+      + '    padding-left: 30px; padding-right: 50px;'
+      + '    font-size: 10.5pt;'
+      + '  }'
+      + '  .btn-print-bar {'
+      + '    position: fixed; top: 10px; right: 20px; z-index: 9999;'
+      + '    background: #0f172a; color: #fff; padding: 6px 14px; border-radius: 6px;'
+      + '    box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-family: sans-serif;'
+      + '    display: flex; gap: 8px; align-items: center;'
+      + '  }'
+      + '  .btn-print-bar button {'
+      + '    background: #2563eb; color: #fff; border: none; padding: 5px 12px; border-radius: 4px;'
+      + '    font-weight: 600; cursor: pointer; font-size: 12px;'
+      + '  }'
+      + '  @media print {'
+      + '    .btn-print-bar { display: none !important; }'
+      + '    @page { size: landscape; margin: 4mm 6mm; }'
+      + '    body { margin: 0 !important; padding: 0 !important; }'
+      + '    .print-page {'
+      + '      padding: 0 !important;'
+      + '      transform: scale(0.96);'
+      + '      transform-origin: top center;'
+      + '    }'
+      + '  }'
+      + '</style>'
+      + '</head>'
+      + '<body>'
+      + '<div class="btn-print-bar">'
+      + '  <span>แบบขออนุมัติทำงานล่วงเวลา (Avarin)</span>'
+      + '  <button onclick="window.print()"><i class="bi bi-printer"></i> สั่งพิมพ์เอกสาร (Print / PDF)</button>'
+      + '</div>'
+      + '<div class="print-page">'
+      + '  <div class="header-wrap">'
+      + '    <div class="logo-box"><img src="' + AVARIN_LOGO_B64 + '" alt="Avarin Logo"></div>'
+      + '    <div class="title-box"><h1>แบบขออนุมัติทำงานล่วงเวลา</h1></div>'
+      + '    <div class="date-box">วันที่ ' + (ot.doc_date ? '<span style="font-weight:700;">' + formatThaiFullDate(ot.doc_date) + '</span>' : '<span>........................................</span>') + '</div>'
+      + '  </div>'
+      + '  <table class="ot-table">'
+      + '    <thead>'
+      + '      <tr>'
+      + '        <th rowspan="2" style="width:45px;">ลำดับ</th>'
+      + '        <th rowspan="2" style="width:220px;">รายชื่อ</th>'
+      + '        <th rowspan="2" style="width:100px;">ผู้ขออนุมัติ<br>ลงนาม</th>'
+      + '        <th colspan="2" style="width:150px;">ช่วงเวลา</th>'
+      + '        <th rowspan="2" style="width:80px;">รวมเวลา</th>'
+      + '        <th rowspan="2">รายละเอียดการปฏิบัติงาน</th>'
+      + '      </tr>'
+      + '      <tr>'
+      + '        <th style="width:75px;">ตั้งแต่เวลา</th>'
+      + '        <th style="width:75px;">ถึงเวลา</th>'
+      + '      </tr>'
+      + '    </thead>'
+      + '    <tbody>'
+      +        rowsHtml
+      + '    </tbody>'
+      + '  </table>'
+      + '  <div class="footer-signatures">'
+      + '    <div class="approver-section">'
+      + '      <div class="approver-box">'
+      + '        <div style="margin-bottom:4px;">ลงชื่อ <span class="dotted-line" style="min-width:190px;">' + (ot.status === 'approved' ? esc(ot.approver_name || '') : '') + '</span> ผู้อนุมัติ</div>'
+      + '        <div style="margin-bottom:4px;">( <span class="dotted-line" style="min-width:170px;">' + (ot.status === 'approved' ? esc(ot.approver_name || '') : '') + '</span> )</div>'
+      + '        <div style="font-weight:500;">ผู้จัดการฝ่าย / หัวหน้าแผนก</div>'
+      + '      </div>'
+      + '    </div>'
+      + '    <hr class="hr-divider">'
+      + '    <div class="hr-section">'
+      + '      <div class="hr-title">ฝ่ายทรัพยากรบุคคล :</div>'
+      + '      <div class="hr-signatures">'
+      + '        <div>ลงชื่อ <span class="dotted-line" style="min-width:210px;">' + (ot.status === 'approved' ? esc(ot.approver_name || 'อนุมัติเรียบร้อย') : '') + '</span></div>'
+      + '        <div>วันที่ <span class="dotted-line" style="min-width:150px;text-align:center;">' + approverDateDisplay + '</span></div>'
+      + '      </div>'
+      + '    </div>'
+      + '  </div>'
+      + '</div>'
+      + '<script>'
+      + '  window.addEventListener("load", function() { setTimeout(function(){ window.print(); }, 400); });'
+      + '<\/script>'
+      + '</body></html>';
+
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+  }
+
+  // ── Standalone Overtime Page (#/expenses/overtime) ──────────────────
+  Routes['#/expenses/overtime'] = function (hash) {
+    var otCurrentUser = getOtCurrentUser();
+    var otItems = getInitialOvertimeData();
+    var currentTab = (hash && hash.indexOf('new') >= 0) ? 'new' : 'list';
+    var userRole = otCurrentUser.role || '';
+    var isHrAdmin = (userRole === 'admin' || userRole === 'approver' || userRole === 'hr' || otCurrentUser.department === 'ฝ่ายบุคคล' || otCurrentUser.department === 'HR' || (typeof hasCap === 'function' && hasCap('expense.manage')));
+    var allDbUsers = [];
+
+    // State for new overtime draft form
+    var formState = {
+      doc_date: new Date().toISOString().split('T')[0],
+      department: otCurrentUser.department || 'ฝ่ายปฏิบัติการ',
+      dept_code: 'OP-01',
+      start_time: '18:00',
+      end_time: '21:30',
+      description: '',
+      employees: []
+    };
+
+    // Load DB Users asynchronously
+    function loadUsers(cb) {
+      if (allDbUsers.length > 0) { if (cb) cb(allDbUsers); return; }
+      if (typeof call === 'function') {
+        call('user.list', { limit: 1000 }).then(function (res) {
+          allDbUsers = (res && res.items) || (res && res.users) || res || [];
+          if (!Array.isArray(allDbUsers)) allDbUsers = [];
+          if (cb) cb(allDbUsers);
+        }).catch(function (e) {
+          useFallbackUsers(cb);
+        });
+      } else {
+        useFallbackUsers(cb);
+      }
+    }
+
+    function useFallbackUsers(cb) {
+      allDbUsers = [
+        { id: 'u1', full_name: 'สมชาย มั่นคง', position: 'พนักงานคลังสินค้า', department: 'ฝ่ายคลังสินค้า' },
+        { id: 'u2', full_name: 'วิภาวี สุขใจ', position: 'พนักงานแพ็คสินค้า', department: 'ฝ่ายคลังสินค้า' },
+        { id: 'u3', full_name: 'กิตติศักดิ์ เจริญพร', position: 'เจ้าหน้าที่บันทึกข้อมูล', department: 'ฝ่ายคลังสินค้า' },
+        { id: 'u4', full_name: 'ชลธิชา แก้วใส', position: 'พนักงานขายหน้าร้าน', department: 'สาขาราชพฤกษ์' },
+        { id: 'u5', full_name: 'ธนวัฒน์ ปรีชา', position: 'พนักงานขายหน้าร้าน', department: 'สาขาราชพฤกษ์' },
+        { id: 'u6', full_name: 'นภาภรณ์ ศรีสุข', position: 'เจ้าหน้าที่การตลาด', department: 'ฝ่ายการตลาด' }
+      ];
+      if (cb) cb(allDbUsers);
+    }
+
+    // Auto-fetch users immediately
+    loadUsers();
+
+    function renderMain() {
+      var approvedCount = otItems.filter(function (x) { return x.status === 'approved'; }).length;
+      var pendingCount = otItems.filter(function (x) { return x.status === 'pending'; }).length;
+      var totalEmps = 0;
+      otItems.forEach(function (x) { totalEmps += (x.employees || []).length; });
+
+      var topBar = '<div class="card" style="margin-bottom:14px;">'
+        + '<div class="card-body" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">'
+        + '  <div>'
+        + '    <div style="font-size:20px;font-weight:800;color:#0f172a;display:flex;align-items:center;gap:8px;">'
+        + '      <i class="bi bi-clock-history" style="color:#f97316;"></i> เบิกค่าทำงานล่วงเวลา (Overtime)'
+        + '    </div>'
+        + '    <div style="font-size:13px;color:#64748b;margin-top:2px;">แบบขออนุมัติทำงานล่วงเวลาแบบกลุ่ม · ดึงรายชื่อพนักงานจากฐานข้อมูล · พิมพ์ฟอร์มมาตรฐาน</div>'
+        + '  </div>'
+        + '  <div style="display:flex;gap:8px;flex-wrap:wrap;">'
+        + '    <button class="btn ' + (currentTab === 'list' ? 'btn-primary' : 'btn-ghost') + '" id="ot-tab-list"><i class="bi bi-list-check"></i> รายการคำขอ OT (' + otItems.length + ')</button>'
+        + '    <button class="btn ' + (currentTab === 'new' ? 'btn-primary' : 'btn-ghost') + '" id="ot-tab-new" style="background:' + (currentTab === 'new' ? '#f97316' : '') + ';border-color:' + (currentTab === 'new' ? '#f97316' : '') + ';"><i class="bi bi-plus-circle-fill"></i> ยื่นขออนุมัติ OT ใหม่ (กลุ่ม)</button>'
+        + '  </div>'
+        + '</div>'
+        + '</div>';
+
+      // KPI Strips
+      var kpiHtml = '<div class="quick-strip" style="margin-bottom:16px;">'
+        + '<div class="qs-item"><div class="qs-value">' + otItems.length + '</div><div class="qs-label">คำขอทั้งหมด</div></div>'
+        + '<div class="qs-item"><div class="qs-value" style="color:#f59e0b;">' + pendingCount + '</div><div class="qs-label">รอดำเนินการ (HR/Admin)</div></div>'
+        + '<div class="qs-item"><div class="qs-value" style="color:#10b981;">' + approvedCount + '</div><div class="qs-label">อนุมัติแล้ว</div></div>'
+        + '<div class="qs-item"><div class="qs-value" style="color:#3b82f6;">' + totalEmps + '</div><div class="qs-label">ยอดพนักงานปฏิบัติงานสะสม (คน-ครั้ง)</div></div>'
+        + '</div>';
+
+      var bodyHtml = '';
+      if (currentTab === 'list') {
+        bodyHtml = renderOtList();
+      } else {
+        bodyHtml = renderOtNewForm();
+      }
+
+      setPage(topBar + kpiHtml + '<div id="ot-page-content">' + bodyHtml + '</div>');
+      wireMainEvents();
+    }
+
+    function renderOtList() {
+      if (otItems.length === 0) {
+        return '<div class="card"><div class="card-body" style="text-align:center;padding:50px 20px;">'
+          + '<i class="bi bi-clock-history" style="font-size:48px;color:#cbd5e1;"></i>'
+          + '<div style="font-size:16px;font-weight:700;margin-top:12px;color:#475569;">ยังไม่มีรายการขออนุมัติทำงานล่วงเวลา</div>'
+          + '<div style="font-size:13px;color:#94a3b8;margin-bottom:18px;">คุณสามารถสร้างแบบขออนุมัติ OT แบบกลุ่มใหม่ได้ทันที</div>'
+          + '<button class="btn btn-primary" id="ot-create-first-btn"><i class="bi bi-plus-lg"></i> สร้างแบบขออนุมัติ OT ใหม่</button>'
+          + '</div></div>';
+      }
+
+      var cardsHtml = otItems.map(function (it, idx) {
+        var emps = it.employees || [];
+        var statusBadge = '';
+        if (it.status === 'approved') {
+          statusBadge = '<span class="badge" style="background:#dcfce7;color:#15803d;font-weight:700;font-size:12px;"><i class="bi bi-check-circle-fill"></i> อนุมัติแล้ว (HR/Admin)</span>';
+        } else if (it.status === 'rejected') {
+          statusBadge = '<span class="badge" style="background:#fee2e2;color:#b91c1c;font-weight:700;font-size:12px;"><i class="bi bi-x-circle-fill"></i> ไม่อนุมัติ</span>';
+        } else {
+          statusBadge = '<span class="badge" style="background:#fef3c7;color:#b45309;font-weight:700;font-size:12px;"><i class="bi bi-hourglass-split"></i> รอดำเนินการ (HR/Admin)</span>';
+        }
+
+        // Employee avatars or chips
+        var empChips = emps.slice(0, 5).map(function (e) {
+          return '<span style="display:inline-flex;align-items:center;background:#f1f5f9;color:#334155;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;margin-right:4px;margin-bottom:4px;">'
+            + '<i class="bi bi-person-fill" style="color:#64748b;margin-right:4px;"></i>' + esc(e.full_name) + ' (' + (e.duration_hours || 0) + ' ชม.)'
+            + '</span>';
+        }).join('');
+        if (emps.length > 5) {
+          empChips += '<span style="background:#e2e8f0;color:#475569;border-radius:20px;padding:3px 8px;font-size:11px;font-weight:700;">+' + (emps.length - 5) + ' คน</span>';
+        }
+
+        var approveButtons = '';
+        if (isHrAdmin && it.status === 'pending') {
+          approveButtons = '<button class="btn btn-sm btn-success" data-ot-approve="' + it.id + '" style="background:#10b981;border-color:#10b981;"><i class="bi bi-check-lg"></i> อนุมัติ (HR/Admin)</button>'
+            + ' <button class="btn btn-sm btn-danger" data-ot-reject="' + it.id + '"><i class="bi bi-x-lg"></i> ไม่อนุมัติ</button> ';
+        }
+
+        return '<div class="card" style="margin-bottom:14px;border:1px solid #e2e8f0;transition:transform .15s,box-shadow .15s;">'
+          + '<div class="card-body">'
+          + '  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:10px;">'
+          + '    <div>'
+          + '      <div style="display:flex;align-items:center;gap:10px;">'
+          + '        <span style="font-weight:800;font-size:16px;color:#0f172a;">' + esc(it.id) + '</span>'
+          + '        ' + statusBadge
+          + '        <span style="font-size:12px;color:#64748b;"><i class="bi bi-calendar3"></i> ' + formatThaiFullDate(it.doc_date) + '</span>'
+          + '      </div>'
+          + '      <div style="font-size:14px;font-weight:700;color:#1e293b;margin-top:4px;">'
+          + '        <i class="bi bi-building"></i> ' + esc(it.department) + ' &nbsp;·&nbsp; รหัสแผนก: <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;">' + esc(it.dept_code || '-') + '</code>'
+          + '      </div>'
+          + '    </div>'
+          + '    <div style="text-align:right;">'
+          + '      <div style="font-size:12px;color:#64748b;">จำนวนพนักงานในกลุ่ม</div>'
+          + '      <div style="font-size:18px;font-weight:800;color:#0284c7;">' + emps.length + ' คน</div>'
+          + '    </div>'
+          + '  </div>'
+
+          + '  <div style="background:#f8fafc;border-radius:10px;padding:12px;margin:10px 0;font-size:13px;border:1px dashed #cbd5e1;">'
+          + '    <div style="margin-bottom:6px;"><strong>รายละเอียดการปฏิบัติงาน:</strong> ' + esc(it.description || '-') + '</div>'
+          + '    <div style="margin-bottom:8px;"><strong>ช่วงเวลาปฏิบัติงาน:</strong> ' + esc(it.start_time) + ' - ' + esc(it.end_time) + ' น. (' + (it.total_hours || 0) + ' ชั่วโมง)</div>'
+          + '    <div><strong>รายชื่อพนักงานที่ร่วมปฏิบัติงาน:</strong><br><div style="margin-top:6px;display:flex;flex-wrap:wrap;">' + empChips + '</div></div>'
+          + '  </div>'
+
+          + (it.approver_name ? '<div style="font-size:12px;color:#059669;margin-bottom:10px;"><i class="bi bi-patch-check-fill"></i> ผู้อนุมัติ: <strong>' + esc(it.approver_name) + '</strong> (' + esc(it.approver_role || 'HR/Admin') + ') เมื่อ ' + (it.approved_at ? formatThaiFullDate(it.approved_at) : '') + '</div>' : '')
+
+          + '  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid #f1f5f9;">'
+          + '    <div style="font-size:12px;color:#94a3b8;">บันทึกโดย: ' + esc(it.created_by || 'ระบบ') + '</div>'
+          + '    <div style="display:flex;gap:6px;flex-wrap:wrap;">'
+          +        approveButtons
+          + '      <button class="btn btn-sm btn-primary" data-ot-print="' + it.id + '" style="background:#0284c7;border-color:#0284c7;"><i class="bi bi-printer-fill"></i> พิมพ์แบบฟอร์ม Avarin</button>'
+          + '      <button class="btn btn-sm btn-ghost" data-ot-delete="' + it.id + '" style="color:#ef4444;"><i class="bi bi-trash"></i> ลบ</button>'
+          + '    </div>'
+          + '  </div>'
+          + '</div></div>';
+      }).join('');
+
+      return cardsHtml;
+    }
+
+    function renderOtNewForm() {
+      var emps = formState.employees;
+
+      var tableRows = emps.map(function (e, idx) {
+        return '<tr data-row-idx="' + idx + '">'
+          + '<td style="text-align:center;font-weight:700;">' + (idx + 1) + '</td>'
+          + '<td>'
+          + '  <div style="font-weight:700;color:#0f172a;">' + esc(e.full_name) + '</div>'
+          + '  <div style="font-size:11px;color:#64748b;">' + esc(e.position || '-') + ' · ' + esc(e.department || '-') + '</div>'
+          + '</td>'
+          + '<td><input type="time" class="input input-sm emp-start-time" value="' + (e.start_time || formState.start_time) + '" style="padding:4px 8px;font-size:12px;width:105px;"></td>'
+          + '<td><input type="time" class="input input-sm emp-end-time" value="' + (e.end_time || formState.end_time) + '" style="padding:4px 8px;font-size:12px;width:105px;"></td>'
+          + '<td style="text-align:center;font-weight:700;color:#0284c7;"><span class="emp-hours">' + (e.duration_hours || calculateHours(e.start_time || formState.start_time, e.end_time || formState.end_time)) + '</span> ชม.</td>'
+          + '<td><input type="text" class="input input-sm emp-task-desc" value="' + esc(e.task_desc || formState.description) + '" placeholder="รายละเอียดงานเฉพาะคน (ถ้ามี)" style="padding:4px 8px;font-size:12px;"></td>'
+          + '<td style="text-align:center;"><button class="btn btn-sm btn-ghost btn-remove-emp" style="color:#ef4444;padding:2px 8px;" title="ลบออก"><i class="bi bi-x-circle-fill"></i></button></td>'
+          + '</tr>';
+      }).join('');
+
+      if (emps.length === 0) {
+        tableRows = '<tr><td colspan="7" style="text-align:center;padding:30px;color:#94a3b8;">'
+          + '<i class="bi bi-people" style="font-size:32px;display:block;margin-bottom:8px;color:#cbd5e1;"></i>'
+          + 'ยังไม่มีพนักงานในกลุ่มคำขอนี้<br>'
+          + '<button class="btn btn-sm btn-primary" id="btn-open-user-picker" style="margin-top:10px;"><i class="bi bi-person-plus-fill"></i> กดเลือกพนักงานจากฐานข้อมูลที่นี่</button>'
+          + '</td></tr>';
+      }
+
+      return '<div class="card" style="margin-bottom:20px;">'
+        + '<div class="card-body">'
+        + '  <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;">'
+        + '    <div>'
+        + '      <div style="font-size:18px;font-weight:800;color:#0f172a;"><i class="bi bi-file-earmark-text-fill" style="color:#f97316;"></i> สร้างแบบขออนุมัติทำงานล่วงเวลา (แบบกลุ่ม)</div>'
+        + '      <div style="font-size:12px;color:#64748b;">กรอกข้อมูลกลุ่มและเลือกพนักงานหลายคนเพื่อพิมพ์เอกสารและส่งขออนุมัติ</div>'
+        + '    </div>'
+        + '    <button class="btn btn-ghost" id="ot-cancel-form-btn"><i class="bi bi-arrow-left"></i> ย้อนกลับ</button>'
+        + '  </div>'
+
+        // General Information: Only doc_date (Department & dept code removed as requested)
+        + '  <div style="margin-bottom:18px;">'
+        + '    <div style="max-width:280px;">'
+        + '      <label class="label" style="font-weight:700;"><i class="bi bi-calendar-event" style="color:#0284c7;"></i> วันที่ปฏิบัติงานล่วงเวลา *</label>'
+        + '      <input type="date" class="input" id="ot-doc-date" value="' + formState.doc_date + '">'
+        + '    </div>'
+        + '  </div>'
+
+        // Employee Selection Section (Shown FIRST)
+        + '  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+        + '    <div>'
+        + '      <div style="font-weight:800;font-size:16px;color:#0f172a;"><i class="bi bi-people-fill" style="color:#0284c7;"></i> รายชื่อพนักงานที่ร่วมปฏิบัติงาน (' + emps.length + ' คน)</div>'
+        + '      <div style="font-size:12px;color:#64748b;">กดปุ่มเลือกพนักงานหลายคนจากฐานข้อมูลของบริษัท</div>'
+        + '    </div>'
+        + '    <button class="btn btn-primary" id="btn-open-user-picker-top" style="background:#0284c7;border-color:#0284c7;"><i class="bi bi-person-plus-fill"></i> + เลือกพนักงานจากฐานข้อมูล</button>'
+        + '  </div>'
+
+        // Table
+        + '  <div style="overflow-x:auto;margin-bottom:18px;border:1px solid #e2e8f0;border-radius:8px;">'
+        + '    <table class="table" style="margin:0;font-size:13px;">'
+        + '      <thead style="background:#f1f5f9;">'
+        + '        <tr>'
+        + '          <th style="width:50px;text-align:center;">ลำดับ</th>'
+        + '          <th style="min-width:200px;">ชื่อ-นามสกุล / ตำแหน่ง</th>'
+        + '          <th style="width:120px;">ตั้งแต่เวลา</th>'
+        + '          <th style="width:120px;">ถึงเวลา</th>'
+        + '          <th style="width:100px;text-align:center;">รวมเวลา</th>'
+        + '          <th>รายละเอียดการปฏิบัติงาน</th>'
+        + '          <th style="width:60px;text-align:center;">ลบ</th>'
+        + '        </tr>'
+        + '      </thead>'
+        + '      <tbody id="ot-emp-table-body">'
+        +          tableRows
+        + '      </tbody>'
+        + '    </table>'
+        + '  </div>'
+
+        // Default time & global task (Moved DOWN under Employee Selection Table)
+        + '  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:20px;">'
+        + '    <div style="font-weight:700;font-size:13px;color:#334155;margin-bottom:8px;"><i class="bi bi-clock-history" style="color:#f97316;"></i> กำหนดช่วงเวลากลางของกลุ่ม (นำไปใช้กับทุกคนในตารางด้านบนได้ทันที)</div>'
+        + '    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">'
+        + '      <div style="display:flex;align-items:center;gap:6px;">'
+        + '        <span style="font-size:13px;color:#64748b;">ตั้งแต่เวลา:</span>'
+        + '        <input type="time" class="input input-sm" id="ot-start-time" value="' + formState.start_time + '" style="width:115px;">'
+        + '      </div>'
+        + '      <div style="display:flex;align-items:center;gap:6px;">'
+        + '        <span style="font-size:13px;color:#64748b;">ถึงเวลา:</span>'
+        + '        <input type="time" class="input input-sm" id="ot-end-time" value="' + formState.end_time + '" style="width:115px;">'
+        + '      </div>'
+        + '      <button class="btn btn-sm btn-ghost" id="btn-apply-all-time" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;"><i class="bi bi-arrow-repeat"></i> นำเวลานี้ไปใส่ให้ทุกคนในตาราง</button>'
+        + '    </div>'
+        + '    <div style="margin-top:12px;">'
+        + '      <label class="label" style="font-weight:700;">รายละเอียดการปฏิบัติงานรวม *</label>'
+        + '      <textarea class="textarea" id="ot-description" rows="2" placeholder="ระบุเหตุผลและรายละเอียดงานที่ต้องทำล่วงเวลา เช่น ตรวจนับสต็อกสิ้นเดือน, แพ็คสินค้าส่งมอบแคมเปญ">' + esc(formState.description) + '</textarea>'
+        + '    </div>'
+        + '  </div>'
+
+        // Footer Actions
+        + '  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding-top:14px;border-top:1px solid #e2e8f0;">'
+        + '    <div style="font-size:13px;color:#64748b;">ผู้อนุมัติ: <strong style="color:#0f172a;">HR / ADMIN</strong> (พนักงานสามารถพิมพ์แบบฟอร์มเพื่อนำส่งได้ทันที)</div>'
+        + '    <div style="display:flex;gap:10px;">'
+        + '      <button class="btn btn-ghost" id="btn-preview-ot-form" style="background:#f1f5f9;"><i class="bi bi-eye"></i> พรีวิวฟอร์ม Avarin</button>'
+        + '      <button class="btn btn-primary" id="btn-save-ot-request" style="background:#f97316;border-color:#f97316;font-weight:700;"><i class="bi bi-check-circle-fill"></i> บันทึกและพิมพ์แบบฟอร์ม</button>'
+        + '    </div>'
+        + '  </div>'
+
+        + '</div></div>';
+    }
+
+    // Modal for selecting multiple employees from Database
+    function openEmployeePickerModal() {
+      if (typeof Spinner !== 'undefined') Spinner.show('กำลังโหลดรายชื่อพนักงานจากฐานข้อมูล...');
+      loadUsers(function (users) {
+        if (typeof Spinner !== 'undefined') Spinner.hide();
+        var selectedIds = formState.employees.map(function (e) { return e.id; });
+
+        function buildUserRows(filterText) {
+          var f = (filterText || '').toLowerCase().trim();
+          var matched = users.filter(function (u) {
+            var name = (u.full_name || u.username || '').toLowerCase();
+            var dept = (u.department || '').toLowerCase();
+            var pos = (u.position || '').toLowerCase();
+            return !f || name.indexOf(f) >= 0 || dept.indexOf(f) >= 0 || pos.indexOf(f) >= 0;
+          });
+
+          if (matched.length === 0) {
+            return '<div style="text-align:center;padding:30px;color:#94a3b8;">ไม่พบรายชื่อพนักงานที่ตรงกับคำค้นหา</div>';
+          }
+
+          return matched.map(function (u) {
+            var isChecked = selectedIds.indexOf(u.id) >= 0;
+            return '<label style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #f1f5f9;cursor:pointer;background:' + (isChecked ? '#f0f9ff' : '#fff') + ';border-radius:6px;margin-bottom:4px;transition:background .1s;">'
+              + '<input type="checkbox" class="user-check-box" value="' + esc(u.id) + '" ' + (isChecked ? 'checked' : '') + ' style="width:18px;height:18px;">'
+              + '<div class="lv-avatar" style="width:36px;height:36px;font-size:14px;background:#e0f2fe;color:#0284c7;">' + (u.full_name || u.username || '?').substring(0, 1).toUpperCase() + '</div>'
+              + '<div style="flex:1;min-width:0;">'
+              + '  <div style="font-weight:700;font-size:13px;color:#0f172a;">' + esc(u.full_name || u.username) + '</div>'
+              + '  <div style="font-size:11px;color:#64748b;">' + esc(u.position || 'พนักงาน') + ' · ' + esc(u.department || 'ไม่ระบุแผนก') + '</div>'
+              + '</div>'
+              + '</label>';
+          }).join('');
+        }
+
+        var modalBody = '<div style="display:flex;flex-direction:column;gap:10px;max-height:65vh;">'
+          + '<div style="display:flex;gap:10px;align-items:center;">'
+          + '  <div style="position:relative;flex:1;">'
+          + '    <i class="bi bi-search" style="position:absolute;left:10px;top:10px;color:#94a3b8;"></i>'
+          + '    <input type="text" class="input" id="picker-search" placeholder="ค้นหาชื่อ, แผนก, ตำแหน่งพนักงาน..." style="padding-left:32px;">'
+          + '  </div>'
+          + '  <button class="btn btn-sm btn-ghost" id="picker-select-all" style="font-size:12px;">เลือกทั้งหมด</button>'
+          + '  <button class="btn btn-sm btn-ghost" id="picker-clear-all" style="font-size:12px;">ล้างค่า</button>'
+          + '</div>'
+          + '<div id="picker-users-list" style="overflow-y:auto;flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:6px;min-height:280px;">'
+          +   buildUserRows('')
+          + '</div>'
+          + '<div style="font-size:12px;color:#64748b;display:flex;justify-content:space-between;align-items:center;">'
+          + '  <span>ติ๊กเลือกพนักงานได้พร้อมกันหลายคนสำหรับทำงานเป็นกลุ่ม</span>'
+          + '  <span id="picker-count" style="font-weight:700;color:#0284c7;">เลือกแล้ว ' + selectedIds.length + ' คน</span>'
+          + '</div>'
+          + '</div>';
+
+        Modal.open({
+          title: 'เลือกพนักงานจากฐานข้อมูลเข้ากลุ่ม OT',
+          large: true,
+          html: modalBody,
+          footer: '<button class="btn btn-ghost" data-modal-close>ยกเลิก</button>'
+            + '<button class="btn btn-primary" id="picker-submit-btn" style="background:#0284c7;border-color:#0284c7;"><i class="bi bi-check-lg"></i> ยืนยันการเลือก</button>',
+          onOpen: function () {
+            var searchInput = $('#picker-search');
+            var listEl = $('#picker-users-list');
+            var countEl = $('#picker-count');
+
+            function updateCount() {
+              var count = $$('.user-check-box:checked').length;
+              if (countEl) countEl.textContent = 'เลือกแล้ว ' + count + ' คน';
+            }
+
+            if (searchInput) {
+              searchInput.addEventListener('input', function () {
+                listEl.innerHTML = buildUserRows(searchInput.value);
+                $$('.user-check-box').forEach(function (cb) {
+                  cb.addEventListener('change', function () {
+                    var uid = cb.value;
+                    if (cb.checked) {
+                      if (selectedIds.indexOf(uid) < 0) selectedIds.push(uid);
+                    } else {
+                      selectedIds = selectedIds.filter(function (x) { return x !== uid; });
+                    }
+                    updateCount();
+                  });
+                });
+              });
+            }
+
+            $$('.user-check-box').forEach(function (cb) {
+              cb.addEventListener('change', function () {
+                var uid = cb.value;
+                if (cb.checked) {
+                  if (selectedIds.indexOf(uid) < 0) selectedIds.push(uid);
+                } else {
+                  selectedIds = selectedIds.filter(function (x) { return x !== uid; });
+                }
+                updateCount();
+              });
+            });
+
+            $('#picker-select-all').addEventListener('click', function () {
+              $$('.user-check-box').forEach(function (cb) {
+                cb.checked = true;
+                if (selectedIds.indexOf(cb.value) < 0) selectedIds.push(cb.value);
+              });
+              updateCount();
+            });
+
+            $('#picker-clear-all').addEventListener('click', function () {
+              $$('.user-check-box').forEach(function (cb) { cb.checked = false; });
+              selectedIds = [];
+              updateCount();
+            });
+
+            $('#picker-submit-btn').addEventListener('click', function () {
+              // Map selected IDs back to employee objects
+              var newEmps = [];
+              selectedIds.forEach(function (uid) {
+                // Find existing in formState
+                var existing = formState.employees.find(function (e) { return e.id === uid; });
+                if (existing) {
+                  newEmps.push(existing);
+                } else {
+                  var dbU = users.find(function (u) { return u.id === uid; });
+                  if (dbU) {
+                    newEmps.push({
+                      id: dbU.id,
+                      full_name: dbU.full_name || dbU.username,
+                      position: dbU.position || '-',
+                      department: dbU.department || '-',
+                      start_time: formState.start_time,
+                      end_time: formState.end_time,
+                      duration_hours: calculateHours(formState.start_time, formState.end_time),
+                      task_desc: formState.description
+                    });
+                  }
+                }
+              });
+
+              formState.employees = newEmps;
+              Modal.close();
+              renderMain();
+              if (typeof toast === 'function') toast('เพิ่มพนักงานเข้ากลุ่มแล้ว ' + newEmps.length + ' คน', 'success');
+            });
+          }
+        });
+      });
+    }
+
+    function wireMainEvents() {
+      if ($('#ot-tab-list')) {
+        $('#ot-tab-list').addEventListener('click', function () { currentTab = 'list'; renderMain(); });
+      }
+      if ($('#ot-tab-new')) {
+        $('#ot-tab-new').addEventListener('click', function () { currentTab = 'new'; renderMain(); });
+      }
+      if ($('#ot-create-first-btn')) {
+        $('#ot-create-first-btn').addEventListener('click', function () { currentTab = 'new'; renderMain(); });
+      }
+      if ($('#ot-cancel-form-btn')) {
+        $('#ot-cancel-form-btn').addEventListener('click', function () { currentTab = 'list'; renderMain(); });
+      }
+
+      // Open user picker buttons
+      if ($('#btn-open-user-picker')) {
+        $('#btn-open-user-picker').addEventListener('click', openEmployeePickerModal);
+      }
+      if ($('#btn-open-user-picker-top')) {
+        $('#btn-open-user-picker-top').addEventListener('click', openEmployeePickerModal);
+      }
+
+      // Apply group times to all
+      if ($('#btn-apply-all-time')) {
+        $('#btn-apply-all-time').addEventListener('click', function () {
+          var st = $('#ot-start-time').value;
+          var et = $('#ot-end-time').value;
+          formState.start_time = st;
+          formState.end_time = et;
+          var hrs = calculateHours(st, et);
+          formState.employees.forEach(function (e) {
+            e.start_time = st;
+            e.end_time = et;
+            e.duration_hours = hrs;
+          });
+          renderMain();
+          if (typeof toast === 'function') toast('ปรับช่วงเวลาให้ทุกคนเป็น ' + st + ' - ' + et + ' (' + hrs + ' ชม.) แล้ว', 'info');
+        });
+      }
+
+      // Edit employee row in form
+      $$('#ot-emp-table-body tr').forEach(function (tr) {
+        var idx = parseInt(tr.getAttribute('data-row-idx'), 10);
+        if (isNaN(idx) || !formState.employees[idx]) return;
+
+        var stInput = tr.querySelector('.emp-start-time');
+        var etInput = tr.querySelector('.emp-end-time');
+        var hoursSpan = tr.querySelector('.emp-hours');
+        var descInput = tr.querySelector('.emp-task-desc');
+        var removeBtn = tr.querySelector('.btn-remove-emp');
+
+        function updateRow() {
+          var st = stInput.value;
+          var et = etInput.value;
+          var hrs = calculateHours(st, et);
+          hoursSpan.textContent = hrs;
+          formState.employees[idx].start_time = st;
+          formState.employees[idx].end_time = et;
+          formState.employees[idx].duration_hours = hrs;
+          formState.employees[idx].task_desc = descInput.value;
+        }
+
+        if (stInput) stInput.addEventListener('change', updateRow);
+        if (etInput) etInput.addEventListener('change', updateRow);
+        if (descInput) descInput.addEventListener('input', function () { formState.employees[idx].task_desc = descInput.value; });
+
+        if (removeBtn) {
+          removeBtn.addEventListener('click', function () {
+            formState.employees.splice(idx, 1);
+            renderMain();
+          });
+        }
+      });
+
+      // Save OT Request
+      if ($('#btn-save-ot-request')) {
+        $('#btn-save-ot-request').addEventListener('click', function () {
+          var docDate = $('#ot-doc-date').value;
+          var desc = ($('#ot-description') ? $('#ot-description').value.trim() : '') || formState.description;
+          var st = ($('#ot-start-time') ? $('#ot-start-time').value : '') || formState.start_time;
+          var et = ($('#ot-end-time') ? $('#ot-end-time').value : '') || formState.end_time;
+
+          if (!docDate) { alertError('ข้อผิดพลาด', 'กรุณาระบุวันที่ปฏิบัติงาน'); return; }
+          if (formState.employees.length === 0) { alertError('ข้อผิดพลาด', 'กรุณาเลือกพนักงานร่วมกลุ่มอย่างน้อย 1 คน'); return; }
+
+          var curU = getOtCurrentUser();
+          var newId = 'OT-' + new Date().getFullYear() + String(new Date().getMonth() + 1).padStart(2, '0') + '-' + String(otItems.length + 1).padStart(3, '0');
+          var newRequest = {
+            id: newId,
+            doc_date: docDate,
+            department: '',
+            dept_code: '',
+            start_time: st,
+            end_time: et,
+            total_hours: calculateHours(st, et),
+            description: desc,
+            status: 'pending',
+            created_by: (curU.full_name || curU.username) || 'พนักงานยื่นคำขอ',
+            created_at: new Date().toISOString(),
+            approver_name: '',
+            approver_role: '',
+            approved_at: '',
+            approver_comment: '',
+            employees: JSON.parse(JSON.stringify(formState.employees))
+          };
+
+          otItems.unshift(newRequest);
+          saveOvertimeData(otItems);
+
+          // Reset formState
+          formState.employees = [];
+          formState.description = '';
+
+          if (typeof toast === 'function') toast('บันทึกแบบขออนุมัติทำงานล่วงเวลา ' + newId + ' สำเร็จแล้ว', 'success');
+          currentTab = 'list';
+          renderMain();
+
+          // Auto-prompt print
+          confirmModal({
+            title: 'บันทึกสำเร็จ!',
+            message: 'คำขอเลขที่ ' + newId + ' บันทึกแล้ว ต้องการสั่งพิมพ์แบบฟอร์มมาตรฐานของ Avarin ทันทีหรือไม่?',
+            okText: 'สั่งพิมพ์เอกสาร',
+            cancelText: 'ไว้พิมพ์ภายหลัง'
+          }).then(function (ok) {
+            if (ok) printOvertimeOfficialForm(newRequest);
+          });
+        });
+      }
+
+      // Preview Button in Form
+      if ($('#btn-preview-ot-form')) {
+        $('#btn-preview-ot-form').addEventListener('click', function () {
+          var draft = {
+            id: 'OT-DRAFT',
+            doc_date: $('#ot-doc-date').value || formState.doc_date,
+            department: '',
+            dept_code: '',
+            description: ($('#ot-description') ? $('#ot-description').value : '') || formState.description,
+            status: 'pending',
+            employees: formState.employees
+          };
+          printOvertimeOfficialForm(draft);
+        });
+      }
+
+      // Wire Print Buttons in List
+      $$('[data-ot-print]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = btn.getAttribute('data-ot-print');
+          var target = otItems.find(function (x) { return x.id === id; });
+          if (target) printOvertimeOfficialForm(target);
+        });
+      });
+
+      // Wire HR/Admin Approval
+      $$('[data-ot-approve]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = btn.getAttribute('data-ot-approve');
+          var target = otItems.find(function (x) { return x.id === id; });
+          if (!target) return;
+
+          confirmModal({
+            title: 'อนุมัติการทำงานล่วงเวลา (HR/ADMIN)?',
+            message: 'คุณยืนยันที่จะอนุมัติคำขอ OT เลขที่ ' + id + ' หรือไม่?<br>เมื่ออนุมัติแล้ว ลายมือชื่อของคุณจะปรากฏในแบบฟอร์มการพิมพ์',
+            okText: 'อนุมัติคำขอ',
+            danger: false
+          }).then(function (ok) {
+            if (!ok) return;
+            var curU = getOtCurrentUser();
+            var approverName = curU.full_name || curU.username || 'HR / ADMIN';
+            var approverRole = curU.position || 'ผู้จัดการฝ่ายบุคคลและธุรการ';
+            target.status = 'approved';
+            target.approver_name = approverName;
+            target.approver_role = approverRole;
+            target.approved_at = new Date().toISOString();
+            saveOvertimeData(otItems);
+            if (typeof toast === 'function') toast('อนุมัติคำขอ ' + id + ' เรียบร้อยแล้ว', 'success');
+            renderMain();
+          });
+        });
+      });
+
+      // Wire HR/Admin Reject
+      $$('[data-ot-reject]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = btn.getAttribute('data-ot-reject');
+          var target = otItems.find(function (x) { return x.id === id; });
+          if (!target) return;
+
+          confirmModal({
+            title: 'ไม่อนุมัติคำขอทำงานล่วงเวลา?',
+            message: 'คุณแน่ใจว่าต้องการปฏิเสธคำขอนี้?',
+            okText: 'ปฏิเสธคำขอ',
+            danger: true
+          }).then(function (ok) {
+            if (!ok) return;
+            var curU = getOtCurrentUser();
+            target.status = 'rejected';
+            target.approver_name = curU.full_name || curU.username || 'HR / ADMIN';
+            target.approved_at = new Date().toISOString();
+            saveOvertimeData(otItems);
+            if (typeof toast === 'function') toast('ปรับสถานะเป็นไม่อนุมัติแล้ว', 'info');
+            renderMain();
+          });
+        });
+      });
+
+      // Wire Delete
+      $$('[data-ot-delete]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = btn.getAttribute('data-ot-delete');
+          confirmModal({
+            title: 'ลบคำขอ OT นี้?',
+            message: 'คุณแน่ใจหรือไม่ว่าต้องการลบรายการ ' + id + '?',
+            danger: true
+          }).then(function (ok) {
+            if (!ok) return;
+            otItems = otItems.filter(function (x) { return x.id !== id; });
+            saveOvertimeData(otItems);
+            if (typeof toast === 'function') toast('ลบรายการแล้ว', 'success');
+            renderMain();
+          });
+        });
+      });
+    }
+
+    renderMain();
+  };
+
+
+    // ── Rentals & Expiries Module (#/rentals) ──────────────────────────
   function getInitialRentalsData() {
     return [
       {
