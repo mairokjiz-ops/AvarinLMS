@@ -388,6 +388,39 @@ function cfg_timeMinutes_(timeText) {
 function cfg_round2_(n) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
+function cfg_formatDaysHours_(val, hoursPerDay) {
+  var hpd = hoursPerDay || (typeof cfg_workdayHours_ === 'function' ? cfg_workdayHours_() : 8);
+  if (val == null || val === '') return '0';
+  if (typeof val === 'object') {
+    var d = Number(val.days || 0);
+    var h = Number(val.hours || 0);
+    if (h >= hpd) {
+      d += Math.floor(h / hpd);
+      h = Math.round((h % hpd) * 10) / 10;
+    }
+    if (d > 0 && h > 0) return d + ' วัน ' + h + ' ชม.';
+    if (d > 0) return d + ' วัน';
+    if (h > 0) return h + ' ชม.';
+    return '0';
+  }
+  if (typeof val === 'string') {
+    if (val.indexOf('วัน') >= 0 || val.indexOf('ชม') >= 0) return val;
+    val = parseFloat(val);
+  }
+  if (isNaN(val) || val === 0) return '0';
+  var totalHours = val * hpd;
+  var roundedTotalHours = Math.round(totalHours * 2) / 2;
+  var days = Math.floor(roundedTotalHours / hpd);
+  var hours = Math.round((roundedTotalHours - (days * hpd)) * 10) / 10;
+  if (hours >= hpd) {
+    days += Math.floor(hours / hpd);
+    hours = Math.round((hours % hpd) * 10) / 10;
+  }
+  if (days > 0 && hours > 0) return days + ' วัน ' + hours + ' ชม.';
+  if (days > 0) return days + ' วัน';
+  if (hours > 0) return hours + ' ชม.';
+  return '0';
+}
 function cfg_workStartMinutes_() { return 8 * 60 + 30; }
 function cfg_workEndMinutes_() { return 20 * 60; }
 function cfg_leaveDuration_(data) {
@@ -2394,6 +2427,10 @@ function Reports_overview(user, p) {
       personal: cfg_round2_(byUser[uid].personal),
       annual: cfg_round2_(byUser[uid].annual),
       total_days: cfg_round2_(byUser[uid].total_days),
+      sick_label: cfg_formatDaysHours_(byUser[uid].sick),
+      personal_label: cfg_formatDaysHours_(byUser[uid].personal),
+      annual_label: cfg_formatDaysHours_(byUser[uid].annual),
+      total_days_label: cfg_formatDaysHours_(byUser[uid].total_days),
       total_count: byUser[uid].total_count,
       last: byUser[uid].last
     });
