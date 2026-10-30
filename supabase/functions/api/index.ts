@@ -2411,14 +2411,17 @@ function Reports_overview(user, p) {
     byUser[uid].total_count++;
     if (r.status === STATUS.APPROVED) {
       var d = Number(r.days || 0);
-      byUser[uid][reportType] = cfg_round2_((byUser[uid][reportType] || 0) + d);
-      byUser[uid].total_days = cfg_round2_(byUser[uid].total_days + d);
+      if (reportType === 'sick' || reportType === 'personal' || reportType === 'annual') {
+        byUser[uid][reportType] = cfg_round2_((byUser[uid][reportType] || 0) + d);
+        byUser[uid].total_days = cfg_round2_(byUser[uid].total_days + d);
+      }
     }
     if (r.created_at && (!byUser[uid].last || r.created_at > byUser[uid].last)) byUser[uid].last = r.created_at;
   });
 
   var topUsers = Object.keys(byUser).map(function (uid) {
     var u = users[uid] || {};
+    var tot3 = cfg_round2_(byUser[uid].sick + byUser[uid].personal + byUser[uid].annual);
     return Object.assign({
       full_name: u.full_name, position: u.position, department: u.department, role: u.role, avatar: u.avatar
     }, {
@@ -2426,11 +2429,11 @@ function Reports_overview(user, p) {
       sick: cfg_round2_(byUser[uid].sick),
       personal: cfg_round2_(byUser[uid].personal),
       annual: cfg_round2_(byUser[uid].annual),
-      total_days: cfg_round2_(byUser[uid].total_days),
+      total_days: tot3,
       sick_label: cfg_formatDaysHours_(byUser[uid].sick),
       personal_label: cfg_formatDaysHours_(byUser[uid].personal),
       annual_label: cfg_formatDaysHours_(byUser[uid].annual),
-      total_days_label: cfg_formatDaysHours_(byUser[uid].total_days),
+      total_days_label: cfg_formatDaysHours_(tot3),
       total_count: byUser[uid].total_count,
       last: byUser[uid].last
     });

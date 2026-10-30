@@ -1935,8 +1935,10 @@ function Reports_overview(user, p) {
     byUser[uid].total_count++;
     if (r.status === STATUS.APPROVED) {
       var d = Number(r.days || 0);
-      byUser[uid][reportType] = cfg_round2_((byUser[uid][reportType] || 0) + d);
-      byUser[uid].total_days = cfg_round2_(byUser[uid].total_days + d);
+      if (reportType === 'sick' || reportType === 'personal' || reportType === 'annual') {
+        byUser[uid][reportType] = cfg_round2_((byUser[uid][reportType] || 0) + d);
+        byUser[uid].total_days = cfg_round2_(byUser[uid].total_days + d);
+      }
     }
     if (r.created_at && (!byUser[uid].last || r.created_at > byUser[uid].last)) byUser[uid].last = r.created_at;
   });

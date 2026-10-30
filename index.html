@@ -8132,10 +8132,15 @@ async function api(req) {
       // สถิติ
       function statRow(typeKey, label) {
         var s = (stats && stats.items && stats.items[typeKey]) || { used: 0, limit: 0 };
-        var prevUsed = Math.max(0, s.used - (lv.status === 'approved' ? Number(lv.days || 0) : 0));
+        var prevUsed = Math.max(0, Number(s.used || 0) - (lv.status === 'approved' ? Number(lv.days || 0) : 0));
         var thisLeave = (lv.leave_type === typeKey) ? Number(lv.days || 0) : 0;
-        var total = prevUsed + thisLeave;
-        return '<tr><td>' + label + '</td><td>' + (prevUsed || '') + '</td><td>' + (thisLeave || '') + '</td><td>' + (total || '') + '</td></tr>';
+        var total = Math.round((prevUsed + thisLeave) * 100) / 100;
+        return '<tr>'
+          + '<td>' + label + '</td>'
+          + '<td>' + (prevUsed > 0 ? formatDaysHours(prevUsed) : '') + '</td>'
+          + '<td>' + (thisLeave > 0 ? formatDaysHours(thisLeave) : '') + '</td>'
+          + '<td>' + (total > 0 ? formatDaysHours(total) : '') + '</td>'
+          + '</tr>';
       }
       var subject = (lv.leave_type === 'annual') ? 'ขออนุญาตลาพักร้อน' : (lv.leave_type === 'sick' ? 'ขออนุญาตลาป่วย' : 'ขออนุญาตลากิจส่วนตัว');
       var addressee = 'ฝ่ายบุคคล' + (org.name ? esc(org.name) : 'บริษัท');
@@ -8387,7 +8392,18 @@ async function api(req) {
         var t = d.by_dept[k];
         return '<tr><td>' + esc(k) + '</td><td style="text-align:right">' + t.count + '</td><td style="text-align:right">' + formatDaysHours(t.days) + '</td></tr>';
       }).join('');
-      var topRows = d.top_users.slice(0, 10).map(function (u, i) {
+      // คำนวณยอดรวมและจัดอันดับเฉพาะ ลากิจ + ป่วย + พักร้อน
+      var topList = (d.top_users || []).map(function (u) {
+        var s = Number(u.sick || 0);
+        var p = Number(u.personal || 0);
+        var a = Number(u.annual || 0);
+        var tot = round2(s + p + a);
+        return Object.assign({}, u, {
+          user_total: tot,
+          user_total_label: formatDaysHours(tot)
+        });
+      }).sort(function (a, b) { return b.user_total - a.user_total; });
+      var topRows = topList.slice(0, 10).map(function (u, i) {
         var rankCol = i < 3 ? ['#fbbf24','#9ca3af','#b45309'][i] : '#94a3b8';
         var initial = (u.full_name || '?').substring(0,1).toUpperCase();
         var avatar = u.avatar ? '<img src="' + esc(u.avatar) + '" alt="" referrerpolicy="no-referrer">' : initial;
@@ -8401,7 +8417,7 @@ async function api(req) {
           + '<td style="text-align:right">' + formatDaysHours(u.sick_label || u.sick) + '</td>'
           + '<td style="text-align:right">' + formatDaysHours(u.personal_label || u.personal) + '</td>'
           + '<td style="text-align:right">' + formatDaysHours(u.annual_label || u.annual) + '</td>'
-          + '<td style="text-align:right;font-weight:700;color:#024ad8">' + formatDaysHours(u.total_days_label || u.total_days) + '</td>'
+          + '<td style="text-align:right;font-weight:700;color:#024ad8">' + formatDaysHours(u.user_total_label || u.user_total) + '</td>'
           + '</tr>';
       }).join('');
       var maxMonth = Math.max.apply(null, d.by_month.map(function (m) { return m.days; }).concat([1]));
