@@ -1559,6 +1559,17 @@ a:hover { text-decoration: underline; }
 .swal-receipt-modal-popup .swal2-close:hover {
   opacity: 1;
 }
+.swal-receipt-modal-popup.swal-receipt-zoomed {
+  max-width: 96vw !important;
+  max-height: 94vh !important;
+  overflow: auto !important;
+}
+.swal-receipt-modal-popup.swal-receipt-zoomed .swal2-image {
+  max-height: none !important;
+  max-width: none !important;
+  width: auto !important;
+  height: auto !important;
+}
 
 /* SLA Alert (conditional red banner) */
 .sla-alert {
@@ -4937,11 +4948,233 @@ async function api(req) {
       .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
+  function viewFullImage(url, title) {
+    if (!url) return;
+    title = title || 'หลักฐานเอกสาร';
+
+    var win = window.open('', '_blank');
+    if (!win) {
+      alert('เบราว์เซอร์บล็อกหน้าต่างป๊อปอัป กรุณาอนุญาตการเปิดป๊อปอัปสำหรับหน้านี้');
+      return;
+    }
+
+    var safeTitle = esc(title);
+    var doc = win.document;
+    doc.open();
+    doc.write('<!DOCTYPE html>'
+      + '<html lang="th">'
+      + '<head>'
+      + '<meta charset="utf-8">'
+      + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+      + '<title>' + safeTitle + ' - ดูภาพขนาดจริง</title>'
+      + '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">'
+      + '<style>'
+      + '  * { box-sizing: border-box; margin: 0; padding: 0; }'
+      + '  body {'
+      + '    background: #090e17;'
+      + '    color: #e2e8f0;'
+      + '    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans Thai", sans-serif;'
+      + '    min-height: 100vh;'
+      + '    display: flex;'
+      + '    flex-direction: column;'
+      + '  }'
+      + '  .topbar {'
+      + '    position: sticky;'
+      + '    top: 0;'
+      + '    z-index: 100;'
+      + '    display: flex;'
+      + '    align-items: center;'
+      + '    justify-content: space-between;'
+      + '    gap: 12px;'
+      + '    background: rgba(15, 23, 42, 0.95);'
+      + '    backdrop-filter: blur(12px);'
+      + '    -webkit-backdrop-filter: blur(12px);'
+      + '    border-bottom: 1px solid rgba(255, 255, 255, 0.12);'
+      + '    padding: 10px 18px;'
+      + '    flex-wrap: wrap;'
+      + '  }'
+      + '  .topbar-left {'
+      + '    display: flex;'
+      + '    align-items: center;'
+      + '    gap: 10px;'
+      + '    min-width: 0;'
+      + '  }'
+      + '  .topbar-title {'
+      + '    font-size: 14px;'
+      + '    font-weight: 700;'
+      + '    color: #f8fafc;'
+      + '    white-space: nowrap;'
+      + '    overflow: hidden;'
+      + '    text-overflow: ellipsis;'
+      + '  }'
+      + '  .topbar-badge {'
+      + '    font-size: 11px;'
+      + '    padding: 2px 8px;'
+      + '    background: rgba(14, 165, 233, 0.2);'
+      + '    color: #38bdf8;'
+      + '    border: 1px solid rgba(14, 165, 233, 0.3);'
+      + '    border-radius: 999px;'
+      + '  }'
+      + '  .actions {'
+      + '    display: flex;'
+      + '    align-items: center;'
+      + '    gap: 8px;'
+      + '    flex-wrap: wrap;'
+      + '  }'
+      + '  .btn {'
+      + '    background: rgba(255, 255, 255, 0.1);'
+      + '    color: #f1f5f9;'
+      + '    border: 1px solid rgba(255, 255, 255, 0.18);'
+      + '    border-radius: 8px;'
+      + '    padding: 6px 14px;'
+      + '    font-size: 12.5px;'
+      + '    font-weight: 600;'
+      + '    cursor: pointer;'
+      + '    display: inline-flex;'
+      + '    align-items: center;'
+      + '    gap: 6px;'
+      + '    text-decoration: none;'
+      + '    transition: all 0.15s ease;'
+      + '  }'
+      + '  .btn:hover {'
+      + '    background: rgba(255, 255, 255, 0.2);'
+      + '    color: #fff;'
+      + '  }'
+      + '  .btn-primary {'
+      + '    background: #0284c7;'
+      + '    border-color: #0284c7;'
+      + '    color: #fff;'
+      + '  }'
+      + '  .btn-primary:hover {'
+      + '    background: #0369a1;'
+      + '    border-color: #0369a1;'
+      + '  }'
+      + '  .viewer-content {'
+      + '    flex: 1;'
+      + '    display: flex;'
+      + '    align-items: center;'
+      + '    justify-content: center;'
+      + '    padding: 24px;'
+      + '    overflow: auto;'
+      + '    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);'
+      + '    background-size: 24px 24px;'
+      + '  }'
+      + '  .img-wrapper {'
+      + '    transition: transform 0.2s ease;'
+      + '    transform-origin: center center;'
+      + '    display: inline-block;'
+      + '  }'
+      + '  img {'
+      + '    display: block;'
+      + '    max-height: 85vh;'
+      + '    max-width: 90vw;'
+      + '    width: auto;'
+      + '    height: auto;'
+      + '    border-radius: 8px;'
+      + '    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);'
+      + '    cursor: zoom-in;'
+      + '    transition: all 0.15s ease;'
+      + '  }'
+      + '  body.actual-size img {'
+      + '    max-height: none !important;'
+      + '    max-width: none !important;'
+      + '    cursor: zoom-out;'
+      + '  }'
+      + '</style>'
+      + '</head>'
+      + '<body>'
+      + '  <div class="topbar">'
+      + '    <div class="topbar-left">'
+      + '      <div class="topbar-title"><i class="bi bi-file-earmark-image"></i> ' + safeTitle + '</div>'
+      + '      <span class="topbar-badge" id="zoomBadge">พอดีหน้าจอ</span>'
+      + '    </div>'
+      + '    <div class="actions">'
+      + '      <button class="btn btn-primary" id="btnZoom"><i class="bi bi-arrows-angle-expand"></i> <span id="txtZoom">ขยายขนาดจริง 100%</span></button>'
+      + '      <button class="btn" id="btnRotate"><i class="bi bi-arrow-clockwise"></i> หมุนภาพ</button>'
+      + '      <button class="btn" id="btnPrint"><i class="bi bi-printer"></i> พิมพ์</button>'
+      + '      <a class="btn" id="btnDownload" download="document-image.jpg"><i class="bi bi-download"></i> ดาวน์โหลด</a>'
+      + '    </div>'
+      + '  </div>'
+      + '  <div class="viewer-content">'
+      + '    <div class="img-wrapper" id="imgWrapper">'
+      + '      <img id="viewImg" alt="' + safeTitle + '">'
+      + '    </div>'
+      + '  </div>'
+      + '  <script>'
+      + '    var img = document.getElementById("viewImg");'
+      + '    var btnZoom = document.getElementById("btnZoom");'
+      + '    var txtZoom = document.getElementById("txtZoom");'
+      + '    var zoomBadge = document.getElementById("zoomBadge");'
+      + '    var btnRotate = document.getElementById("btnRotate");'
+      + '    var btnPrint = document.getElementById("btnPrint");'
+      + '    var btnDownload = document.getElementById("btnDownload");'
+      + '    var imgWrapper = document.getElementById("imgWrapper");'
+      + '    var rotation = 0;'
+      + '    '
+      + '    function toggleZoom() {'
+      + '      var isActual = document.body.classList.toggle("actual-size");'
+      + '      txtZoom.textContent = isActual ? "ย่อให้พอดีหน้าจอ" : "ขยายขนาดจริง 100%";'
+      + '      zoomBadge.textContent = isActual ? "ขนาดจริง 100%" : "พอดีหน้าจอ";'
+      + '      btnZoom.querySelector("i").className = isActual ? "bi bi-arrows-angle-contract" : "bi bi-arrows-angle-expand";'
+      + '    }'
+      + '    '
+      + '    img.addEventListener("click", toggleZoom);'
+      + '    btnZoom.addEventListener("click", toggleZoom);'
+      + '    btnRotate.addEventListener("click", function() {'
+      + '      rotation = (rotation + 90) % 360;'
+      + '      imgWrapper.style.transform = "rotate(" + rotation + "deg)";'
+      + '    });'
+      + '    btnPrint.addEventListener("click", function() {'
+      + '      window.print();'
+      + '    });'
+      + '    window.addEventListener("keydown", function(e) {'
+      + '      if (e.key === "Escape") { window.close(); }'
+      + '      if (e.key === "r" || e.key === "R") { rotation = (rotation + 90) % 360; imgWrapper.style.transform = "rotate(" + rotation + "deg)"; }'
+      + '    });'
+      + '  <\/script>'
+      + '</body>'
+      + '</html>');
+    doc.close();
+
+    try {
+      var viewImg = win.document.getElementById('viewImg');
+      if (viewImg) viewImg.src = url;
+      var btnDownload = win.document.getElementById('btnDownload');
+      if (btnDownload) {
+        btnDownload.href = url;
+        if (url.indexOf('data:') !== 0 && url.indexOf('blob:') !== 0) {
+          btnDownload.addEventListener('click', function(e) {
+            e.preventDefault();
+            fetch(url)
+              .then(function(res) { return res.blob(); })
+              .then(function(b) {
+                var bUrl = URL.createObjectURL(b);
+                var tempA = document.createElement('a');
+                tempA.href = bUrl;
+                tempA.download = 'document-image.jpg';
+                document.body.appendChild(tempA);
+                tempA.click();
+                document.body.removeChild(tempA);
+                setTimeout(function() { URL.revokeObjectURL(bUrl); }, 1000);
+              })
+              .catch(function() {
+                window.open(url, '_blank');
+              });
+          });
+        }
+      }
+    } catch(e) {
+      console.error(e);
+    }
+  }
+  window.viewFullImage = viewFullImage;
+
   function openImgPreview(url, title) {
     if (!url) return;
     title = title || 'รูปภาพเอกสาร';
-    var isDataUrl = url.indexOf('data:') === 0;
-    var linkBtnHtml = isDataUrl ? '' : ('<div style="margin-top:12px;text-align:center;"><a href="' + esc(url) + '" target="_blank" class="btn btn-sm" style="background:#0284c7;color:#fff;border-radius:8px;font-size:12px;padding:6px 14px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;font-weight:600;"><i class="bi bi-box-arrow-up-right"></i> เปิดในแท็บใหม่</a></div>');
+    var linkBtnHtml = '<div style="margin-top:12px;text-align:center;">'
+      + '<button type="button" id="swal-preview-open-btn" class="btn btn-sm" style="background:#0284c7;color:#fff;border-radius:8px;font-size:12px;padding:6px 14px;display:inline-flex;align-items:center;gap:6px;border:none;cursor:pointer;font-weight:600;"><i class="bi bi-box-arrow-up-right"></i> เปิดดูภาพขนาดจริงในแท็บใหม่</button>'
+      + '</div>';
     
     Swal.fire({
       title: title,
@@ -4954,6 +5187,22 @@ async function api(req) {
       maxWidth: '90vw',
       customClass: {
         image: 'img-fluid rounded shadow-sm'
+      },
+      didOpen: function() {
+        var btn = document.getElementById('swal-preview-open-btn');
+        if (btn) {
+          btn.addEventListener('click', function() {
+            viewFullImage(url, title);
+          });
+        }
+        var imgEl = Swal.getImage();
+        if (imgEl) {
+          imgEl.style.cursor = 'pointer';
+          imgEl.title = 'คลิกเพื่อดูภาพขนาดจริงในแท็บใหม่';
+          imgEl.addEventListener('click', function() {
+            viewFullImage(url, title);
+          });
+        }
       }
     });
   }
@@ -13196,13 +13445,58 @@ async function api(req) {
           Swal.fire({
             imageUrl: url,
             imageAlt: 'หลักฐานการจ่ายเงิน',
-            html: '<div style="margin-top:10px;text-align:center;"><a href="' + esc(url) + '" target="_blank" class="btn btn-sm" style="background:#0284c7;color:#fff;border-radius:8px;font-size:12px;padding:6px 14px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;font-weight:600;"><i class="bi bi-box-arrow-up-right"></i> เปิดดูไฟล์ภาพขนาดจริง 100% ในแท็บใหม่</a></div>',
+            html: '<div style="margin-top:12px;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;">'
+              + '<button type="button" id="swal-btn-open-full" class="btn btn-sm" style="background:#0284c7;color:#fff;border-radius:8px;font-size:12px;padding:7px 16px;display:inline-flex;align-items:center;gap:6px;font-weight:600;border:none;cursor:pointer;"><i class="bi bi-box-arrow-up-right"></i> เปิดดูไฟล์ภาพขนาดจริง 100% ในแท็บใหม่</button>'
+              + '<button type="button" id="swal-btn-zoom-toggle" class="btn btn-sm" style="background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.25);border-radius:8px;font-size:12px;padding:7px 14px;display:inline-flex;align-items:center;gap:6px;font-weight:600;cursor:pointer;"><i class="bi bi-zoom-in"></i> <span id="swal-zoom-text">ซูมในหน้านี้</span></button>'
+              + '</div>',
             showConfirmButton: false,
             showCloseButton: true,
             width: 'auto',
-            maxWidth: '95vw',
+            maxWidth: '96vw',
             customClass: {
               popup: 'swal-receipt-modal-popup'
+            },
+            didOpen: function () {
+              var btnOpen = document.getElementById('swal-btn-open-full');
+              if (btnOpen) {
+                btnOpen.addEventListener('click', function () {
+                  viewFullImage(url, 'หลักฐานการจ่ายเงิน #' + (idx + 1));
+                });
+              }
+              var btnZoomToggle = document.getElementById('swal-btn-zoom-toggle');
+              var swalPopup = document.querySelector('.swal-receipt-modal-popup');
+              var imgEl = swalPopup ? swalPopup.querySelector('.swal2-image') : null;
+
+              if (imgEl) {
+                imgEl.style.cursor = 'zoom-in';
+                imgEl.title = 'คลิกเพื่อซูม หรือคลิกปุ่มเปิดในแท็บใหม่';
+
+                var isZoomed = false;
+                function doZoom() {
+                  isZoomed = !isZoomed;
+                  if (swalPopup) {
+                    if (isZoomed) {
+                      swalPopup.classList.add('swal-receipt-zoomed');
+                    } else {
+                      swalPopup.classList.remove('swal-receipt-zoomed');
+                    }
+                  }
+                  imgEl.style.cursor = isZoomed ? 'zoom-out' : 'zoom-in';
+                  var txt = document.getElementById('swal-zoom-text');
+                  if (txt) {
+                    txt.textContent = isZoomed ? 'ย่อขนาดพอดีจอ' : 'ซูมในหน้านี้';
+                    if (btnZoomToggle) {
+                      var icon = btnZoomToggle.querySelector('i');
+                      if (icon) icon.className = isZoomed ? 'bi bi-zoom-out' : 'bi bi-zoom-in';
+                    }
+                  }
+                }
+
+                imgEl.addEventListener('click', doZoom);
+                if (btnZoomToggle) {
+                  btnZoomToggle.addEventListener('click', doZoom);
+                }
+              }
             }
           });
         });
