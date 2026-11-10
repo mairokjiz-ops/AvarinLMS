@@ -584,15 +584,25 @@ function _getTableTtl_(table) {
 
 function _getTableFetchParams_(table) {
   if (table === 'AuditLog') return 'select=id,user_id,action,entity,entity_id,created_at&order=created_at.desc&limit=50';
-  if (table === 'Leaves') return 'select=id,leave_no,requester_id,leave_type,reason,start_date,end_date,days,status,checker_id,supervisor_id,approver_id,written_at,fiscal_year,leave_unit,hours,created_at,updated_at&order=created_at.desc&limit=150';
+  // Leaves: โหลดทุกใบของปีปัจจุบัน + ปีก่อน (เดิม limit 150 ใบล่าสุด → พอใบลาเกิน 150 ใบ
+  // ใบเก่าหลุด ทำให้วันลาที่ใช้ไป/โควตาคงเหลือ/รายงาน/ปฏิทิน/เช็คชนกัน คำนวณผิด)
+  if (table === 'Leaves') {
+    var fyMin = cfg_fiscalYear_(cfg_now_()) - 1;
+    return 'select=id,leave_no,requester_id,leave_type,reason,start_date,end_date,days,status,checker_id,supervisor_id,approver_id,written_at,fiscal_year,leave_unit,hours,created_at,updated_at&fiscal_year=gte.' + fyMin + '&order=created_at.desc&limit=5000';
+  }
   if (table === 'Expenses') return 'select=id,expense_no,mission_id,expense_date,expense_type,description,amount,status,approver_id,approved_amount,created_by,created_at,updated_at&order=created_at.desc&limit=150';
   if (table === 'Missions') return 'select=id,mission_no,requester_id,title,purpose,destination,start_date,end_date,transport_type,requested_amount,status,approver_id,approved_amount,work_type,created_at,updated_at&order=created_at.desc&limit=100';
   if (table === 'StockBills') return 'select=id,bill_no,bill_date,supplier_name,branch,category,total_amount,vat_type,vat_amount,net_amount,payment_status,status,image_url,created_by,created_by_name,created_at,updated_at&order=bill_date.desc&limit=100';
   if (table === 'SpecialCommissionSales') return 'select=id,employee_id,product_id,quantity,sale_date,branch,order_no,created_by,created_at&order=sale_date.desc&limit=300';
   if (table === 'Users') return 'select=id,username,password_hash,salt,full_name,position,level,department,role,email,phone,is_active,created_at,updated_at,line_user_id,line_connect_code,branch,off_day,avatar&order=full_name.asc&limit=300';
   if (table === 'Sessions') return 'select=token,user_id,created_at,expires_at&order=created_at.desc&limit=50';
-  if (table === 'Holidays') return 'select=id,holiday_date,name&order=holiday_date.asc&limit=100';
-  if (table === 'Settings') return 'select=key,value&limit=300';
+  // Holidays: เดิม order asc + limit 100 → พอสะสมเกิน 100 วัน วันหยุดปีล่าสุดจะหลุด (เก็บแต่ของเก่า)
+  if (table === 'Holidays') return 'select=id,holiday_date,name&holiday_date=gte.' + (cfg_fiscalYear_(cfg_now_()) - 1) + '-01-01&order=holiday_date.asc&limit=1000';
+  // Settings: เฉพาะค่าตั้งค่าระบบ — ไม่รวม sched_override_* (มีเป็นร้อยแถว ถ้ารวมแล้วเกิน limit
+  // ค่าอย่าง approval_stages จะหลุดไป แล้วระบบใช้ค่า default = 3 ขั้น)
+  if (table === 'Settings') return 'select=key,value&key=not.like.sched_override_*&limit=3000';
+  // SchedOverrides: ตาราง virtual อ่านจาก Settings เฉพาะ override ตารางงาน
+  if (table === 'SchedOverrides') return 'select=key,value&key=like.sched_override_*&limit=5000';
   return 'select=*&limit=100';
 }
 
@@ -617,7 +627,7 @@ async function DB_warmCache(tables) {
     await Promise.all(toFetch.map(async function (t) {
       try {
         var params = _getTableFetchParams_(t);
-        var rows = await sbFetch('GET', t, params);
+        var rows = await sbFetch('GET', t === 'SchedOverrides' ? 'Settings' : t, params);
         DB_CACHE[t] = rows || [];
         DB_CACHE_TIME[t] = Date.now();
       } catch(e) {
@@ -792,7 +802,7 @@ function _LINE_tablesForEvent_(event) {
       tables.push('Leaves', 'Holidays');
     }
     if (txt === 'ตารางงาน' || txt === 'เช็คตารางงาน' || txt === 'schedule' || txt === 'work schedule') {
-      tables.push('Leaves', 'Holidays');
+      tables.push('Leaves', 'Holidays', 'SchedOverrides');
     }
     if (txt === 'เบิกค่าใช้จ่าย' || txt === 'เบิก' || txt === 'expense') {
       // no extra table needed yet
@@ -808,7 +818,7 @@ function _LINE_tablesForEvent_(event) {
     }
 
     if (action.indexOf('submit_') === 0 || action === 'pending_leaves' || action === 'leave_decision' || action === 'check_quota' || action === 'check_status' || action === 'check_schedule') {
-      tables.push('Leaves', 'Holidays');
+      tables.push('Leaves', 'Holidays', 'SchedOverrides');
     }
 
     if (action === 'portal') {
@@ -1505,13 +1515,20 @@ function _findLastLeave_(userId, beforeISO) {
   return rows[0] || null;
 }
 
-function _genLeaveNo_() {
+// ออกเลขที่เอกสารถัดไปจาก DB โดยตรง (เลขล่าสุดของเดือน + 1)
+// เดิมนับจาก cache (จำกัดแถว + ค้างข้าม instance + นับผิดเมื่อมีการลบ) → เลขซ้ำได้
+async function _nextDocNo_(table, col, prefix) {
+  var rows = await sbFetch('GET', table, 'select=' + col + '&' + col + '=like.' + prefix + '*&order=' + col + '.desc&limit=1');
+  var last = (rows && rows.length) ? String(rows[0][col] || '') : '';
+  var n = last ? (parseInt(last.substring(prefix.length), 10) || 0) : 0;
+  return prefix + ('0000' + (n + 1)).slice(-4);
+}
+function _docPrefix_(code) {
   var now = cfg_now_();
-  var seq = DB_readAll(SHEETS.LEAVES).filter(function (r) {
-    var d = new Date(r.created_at);
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }).length + 1;
-  return cfg_genLeaveNo_(now, seq);
+  return code + String(now.getFullYear()).substring(2) + ('0' + (now.getMonth() + 1)).slice(-2);
+}
+async function _genLeaveNo_() {
+  return _nextDocNo_(SHEETS.LEAVES, 'leave_no', _docPrefix_('LV'));
 }
 
 function _leaveDurationLabel_(lv) {
@@ -1604,7 +1621,7 @@ async function Leaves_create(user, p) {
   // pull last leave (ลาครั้งสุดท้าย)
   var last = _findLastLeave_(user.id, startISO);
 
-  var leaveNo = _genLeaveNo_();
+  var leaveNo = await _genLeaveNo_();
   var status = data.draft ? STATUS.DRAFT : STATUS.PENDING;
 
   var newLv = await DB_insert(SHEETS.LEAVES, {
@@ -1722,6 +1739,7 @@ async function Leaves_check(user, p) {
   if (stages < 3) throw new Error('ระบบไม่ได้เปิดขั้นตอนตรวจสอบ (กำหนดเป็น ' + stages + ' ขั้น)');
   var lv = DB_findById(SHEETS.LEAVES, p && p.id);
   if (!lv) throw new Error('ไม่พบใบลา');
+  if (String(lv.requester_id) === String(user.id) && user.role !== 'admin') throw new Error('ไม่สามารถตรวจสอบใบลาของตัวเองได้ — ให้ผู้มีสิทธิ์คนอื่นดำเนินการ');
   if (lv.status !== STATUS.PENDING) throw new Error('ใบลานี้ไม่อยู่ในสถานะรอตรวจสอบ');
   var updated = await DB_update(SHEETS.LEAVES, lv.id, {
     status: STATUS.CHECKED,
@@ -1739,6 +1757,7 @@ async function Leaves_comment(user, p) {
   if (stages < 2) throw new Error('ระบบไม่ได้เปิดขั้นตอนความเห็นผู้บังคับบัญชา (กำหนดเป็น ' + stages + ' ขั้น)');
   var lv = DB_findById(SHEETS.LEAVES, p && p.id);
   if (!lv) throw new Error('ไม่พบใบลา');
+  if (String(lv.requester_id) === String(user.id) && user.role !== 'admin') throw new Error('ไม่สามารถให้ความเห็นใบลาของตัวเองได้ — ให้ผู้มีสิทธิ์คนอื่นดำเนินการ');
   // stages=3: รอ CHECKED ก่อน · stages=2: รับจาก PENDING โดยตรง · รับ CHECKED ด้วย (กรณีใบเก่าค้าง)
   var ok = (lv.status === STATUS.CHECKED) || (stages === 2 && lv.status === STATUS.PENDING);
   if (!ok) throw new Error('ใบลานี้ไม่อยู่ในสถานะที่ให้ความเห็นได้');
@@ -1755,8 +1774,11 @@ async function Leaves_comment(user, p) {
 async function Leaves_approve(user, p) {
   Auth_requireCap(user, 'leave.approve');
   var stages = _stages_();
-  var lv = DB_findById(SHEETS.LEAVES, p && p.id);
+  // อ่านสถานะใบลาสดจาก DB (cache อาจค้าง/ใบเก่าอาจไม่อยู่ใน cache 150 แถว)
+  var freshRows = await sbFetch('GET', 'Leaves', 'id=eq.' + encodeURIComponent(String((p && p.id) || '')) + '&limit=1');
+  var lv = (freshRows && freshRows.length) ? freshRows[0] : DB_findById(SHEETS.LEAVES, p && p.id);
   if (!lv) throw new Error('ไม่พบใบลา');
+  if (String(lv.requester_id) === String(user.id) && user.role !== 'admin') throw new Error('ไม่สามารถอนุมัติ/ไม่อนุมัติใบลาของตัวเองได้ — ให้ผู้มีสิทธิ์คนอื่นดำเนินการ');
   // ตามขั้น:
   // stages=1 → PENDING
   // stages=2 → REVIEWED (+ defensive: PENDING/CHECKED ถ้ามีใบค้าง)
@@ -1839,7 +1861,7 @@ function Leaves_list(user, p) {
     // งานที่รอ role นี้ดำเนินการ — ขึ้นกับ approval_stages
     var inboxStatuses = _inboxStatusesFor_(user.role);
     if (inboxStatuses.length === 0) rows = [];
-    else rows = rows.filter(function (r) { return inboxStatuses.indexOf(r.status) >= 0; });
+    else rows = rows.filter(function (r) { return inboxStatuses.indexOf(r.status) >= 0 && (user.role === 'admin' || String(r.requester_id) !== String(user.id)); });
   }
   // filters
   if (data.q) {
@@ -2055,13 +2077,10 @@ function Dashboard_data(user) {
   data.me.recent = mine.slice(0, 8).map(function (r) { return _enrichLeave_(r, users); });
 
   // pending for me
-  if (hasCap_(user.role, 'leave.check')) {
-    data.pending_for_me = rows.filter(function (r) { return r.status === STATUS.PENDING; }).length;
-  } else if (hasCap_(user.role, 'leave.comment')) {
-    data.pending_for_me = rows.filter(function (r) { return r.status === STATUS.CHECKED; }).length;
-  } else if (hasCap_(user.role, 'leave.approve')) {
-    data.pending_for_me = rows.filter(function (r) { return r.status === STATUS.REVIEWED; }).length;
-  }
+  var inboxStatuses = _inboxStatusesFor_(user.role);
+  data.pending_for_me = rows.filter(function (r) {
+    return inboxStatuses.indexOf(r.status) >= 0 && (user.role === 'admin' || String(r.requester_id) !== String(user.id));
+  }).length;
 
   if (hasCap_(user.role, 'leave.view_all')) {
     Object.keys(STATUS_LABEL).forEach(function (s) { data.by_status[s] = 0; });
@@ -2465,13 +2484,8 @@ function _wf_asLocalDate_(v) {
 }
 function _wf_missionScopeFor_(user) { return _wf_scopeFor_(user, 'mission.view_own', 'mission.view_department', 'mission.view_all'); }
 function _wf_calendarScopeFor_(user) { return _wf_scopeFor_(user, 'calendar.view_own', 'calendar.view_department', 'calendar.view_all'); }
-function _wf_missionNo_() {
-  var now = cfg_now_();
-  var seq = DB_readAll(SHEETS.MISSIONS).filter(function (r) {
-    var d = new Date(r.created_at);
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }).length + 1;
-  return cfg_genMissionNo_(now, seq);
+async function _wf_missionNo_() {
+  return _nextDocNo_(SHEETS.MISSIONS, 'mission_no', _docPrefix_('MS'));
 }
 function _wf_missionExpenses_(missionId) { return DB_readAll(SHEETS.EXPENSES).filter(function (r) { return String(r.mission_id) === String(missionId); }); }
 function _wf_missionExpenseTotal_(missionId) { return _wf_missionExpenses_(missionId).reduce(function (sum, r) { return sum + Number(r.amount || 0); }, 0); }
@@ -2571,7 +2585,7 @@ async function Mission_create(user, p) {
   var start = cfg_dateOnly_(data.start_date);
   var end = cfg_dateOnly_(data.end_date);
   if (!start || !end) throw new Error('วันที่ไม่ถูกต้อง');
-  var m = await DB_insert(SHEETS.MISSIONS, { mission_no: _wf_missionNo_(), requester_id: user.id, title: String(data.title || '').trim(), purpose: String(data.purpose || '').trim(), destination: String(data.destination || '').trim(), start_date: start, end_date: end, transport_type: String(data.transport_type || '').trim(), requested_amount: data.requested_amount ? Number(data.requested_amount) : null, status: STATUS.PENDING, approver_id: null, approver_comment: '', approver_at: null, approved_amount: null });
+  var m = await DB_insert(SHEETS.MISSIONS, { mission_no: await _wf_missionNo_(), requester_id: user.id, title: String(data.title || '').trim(), purpose: String(data.purpose || '').trim(), destination: String(data.destination || '').trim(), start_date: start, end_date: end, transport_type: String(data.transport_type || '').trim(), requested_amount: data.requested_amount ? Number(data.requested_amount) : null, status: STATUS.PENDING, approver_id: null, approver_comment: '', approver_at: null, approved_amount: null });
   await Audit_log_(user, 'mission.create', 'mission', m.id, { mission_no: m.mission_no });
   return _wf_enrichMission_(m, DB_buildIndex(SHEETS.USERS));
 }
@@ -2749,16 +2763,8 @@ function Expense_get(user, p) {
   };
 }
 
-function _wf_expenseNo_() {
-  var now = cfg_now_();
-  var seq = DB_readAll(SHEETS.EXPENSES).filter(function (r) {
-    var d = new Date(r.created_at);
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }).length + 1;
-  var yy = String(now.getFullYear()).substring(2);
-  var mm = ('0' + (now.getMonth()+1)).slice(-2);
-  var n  = ('0000' + Number(seq||0)).slice(-4);
-  return 'EX' + yy + mm + n;
+async function _wf_expenseNo_() {
+  return _nextDocNo_(SHEETS.EXPENSES, 'expense_no', _docPrefix_('EX'));
 }
 
 async function Expense_create(user, p) {
@@ -2772,7 +2778,7 @@ async function Expense_create(user, p) {
   if (!date) throw new Error('วันที่ไม่ถูกต้อง');
   
   var status = data.draft ? STATUS.DRAFT : STATUS.PENDING;
-  var expenseNo = _wf_expenseNo_();
+  var expenseNo = await _wf_expenseNo_();
   
   var ex = await DB_insert(SHEETS.EXPENSES, {
     expense_no: expenseNo,
@@ -3746,8 +3752,9 @@ async function _LINE_handlePostbackEvent_(event, replyToken, lineUserId) {
     var usersIndex = DB_buildIndex(SHEETS.USERS);
     var pending = leaves.filter(function (r) {
       if (inboxStatuses.indexOf(r.status) < 0) return false;
+      // ไม่แสดงใบลาของตัวเองในรายการรออนุมัติ (อนุมัติของตัวเองไม่ได้)
+      if (user.role !== 'admin' && String(r.requester_id) === String(user.id)) return false;
       if (user.role !== 'admin' && user.role !== 'approver' && user.role !== 'checker') {
-        if (String(r.requester_id) === String(user.id)) return true;
         var reqUser = usersIndex[r.requester_id];
         return reqUser && reqUser.department === user.department;
       }
@@ -5756,7 +5763,7 @@ function _calculateScheduleForMonth_(year, month) {
   });
 
   // Fetch overrides from Settings
-  var overrides = DB_readAll(SHEETS.SETTINGS).filter(function (s) {
+  var overrides = DB_readAll('SchedOverrides').filter(function (s) {
     return s.key.indexOf('sched_override_') === 0;
   });
   var overrideMap = {};

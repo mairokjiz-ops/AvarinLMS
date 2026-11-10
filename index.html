@@ -8063,6 +8063,10 @@ async function api(req) {
   };
   function renderLeaveDetail(data) {
     var lv = data.leave;
+    // ใช้ approval_stages ล่าสุดจาก server (ค่าใน boot อาจค้างถ้าแอดมินเปลี่ยนหลังเปิดหน้าเว็บ)
+    if (data.approval_stages && LMS.Store.boot && LMS.Store.boot.settings) {
+      LMS.Store.boot.settings.approval_stages = String(data.approval_stages);
+    }
     var u = lv.requester || {};
     var initial = (u.full_name || '?').substring(0,1).toUpperCase();
     var avatar = u.avatar ? '<img src="' + esc(u.avatar) + '" alt="">' : initial;
@@ -8218,19 +8222,22 @@ async function api(req) {
     if (isMine && (lv.status === 'draft' || lv.status === 'pending')) {
       actions.push('<button class="btn btn-warning" data-act="cancel"><i class="bi bi-x-circle-fill"></i> ยกเลิกใบลา</button>');
     }
+    // ห้ามตรวจ/ให้ความเห็น/อนุมัติใบลาของตัวเอง (ยกเว้น admin) — server ก็บล็อกเช่นกัน
+    var isOwnLeave = lv.requester && LMS.Store.user && String(lv.requester.id) === String(LMS.Store.user.id);
+    var canAct = !isOwnLeave || (LMS.Store.user && LMS.Store.user.role === 'admin');
     // Check action — ใช้ได้เฉพาะ stages = 3 + สถานะ pending
-    if (stages >= 3 && lv.status === 'pending' && hasCap('leave.check')) {
+    if (canAct && stages >= 3 && lv.status === 'pending' && hasCap('leave.check')) {
       actions.push('<button class="btn btn-primary" data-act="check"><i class="bi bi-shield-check"></i> ตรวจสอบ</button>');
     }
     // Comment (supervisor) — stages >= 2, สถานะ checked (stages=3) หรือ pending (stages=2)
-    if (stages >= 2 && hasCap('leave.comment')) {
+    if (canAct && stages >= 2 && hasCap('leave.comment')) {
       var canComment = (lv.status === 'checked') || (stages === 2 && lv.status === 'pending');
       if (canComment) {
         actions.push('<button class="btn btn-primary" data-act="comment"><i class="bi bi-chat-text-fill"></i> ให้ความเห็น</button>');
       }
     }
     // Approve — ขั้นสุดท้ายเสมอ
-    if (hasCap('leave.approve')) {
+    if (canAct && hasCap('leave.approve')) {
       var canApprove = false;
       if (stages === 1) canApprove = (lv.status === 'pending');
       else if (stages === 2) canApprove = (lv.status === 'reviewed' || lv.status === 'pending' || lv.status === 'checked');
