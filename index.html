@@ -8388,7 +8388,7 @@ async function api(req) {
       // สถิติ
       function statRow(typeKey, label) {
         var s = (stats && stats.items && stats.items[typeKey]) || { used: 0, limit: 0 };
-        var prevUsed = Math.max(0, Number(s.used || 0) - (lv.status === 'approved' ? Number(lv.days || 0) : 0));
+        var prevUsed = Math.max(0, Number(s.used || 0) - ((lv.status === 'approved' && lv.leave_type === typeKey) ? Number(lv.days || 0) : 0));
         var thisLeave = (lv.leave_type === typeKey) ? Number(lv.days || 0) : 0;
         var total = Math.round((prevUsed + thisLeave) * 100) / 100;
         return '<tr>'
